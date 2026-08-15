@@ -17,11 +17,11 @@ jobs:
     name: Lint, typecheck, test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -54,16 +54,22 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
 
       - name: Typecheck
         run: pnpm typecheck
@@ -71,19 +77,28 @@ jobs:
       - name: Unit and property tests
         run: pnpm test
 
-      # Enabled by M1-VS-1, once the Tauri shell exists.
-      # - name: Build desktop package
-      #   run: pnpm build:desktop
+      - name: Build frontend bundle
+        run: pnpm --filter @flowmap/desktop build
+
+      # Cross-platform breakage found at packaging time is the most expensive
+      # kind. `cargo check` catches it in ~1 min instead of a full release build.
+      - name: Check desktop shell compiles
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --locked
+
+      - name: Rust tests
+        working-directory: apps/desktop/src-tauri
+        run: cargo test
 
   security:
     name: Supply chain
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm

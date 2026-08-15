@@ -171,7 +171,8 @@ export default tseslint.config(
         'error',
         {
           selector: 'Literal[value=/^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6,8})$/]',
-          message: 'Raw colour. Use a token from @flowmap/ui/tokens (docs/design/design-system.md).',
+          message:
+            'Raw colour. Use a token from @flowmap/ui/tokens (docs/design/design-system.md).',
         },
         {
           selector: 'Literal[value=/\\b(?:rgb|rgba|hsl|hsla)\\(/]',
