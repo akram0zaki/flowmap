@@ -11,7 +11,7 @@ capability**, not by technical layer — each ticket should leave the product me
 > This file is kept current as work lands. A ticket is ✅ only when its acceptance criteria pass and
 > the [`AGENTS.md`](../../AGENTS.md) definition of done is met — not when the code merely exists.
 
-**Progress:** M0 2/14 · **M1 22/22 — complete** · M2 12/28 · M6-WSP-2 pulled forward · M3–M9 not started
+**Progress:** M0 2/14 · **M1 22/22 — complete** · M2 13/28 · M6-WSP-2 pulled forward · M3–M9 not started
 
 Every ticket inherits the definition of done from [`AGENTS.md`](../../AGENTS.md). The acceptance
 criteria below are the _additional_, ticket-specific ones.
@@ -128,7 +128,7 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 | ⬜  | M2-COM-9  | Dependencies: draw, retype, retarget                |  M   | M2-MAP-6  | Visual creation defaults to `REQUIRES`; direction never flips; cycles allowed                                          |
 | 🔵  | M2-COM-10 | Commit Gate: hard + advisory guardrails             |  M   | M2-COM-5  | Hard checks block with specific errors; advisory checks render as a dismissible checklist                              |
 | ⬜  | M2-COM-11 | Capture unplanned work (batched three-command path) |  S   | M2-COM-10 | Single action; never creates directly in `IN_DELIVERY`                                                                 |
-| ⬜  | M2-COM-12 | Carry-over rendering                                |  S   | M2-MAP-4  | Cross-hatch + "Carried from <Q>" label; origin footprint preserved                                                     |
+| ✅  | M2-COM-12 | Carry-over rendering                                |  S   | M2-MAP-4  | Cross-hatch + "Carried from <Q>" label; origin footprint preserved                                                     |
 
 ### Epic: Interaction & accessibility
 

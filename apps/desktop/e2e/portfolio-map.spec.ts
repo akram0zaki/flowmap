@@ -261,3 +261,67 @@ test('held capacity is a labelled band, not invisible headroom', async ({ page }
   const held = page.getByRole('gridcell', { name: /^Payments\. 2027-Q1/ });
   await expect(held).toContainText('Held: Card tokenisation');
 });
+
+test('overflow is drawn as a measured excess, not a red block', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const payments = page.getByRole('gridcell', { name: /^Payments\. 2026-Q3/ });
+
+  // The bracket states the quantity. Without it the spill is a texture.
+  await expect(payments.locator('.fm-overflow__label')).toHaveText('+13');
+
+  // The hatch must cover 13 units and no more. It once covered whole blocks,
+  // which claimed 20 units were over while the bracket said 13.
+  const hatched = await payments
+    .locator('.fm-block rect[fill*="overflow"]')
+    .evaluateAll((rects) =>
+      rects.reduce((sum, rect) => sum + rect.getBoundingClientRect().height, 0),
+    );
+  const bracket = await payments
+    .locator('.fm-overflow__bracket')
+    .evaluate((path) => path.getBoundingClientRect().height);
+
+  expect(Math.abs(hatched - bracket)).toBeLessThan(2);
+});
+
+test('the overview level says where the load is concentrated', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+
+  const payments = page.getByRole('gridcell', { name: /^Payments\. 2026-Q3/ });
+
+  // A percentage alone cannot distinguish load that can move from load that
+  // cannot, which is the whole question at this level.
+  await expect(payments).toContainText('55 fixed');
+  await expect(payments).toContainText('10 carried in');
+  await expect(payments).toContainText('+13 over');
+
+  // Singular, not "1 commitments".
+  await expect(page.getByRole('gridcell', { name: /^Payments\. 2026-Q2/ })).toContainText(
+    '1 commitment ',
+  );
+
+  await expectNoUnresolvedKeys(page);
+});
+
+test('the ideas rail is a queue, ordered by how far each idea is worked up', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+
+  const rail = page.getByRole('region', { name: /ideas/i });
+  await expect(rail.getByText('3 ready to place')).toBeVisible();
+
+  // Ready ones first, then the ones still missing decisions.
+  const ideas = rail.locator('.fm-idea');
+  await expect(ideas.first()).toHaveAttribute('data-ready', 'true');
+  await expect(ideas.last()).not.toHaveAttribute('data-ready', 'true');
+
+  // Colour never carries a state on its own: the gaps are named.
+  await expect(ideas.last()).toContainText(/no (team|target|owner|outcome)/);
+});

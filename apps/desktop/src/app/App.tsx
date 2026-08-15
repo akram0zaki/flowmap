@@ -13,6 +13,7 @@ import {
   focusOn,
   NO_FILTER,
   NO_FOCUS,
+  readinessForIdeas,
   toggleFilterValue,
   type CellModel,
   type FilterState,
@@ -83,6 +84,11 @@ export function App() {
             footprints: state.footprints,
           })
         : null,
+    [state],
+  );
+
+  const readiness = useMemo(
+    () => (state ? readinessForIdeas(state.commitments, state.footprints) : new Map()),
     [state],
   );
 
@@ -189,6 +195,7 @@ export function App() {
       <div className="fm-workspace">
         <IdeasLane
           ideas={board.ideas}
+          readiness={readiness}
           selectedCommitmentId={focusedCommitmentId}
           onSelect={(commitmentId) =>
             setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId))

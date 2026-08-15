@@ -102,6 +102,8 @@ export function CapacityVessel({
     return { reserve, bottom, top: reserveCursor };
   });
 
+  const ceilingUnits = summary.reservedTotal + summary.deliverableCapacity;
+
   const ticks: number[] = [];
   for (let u = 0; u <= axisMax; u += UNIT_TICK_MINOR) ticks.push(u);
 
@@ -144,7 +146,7 @@ export function CapacityVessel({
         // of white — the block heights stay proportional either way.
         width="100%"
         height={height}
-        viewBox={`0 0 ${axisWidth + BODY_WIDTH} ${height}`}
+        viewBox={`0 0 ${axisWidth + BODY_WIDTH + (overCapacity && !compact ? 34 : 4)} ${height}`}
         preserveAspectRatio="xMidYMax meet"
       >
         <defs>
@@ -240,21 +242,18 @@ export function CapacityVessel({
             );
           })}
 
-          {/* The deliverable-capacity rule: the line work must fit under. */}
-          <line
-            x1={0}
-            x2={BODY_WIDTH}
-            y1={y(summary.reservedTotal + summary.deliverableCapacity)}
-            y2={y(summary.reservedTotal + summary.deliverableCapacity)}
-            className="fm-vessel__rule"
-          />
-
           {laidOut.map((block) => {
-            const isOverflow = block.top > summary.reservedTotal + summary.deliverableCapacity;
             const carried = block.footprint.carryOverFromQuarterId !== undefined;
             const blockHeight = Math.max(6, block.footprint.units * unitPx);
             const selected = block.footprint.id === selectedFootprintId;
             const dimmed = dimmedFootprintIds?.has(block.footprint.id) ?? false;
+
+            // Only the part of the block that is genuinely past the rule gets
+            // the overflow texture. Hatching the whole block would claim more
+            // units are over than the bracket measures, and the two would
+            // contradict each other in the same picture.
+            const overUnits = Math.max(0, block.top - Math.max(block.bottom, ceilingUnits));
+            const isOverflow = overUnits > 0;
 
             return (
               // `gridcell` must be inside a `row` — axe flags the shortcut, and
@@ -279,18 +278,21 @@ export function CapacityVessel({
                     }
                   }}
                 >
+                  <title>
+                    {block.commitment.name} · {block.footprint.units}
+                  </title>
                   <rect
                     x={6}
-                    y={y(block.top)}
+                    y={y(block.top) + 0.5}
                     width={BODY_WIDTH - 12}
-                    height={blockHeight}
+                    height={Math.max(2, blockHeight - 1)}
                     rx={2}
                     className="fm-block__fill"
                   />
                   {carried && (
                     <rect
                       x={6}
-                      y={y(block.top)}
+                      y={y(block.top) + 0.5}
                       width={BODY_WIDTH - 12}
                       height={blockHeight}
                       rx={2}
@@ -300,24 +302,32 @@ export function CapacityVessel({
                   {isOverflow && (
                     <rect
                       x={6}
-                      y={y(block.top)}
+                      y={y(block.top) + 0.5}
                       width={BODY_WIDTH - 12}
-                      height={blockHeight}
+                      height={Math.max(2, overUnits * unitPx)}
                       rx={2}
                       fill={`url(#${patternPrefix}-overflow)`}
                     />
                   )}
-                  {blockHeight >= 14 && (
-                    <text x={14} y={y(block.top) + blockHeight / 2 + 4} className="fm-block__label">
+                  {/* Three tiers of degradation. A block too thin for both keeps
+                      the number, because the number is the part that measures. */}
+                  {blockHeight >= 15 && (
+                    <text
+                      x={14}
+                      y={y(block.top) + blockHeight / 2 + 4}
+                      className="fm-block__label"
+                      data-over={isOverflow || undefined}
+                    >
                       {block.commitment.class === 'MANDATORY' ? '🔒 ' : ''}
                       {truncate(block.commitment.name, 30)}
                     </text>
                   )}
-                  {blockHeight >= 14 && (
+                  {blockHeight >= 9 && (
                     <text
                       x={BODY_WIDTH - 18}
-                      y={y(block.top) + blockHeight / 2 + 4}
+                      y={y(block.top) + blockHeight / 2 + (blockHeight >= 15 ? 4 : 3)}
                       className="fm-block__units"
+                      data-thin={blockHeight < 15 || undefined}
                       textAnchor="end"
                     >
                       {block.footprint.units}
@@ -327,6 +337,37 @@ export function CapacityVessel({
               </g>
             );
           })}
+
+          {/* Drawn last, over the stack. It is the one line the work has to fit
+              under, so nothing is allowed to bury it — and it extends past both
+              walls so the spill above reads as breaching a limit rather than as
+              more stacking. */}
+          <line
+            x1={-6}
+            x2={BODY_WIDTH + (overCapacity && !compact ? 8 : 4)}
+            y1={y(ceilingUnits)}
+            y2={y(ceilingUnits)}
+            className="fm-vessel__rule"
+          />
+
+          {/* The excess, measured. A bracket from the rule to the top of the
+              stack turns overflow into a drawn quantity rather than a texture. */}
+          {overCapacity && !compact && (
+            <g className="fm-overflow" aria-hidden="true">
+              <path
+                d={`M ${BODY_WIDTH + 4} ${y(ceilingUnits)}
+                    h 5 V ${y(ceilingUnits + summary.overflow)} h -5`}
+                className="fm-overflow__bracket"
+              />
+              <text
+                x={BODY_WIDTH + 12}
+                y={y(ceilingUnits + summary.overflow / 2) + 4}
+                className="fm-overflow__label"
+              >
+                +{summary.overflow}
+              </text>
+            </g>
+          )}
         </g>
       </svg>
 

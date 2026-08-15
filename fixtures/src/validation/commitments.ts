@@ -470,26 +470,133 @@ const GATED: readonly CommitmentSpec[] = [
   },
 ];
 
-/** 10 Ideas in the demand lane. None occupies a capacity block. */
-const IDEAS: readonly CommitmentSpec[] = [
-  ['REQ-TO-PAY', 'Request to pay', 'Payments', 'STRATEGIC', 'HIGH'],
-  ['FX-PRICING', 'FX pricing transparency', 'Payments', 'DISCRETIONARY', 'MEDIUM'],
-  ['BIOMETRIC-AUTH', 'Biometric authentication', 'Channels', 'STRATEGIC', 'HIGH'],
-  ['SME-DASHBOARD', 'SME cash dashboard', 'Channels', 'DISCRETIONARY', 'MEDIUM'],
-  ['GRAPH-FRAUD', 'Graph-based fraud detection', 'Security', 'STRATEGIC', 'MEDIUM'],
-  ['ZERO-TRUST', 'Zero-trust network segmentation', 'Security', 'OPERATIONAL', 'MEDIUM'],
-  ['EVENT-BACKBONE', 'Event backbone consolidation', 'Platform', 'STRATEGIC', 'HIGH'],
-  ['COST-OBS', 'Cost observability', 'Platform', 'DISCRETIONARY', 'LOW'],
-  ['SELF-SERVE-RPT', 'Self-serve reporting', 'Data', 'DISCRETIONARY', 'MEDIUM'],
-  ['DQ-SCORECARD', 'Data quality scorecard', 'Data', 'OPERATIONAL', 'LOW'],
-].map(([key, name, primaryTeam, cls, importance]) => ({
-  key: key as string,
-  name: name as string,
+/**
+ * 10 Ideas in the demand lane. None occupies a capacity block — that invariant
+ * is asserted, and it is why an Idea has no size to show.
+ *
+ * They are deliberately at different stages of being worked up. A demand lane
+ * where every row is equally unformed cannot be prioritised, and a rail that
+ * renders ten identical rows is a list, not a reading. Three are shaped enough
+ * to take to a gate, three are missing only soft detail, and four are still
+ * just names.
+ */
+const IDEAS: readonly CommitmentSpec[] = (
+  [
+    // Worked up: owner, target, and a stated outcome.
+    [
+      'REQ-TO-PAY',
+      'Request to pay',
+      'Payments',
+      'STRATEGIC',
+      'HIGH',
+      'full',
+      Q_PLUS2,
+      'Merchants can request payment in-app, cutting collection time.',
+    ],
+    [
+      'EVENT-BACKBONE',
+      'Event backbone consolidation',
+      'Platform',
+      'STRATEGIC',
+      'HIGH',
+      'full',
+      Q_PLUS2,
+      'One event bus instead of three, removing a class of reconciliation defects.',
+    ],
+    [
+      'GRAPH-FRAUD',
+      'Graph-based fraud detection',
+      'Security',
+      'STRATEGIC',
+      'MEDIUM',
+      'full',
+      Q_PLUS3,
+      'Catch mule-account rings that per-transaction scoring misses.',
+    ],
+    // Partly shaped: someone owns it and it has a quarter in mind.
+    [
+      'BIOMETRIC-AUTH',
+      'Biometric authentication',
+      'Channels',
+      'STRATEGIC',
+      'HIGH',
+      'owned',
+      Q_PLUS3,
+      undefined,
+    ],
+    [
+      'SELF-SERVE-RPT',
+      'Self-serve reporting',
+      'Data',
+      'DISCRETIONARY',
+      'MEDIUM',
+      'owned',
+      Q_PLUS3,
+      undefined,
+    ],
+    [
+      'ZERO-TRUST',
+      'Zero-trust network segmentation',
+      'Security',
+      'OPERATIONAL',
+      'MEDIUM',
+      'owned',
+      undefined,
+      undefined,
+    ],
+    // Raw: a name and a team, nothing else.
+    [
+      'FX-PRICING',
+      'FX pricing transparency',
+      'Payments',
+      'DISCRETIONARY',
+      'MEDIUM',
+      'raw',
+      undefined,
+      undefined,
+    ],
+    [
+      'SME-DASHBOARD',
+      'SME cash dashboard',
+      'Channels',
+      'DISCRETIONARY',
+      'MEDIUM',
+      'raw',
+      undefined,
+      undefined,
+    ],
+    [
+      'COST-OBS',
+      'Cost observability',
+      'Platform',
+      'DISCRETIONARY',
+      'LOW',
+      'raw',
+      undefined,
+      undefined,
+    ],
+    [
+      'DQ-SCORECARD',
+      'Data quality scorecard',
+      'Data',
+      'OPERATIONAL',
+      'LOW',
+      'raw',
+      undefined,
+      undefined,
+    ],
+  ] as const
+).map(([key, name, primaryTeam, cls, importance, stage, targetQuarter, outcome]) => ({
+  key,
+  name,
   lifecycle: 'IDEA' as const,
   class: cls as CommitmentClass,
   importance: importance as Importance,
   primaryTeam: primaryTeam as TeamName,
   footprints: [],
+  ...(stage === 'raw' ? {} : { owner: team(primaryTeam as TeamName) }),
+  ...(targetQuarter ? { targetQuarter } : {}),
+  ...(outcome ? { outcome } : {}),
 }));
 
 const ALL_SPECS: readonly CommitmentSpec[] = [...GATED, ...IDEAS];

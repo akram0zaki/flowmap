@@ -522,3 +522,60 @@ describe('filters', () => {
     expect(filterChips(filter).map((c) => c.key)).toEqual(['quarter:2026-Q3', 'team:t-a', 'text']);
   });
 });
+
+// ── Concentration signals ──────────────────────────────────────────────────
+
+describe('cell signals', () => {
+  const board = buildBoard(
+    input({
+      // A cell only has blocks if its container exists, so Q4 needs one too.
+      teamQuarters: new Map([
+        ['tq1', container('t-a', '2026-Q3')],
+        ['tq2', container('t-b', '2026-Q3')],
+        ['tq3', container('t-a', '2026-Q4')],
+      ]),
+      commitments: new Map([
+        ['must', commitment('must', { class: 'MANDATORY' })],
+        ['movable', commitment('movable')],
+        ['held', commitment('held', { lifecycle: 'ON_HOLD' })],
+      ]),
+      footprints: new Map([
+        ['f1', footprint('f1', 'must', 't-a', '2026-Q3', 30)],
+        ['f2', footprint('f2', 'movable', 't-a', '2026-Q3', 10)],
+        ['f3', footprint('f3', 'held', 't-a', '2026-Q3', 25, {})],
+        [
+          'f4',
+          footprint('f4', 'movable', 't-a', '2026-Q4', 20, { carryOverFromQuarterId: '2026-Q3' }),
+        ],
+      ]),
+    }),
+  );
+
+  it('separates work that cannot move from work that can', () => {
+    const signals = findCell(board, 't-a', '2026-Q3')!.signals;
+    expect(signals.mandatoryUnits).toBe(30);
+    expect(signals.mandatoryShare).toBeCloseTo(30 / 40);
+  });
+
+  it('counts held work as present but not consuming', () => {
+    const signals = findCell(board, 't-a', '2026-Q3')!.signals;
+    expect(signals.uncountedUnits).toBe(25);
+    expect(signals.commitmentCount).toBe(3);
+  });
+
+  it('reports carried units on the receiving quarter', () => {
+    expect(findCell(board, 't-a', '2026-Q4')!.signals.carriedUnits).toBe(20);
+    expect(findCell(board, 't-a', '2026-Q3')!.signals.carriedUnits).toBe(0);
+  });
+
+  it('reports no mandatory share when nothing is counted', () => {
+    const empty = buildBoard(input({ footprints: new Map() }));
+    expect(findCell(empty, 't-a', '2026-Q3')!.signals.mandatoryShare).toBe(0);
+  });
+
+  it('rolls signals up to the row', () => {
+    const row = board.rows.find((r) => r.teamId === 't-a')!;
+    expect(row.mandatoryUnits).toBe(30);
+    expect(row.carriedUnits).toBe(20);
+  });
+});

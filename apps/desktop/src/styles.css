@@ -340,6 +340,29 @@ label {
   color: var(--ink-subtle);
 }
 
+/* Four ticks: one per decision an Idea needs before it is worth placing. Set
+   as a rule that fills in rather than a bar, so a half-worked Idea is legible
+   at a glance without reading the line beneath it. */
+.fm-idea__meter {
+  display: flex;
+  gap: 2px;
+  margin-top: var(--space-2);
+}
+
+.fm-idea__meter > span {
+  flex: 1;
+  height: 2px;
+  background: var(--rule);
+}
+
+.fm-idea__meter > span[data-on] {
+  background: var(--ink-subtle);
+}
+
+.fm-idea[data-ready] .fm-idea__meter > span[data-on] {
+  background: var(--positive-line);
+}
+
 /* ── The grid ──────────────────────────────────────────────────────────── */
 
 .fm-map {
@@ -563,15 +586,30 @@ label {
   outline-offset: 1px;
 }
 
+/* A halo, not a plate. Blocks under the overflow hatch would otherwise put
+   11px text on top of 1px stripes, which is unreadable at any contrast ratio.
+   `paint-order` draws the stroke first so the fill stays crisp. */
 .fm-block__label {
   fill: var(--ink);
   font-size: 11px;
+  paint-order: stroke fill;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.fm-block__label[data-over] {
+  font-weight: var(--weight-medium);
 }
 
 .fm-block__units {
   fill: var(--ink-muted);
   font-family: var(--font-mono);
   font-size: 11px;
+  paint-order: stroke fill;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 /* ── The cell caption: the number leads ────────────────────────────────── */
@@ -650,40 +688,52 @@ label {
 
 .fm-aggregate__track {
   position: relative;
-  height: var(--space-4);
+  display: flex;
+  height: var(--space-5);
   background: var(--graphite-1);
+  border-bottom: 1px solid var(--rule);
 }
 
 .fm-aggregate__fill {
   height: 100%;
+}
+
+/* Work that cannot move reads heavier than work that can. */
+.fm-aggregate__fill--fixed {
+  background: var(--graphite-4);
+}
+
+.fm-aggregate__fill--movable {
   background: var(--graphite-3);
 }
 
-.fm-aggregate[data-over] .fm-aggregate__fill {
-  background: var(--critical-line);
-}
-
-/* The capacity line the bar is measured against. */
+/* The capacity line the bar is measured against. It sits where 100% falls on
+   the track's own scale, which is past the right edge only when nothing
+   overflows — otherwise it moves left and the excess is drawn beyond it. */
 .fm-aggregate__track::after {
   content: '';
   position: absolute;
-  inset-block: -2px;
-  right: 0;
+  inset-block: -3px;
+  left: calc(var(--fm-rule-at, 1) * 100%);
   width: 1px;
-  background: var(--border-strong);
+  margin-left: -1px;
+  background: var(--ink-muted);
 }
 
 .fm-aggregate__figure {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .fm-aggregate__label {
   font-family: var(--font-mono);
-  font-size: var(--figure-sm);
+  font-size: var(--figure-md);
+  line-height: 1;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 .fm-aggregate[data-over] .fm-aggregate__label {
@@ -693,7 +743,28 @@ label {
 
 .fm-aggregate__count {
   font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
   color: var(--ink-subtle);
+  overflow-wrap: anywhere;
+}
+
+.fm-aggregate__over {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--critical-fg);
+  white-space: nowrap;
+}
+
+/* Only the span past the rule is marked. The load under it is load, not a
+   fault — the same reading as the vessel, where the hatch covers the excess
+   and not the whole block that happens to carry it. */
+.fm-aggregate__excess {
+  position: absolute;
+  inset-block: 0;
+  left: calc(var(--fm-rule-at, 1) * 100%);
+  right: 0;
+  background: repeating-linear-gradient(90deg, var(--critical-line) 0 1px, transparent 1px 4px);
 }
 
 /* ── Lens strip ────────────────────────────────────────────────────────── */
@@ -847,4 +918,45 @@ label {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+/* ── Overflow measure ──────────────────────────────────────────────────── */
+
+.fm-overflow__bracket {
+  fill: none;
+  stroke: var(--critical-line);
+  stroke-width: 1.5;
+}
+
+.fm-overflow__label {
+  fill: var(--critical-fg);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+}
+
+/* Units on a thin block sit alone, so they carry a little more weight. */
+.fm-block__units[data-thin] {
+  font-size: 9px;
+  fill: var(--ink-subtle);
+}
+
+.fm-ideas__ready {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--positive-fg);
+}
+
+.fm-idea__name {
+  display: block;
+}
+
+/* An Idea that could pass the gate is marked on its rule, not by colouring the
+   whole card — the lane stays quiet until something is actionable. */
+.fm-idea[data-ready] {
+  border-left-color: var(--positive-line);
+}
+
+.fm-idea[data-ready] .fm-idea__meta {
+  color: var(--positive-fg);
 }

@@ -46,6 +46,12 @@ export type TranslateParams = Readonly<Record<string, string | number>>;
  * A missing key returns the key itself rather than throwing: a missing string
  * must never take down a planning board mid-meeting. CI fails on missing keys,
  * so this path should be unreachable in a released build.
+ *
+ * Plurals: a key may carry a `.one` sibling, used when `count` or `units` is
+ * exactly 1. That is enough for the locales shipped so far and keeps the choice
+ * in the catalogue rather than in a component — "1 commitments" is a defect a
+ * reader notices immediately. A locale with more plural categories than two
+ * needs a real plural-rule selector here, not more branches at call sites.
  */
 export function translate(locale: Locale, key: string, params: TranslateParams = {}): string {
   const separator = key.indexOf('.');
@@ -53,7 +59,9 @@ export function translate(locale: Locale, key: string, params: TranslateParams =
 
   const namespace = key.slice(0, separator) as Namespace;
   const entryKey = key.slice(separator + 1);
-  const template = catalogues[locale]?.[namespace]?.[entryKey];
+  const catalogue = catalogues[locale]?.[namespace];
+  const singular = params['count'] === 1 || params['units'] === 1;
+  const template = (singular ? catalogue?.[`${entryKey}.one`] : undefined) ?? catalogue?.[entryKey];
   if (template === undefined) return key;
 
   return template.replace(/\{(\w+)\}/g, (match, name: string) =>

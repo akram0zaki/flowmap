@@ -15,7 +15,7 @@
  * and text, never colour alone.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   allBlocks,
   isBlockFocused,
@@ -258,6 +258,12 @@ export function PortfolioMap({
 /**
  * Level 1: one bar per cell instead of every block. Aggregate before cluttering
  * — at 20 teams × 6 quarters, drawing every block is noise, not information.
+ *
+ * Aggregating is not the same as flattening. A cell at 90% made of work that
+ * cannot move is a different problem from one at 90% of work that can, and a
+ * single grey bar says they are the same. So the bar is split at the point where
+ * choice ends: mandatory load in the heavy tone, discretionary load in the light
+ * one, and anything past the capacity rule drawn beyond it rather than clipped.
  */
 function AggregateBar({ cell }: { cell: CellModel }) {
   const summary = cell.summary;
@@ -270,19 +276,56 @@ function AggregateBar({ cell }: { cell: CellModel }) {
 
   const percent = utilisationPercent(summary);
   const over = summary.overflow > 0;
+  const { signals } = cell;
+
+  // The bar's own scale. At 121% the rule sits at 83% of the track, so the
+  // excess is drawn past the limit instead of pinned to it.
+  const axisMax = Math.max(100, percent ?? 0);
+  const share = (units: number) =>
+    summary.deliverableCapacity > 0
+      ? (units / summary.deliverableCapacity) * (100 / axisMax) * 100
+      : 0;
+
+  const fixed = Math.min(signals.mandatoryUnits, summary.committedLoad);
+  const movable = Math.max(0, summary.committedLoad - fixed);
+
+  // What the bar cannot say on its own: which kind of load dominates, and how
+  // much of it arrived rather than was chosen this quarter.
+  const notes = [
+    t('map.blockCount', { count: signals.commitmentCount }),
+    signals.mandatoryUnits > 0 ? t('signal.fixed', { units: signals.mandatoryUnits }) : null,
+    signals.carriedUnits > 0 ? t('signal.carried', { units: signals.carriedUnits }) : null,
+  ].filter((note): note is string => note !== null);
 
   return (
     <div className="fm-aggregate" data-over={over || undefined}>
-      <div className="fm-aggregate__track" aria-hidden="true">
-        <div className="fm-aggregate__fill" style={{ width: `${Math.min(100, percent ?? 0)}%` }} />
+      <div className="fm-aggregate__figure">
+        <span className="fm-aggregate__label">{percent === null ? '—' : `${percent}%`}</span>
+        {/* The glyph lives in the string — `capacity.overBy` already carries it. */}
+        {over && (
+          <span className="fm-aggregate__over">
+            {t('capacity.overBy', { units: summary.overflow })}
+          </span>
+        )}
       </div>
-      <span className="fm-aggregate__label" data-figure="">
-        {percent === null ? '—' : `${percent}%`}
-      </span>
-      <span className="fm-aggregate__count">
-        {t('map.blockCount', { count: cell.blocks.length })}
-      </span>
-      {over && <span className="fm-aggregate__over">▲</span>}
+
+      <div
+        className="fm-aggregate__track"
+        aria-hidden="true"
+        style={{ '--fm-rule-at': `${100 / axisMax}` } as CSSProperties}
+      >
+        <div
+          className="fm-aggregate__fill fm-aggregate__fill--fixed"
+          style={{ width: `${share(fixed)}%` }}
+        />
+        <div
+          className="fm-aggregate__fill fm-aggregate__fill--movable"
+          style={{ width: `${share(movable)}%` }}
+        />
+        {over && <div className="fm-aggregate__excess" />}
+      </div>
+
+      <span className="fm-aggregate__count">{notes.join(' · ')}</span>
     </div>
   );
 }
