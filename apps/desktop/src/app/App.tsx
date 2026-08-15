@@ -1,17 +1,31 @@
 /**
- * The M1 walking skeleton, on screen.
+ * The Portfolio Map, on screen.
  *
- * One board with real capacity vessels, a list companion whose totals must match
- * them exactly, and the create → place → persist → reload loop. Deliberately
- * small: M2 replaces this board with the real Portfolio Map.
+ * Quarters as columns, teams as rows, the Ideas lane pinned left, three zoom
+ * levels, focus mode, and filter chips — with a list companion whose totals must
+ * equal the projection exactly.
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import { isCounted, summariseCapacity, type CapacitySummary } from '@flowmap/domain';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isCounted } from '@flowmap/domain';
+import {
+  buildBoard,
+  focusOn,
+  NO_FILTER,
+  NO_FOCUS,
+  toggleFilterValue,
+  type CellModel,
+  type FilterState,
+  type ZoomLevel,
+} from '@flowmap/visual-model';
 
 import { useWorkspace } from '../state/workspace-store.js';
-import { CapacityVessel, type VesselBlock } from '../components/CapacityVessel.jsx';
+import { PortfolioMap } from '../components/PortfolioMap.jsx';
+import { LensStrip } from '../components/LensStrip.jsx';
+import { IdeasLane } from '../components/IdeasLane.jsx';
 import { ListCompanion } from '../components/ListCompanion.jsx';
+import { CaptureBar } from '../components/CaptureBar.jsx';
+import type { VesselBlock } from '../components/CapacityVessel.jsx';
 import { t } from '../i18n/t.js';
 
 export function App() {
@@ -19,13 +33,22 @@ export function App() {
   const status = useWorkspace((s) => s.status);
   const profileName = useWorkspace((s) => s.profileName);
   const pendingCount = useWorkspace((s) => s.pendingCount);
-  const selected = useWorkspace((s) => s.selectedFootprintId);
-  const { captureIdea, addTeam, placeFootprint, undo, redo, select, clearStatus, clearLocalData } =
-    useWorkspace.getState();
+  const selectedFootprintId = useWorkspace((s) => s.selectedFootprintId);
+  const { undo, redo, select, clearStatus, clearLocalData } = useWorkspace.getState();
 
-  const [ideaName, setIdeaName] = useState('');
-  const [teamName, setTeamName] = useState('');
+  const [level, setLevelState] = useState<ZoomLevel>(2);
+  const [filter, setFilter] = useState<FilterState>(NO_FILTER);
+  const [focusedCommitmentId, setFocusedCommitmentId] = useState<string | null>(null);
   const [showList, setShowList] = useState(true);
+  const [announcement, setAnnouncement] = useState('');
+
+  // Announcements are debounced through a ref so rapid arrow-key movement does
+  // not queue a dozen utterances.
+  const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const announce = useCallback((message: string) => {
+    if (announceTimer.current) clearTimeout(announceTimer.current);
+    announceTimer.current = setTimeout(() => setAnnouncement(message), 120);
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -38,14 +61,69 @@ export function App() {
         e.preventDefault();
         setShowList((v) => !v);
       }
+      if (e.key === 'Escape') {
+        setFocusedCommitmentId(null);
+        select(null);
+      }
+      if (!mod && ['1', '2', '3'].includes(e.key) && e.target === document.body) {
+        setLevelState(Number(e.key) as ZoomLevel);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo]);
+  }, [undo, redo, select]);
 
-  const cells = useMemo(() => buildCells(state), [state]);
+  const board = useMemo(
+    () =>
+      state
+        ? buildBoard({
+            workspace: state.workspace,
+            teams: state.teams,
+            teamQuarters: state.teamQuarters,
+            commitments: state.commitments,
+            footprints: state.footprints,
+          })
+        : null,
+    [state],
+  );
 
-  if (!state) {
+  const focus = useMemo(
+    () => (board ? focusOn(board, focusedCommitmentId) : NO_FOCUS),
+    [board, focusedCommitmentId],
+  );
+
+  const focusedName = useMemo(() => {
+    if (!board || focusedCommitmentId === null) return null;
+    return (
+      board.rows
+        .flatMap((r) => r.cells)
+        .flatMap((c) => c.blocks)
+        .find((b) => b.commitmentId === focusedCommitmentId)?.name ??
+      board.ideas.find((i) => i.commitmentId === focusedCommitmentId)?.name ??
+      null
+    );
+  }, [board, focusedCommitmentId]);
+
+  const vesselBlocksFor = useCallback(
+    (cell: CellModel): VesselBlock[] => {
+      if (!state) return [];
+      return cell.blocks.flatMap((block) => {
+        const footprint = state.footprints.get(block.footprintId);
+        const commitment = state.commitments.get(block.commitmentId);
+        if (!footprint || !commitment) return [];
+        return [
+          {
+            footprint,
+            commitment,
+            counted: isCounted(footprint, commitment, state.workspace.currentQuarterId),
+          },
+        ];
+      });
+    },
+    [state],
+  );
+
+  if (!state || !board) {
     return (
       <main className="fm-shell">
         <p className="fm-empty">Loading workspace…</p>
@@ -54,7 +132,9 @@ export function App() {
   }
 
   const teams = [...state.teams.values()].filter((team) => team.archivedAt === undefined);
-  const ideas = [...state.commitments.values()].filter((c) => c.archivedAt === undefined);
+  const ideas = [...state.commitments.values()].filter(
+    (c) => c.archivedAt === undefined && c.lifecycle === 'IDEA',
+  );
 
   return (
     <div className="fm-shell">
@@ -83,207 +163,83 @@ export function App() {
         </div>
       )}
 
-      <section className="fm-controls" aria-label="Capture">
-        <form
-          className="fm-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!teamName.trim()) return;
-            void addTeam(teamName.trim()).then(() => setTeamName(''));
-          }}
-        >
-          <label htmlFor="team-name">{t('field.team')}</label>
-          <input
-            id="team-name"
-            value={teamName}
-            onChange={(e) => setTeamName(e.target.value)}
-            placeholder="Payments"
-          />
-          <button type="submit">Add team</button>
-        </form>
+      <CaptureBar
+        teams={teams.map((team) => ({ id: team.id, name: team.name }))}
+        ideas={ideas.map((c) => ({ id: c.id, name: c.name }))}
+        currentQuarter={state.workspace.currentQuarterId}
+        showList={showList}
+        onToggleList={() => setShowList((v) => !v)}
+        onUndo={() => void undo()}
+        onRedo={() => void redo()}
+        onClearLocalData={() => void clearLocalData()}
+      />
 
-        <form
-          className="fm-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!ideaName.trim()) return;
-            void captureIdea(ideaName.trim()).then(() => setIdeaName(''));
-          }}
-        >
-          <label htmlFor="idea-name">{t('field.ideaName')}</label>
-          <input
-            id="idea-name"
-            value={ideaName}
-            onChange={(e) => setIdeaName(e.target.value)}
-            placeholder="SEPA instant payments"
-          />
-          <button type="submit">{t('action.captureIdea')}</button>
-        </form>
+      <LensStrip
+        level={level}
+        filter={filter}
+        focusedName={focusedName}
+        onLevel={setLevelState}
+        onRemoveChip={(key) => setFilter((f) => removeChip(f, key))}
+        onClearFilters={() => setFilter(NO_FILTER)}
+        onToggleHide={() => setFilter((f) => ({ ...f, hideFiltered: !f.hideFiltered }))}
+        onClearFocus={() => setFocusedCommitmentId(null)}
+      />
 
-        <div className="fm-form">
-          <button type="button" onClick={() => void undo()}>
-            {t('action.undo')}
-          </button>
-          <button type="button" onClick={() => void redo()}>
-            {t('action.redo')}
-          </button>
-          <button type="button" onClick={() => setShowList((v) => !v)} aria-pressed={showList}>
-            {t('nav.listCompanion')}
-          </button>
-          <button type="button" className="fm-danger" onClick={() => void clearLocalData()}>
-            {t('action.clearLocalData')}
-          </button>
-        </div>
-      </section>
-
-      {ideas.length > 0 && teams.length > 0 && (
-        <PlaceForm
-          teams={teams.map((team) => ({ id: team.id, name: team.name }))}
-          ideas={ideas.map((c) => ({ id: c.id, name: c.name }))}
-          currentQuarter={state.workspace.currentQuarterId}
-          onPlace={placeFootprint}
+      <div className="fm-workspace">
+        <IdeasLane
+          ideas={board.ideas}
+          selectedCommitmentId={focusedCommitmentId}
+          onSelect={(commitmentId) =>
+            setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId))
+          }
         />
-      )}
 
-      <main className="fm-board" aria-label={t('nav.portfolio')}>
-        {cells.length === 0 ? (
-          <div className="fm-empty">
-            <h2>{t('empty.board.title')}</h2>
-            <p>{t('empty.board.body')}</p>
-          </div>
-        ) : (
-          cells.map((cell) => (
-            <CapacityVessel
-              key={cell.teamQuarter.id}
-              teamName={cell.teamName}
-              teamQuarter={cell.teamQuarter}
-              summary={cell.summary}
-              blocks={cell.blocks}
-              {...(selected !== null ? { selectedFootprintId: selected } : {})}
-              onSelect={select}
-            />
-          ))
-        )}
-      </main>
+        <PortfolioMap
+          board={board}
+          level={level}
+          focus={focus}
+          filter={filter}
+          selectedFootprintId={selectedFootprintId}
+          vesselBlocksFor={vesselBlocksFor}
+          onSelectBlock={(footprintId, commitmentId) => {
+            select(footprintId);
+            setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId));
+          }}
+          onSelectCell={(teamId, quarterId) =>
+            setFilter((f) =>
+              toggleFilterValue(toggleFilterValue(f, 'teams', teamId), 'quarters', quarterId),
+            )
+          }
+          onAnnounce={announce}
+        />
+      </div>
 
-      {showList && <ListCompanion cells={cells} />}
+      {/* Capacity consequences reach a non-sighted user the moment they happen. */}
+      <div className="fm-visually-hidden" role="status" aria-live="polite">
+        {announcement}
+      </div>
+
+      {showList && <ListCompanion board={board} filter={filter} />}
     </div>
   );
 }
 
-export type Cell = {
-  teamName: string;
-  teamQuarter: NonNullable<ReturnType<typeof buildCells>>[number]['teamQuarter'];
-  summary: CapacitySummary;
-  blocks: VesselBlock[];
-};
+function removeChip(filter: FilterState, key: string): FilterState {
+  const [kind, ...rest] = key.split(':');
+  const value = rest.join(':');
 
-function buildCells(state: ReturnType<typeof useWorkspace.getState>['state']) {
-  if (!state) return [];
-
-  const footprints = [...state.footprints.values()].filter((f) => f.archivedAt === undefined);
-
-  return [...state.teamQuarters.values()]
-    .filter((tq) => tq.archivedAt === undefined)
-    .map((teamQuarter) => {
-      const team = state.teams.get(teamQuarter.teamId);
-      const blocks: VesselBlock[] = footprints
-        .filter((f) => f.teamId === teamQuarter.teamId && f.quarterId === teamQuarter.quarterId)
-        .map((footprint) => {
-          const commitment = state.commitments.get(footprint.commitmentId)!;
-          return {
-            footprint,
-            commitment,
-            counted: isCounted(footprint, commitment, state.workspace.currentQuarterId),
-          };
-        })
-        // Mandatory first, then largest — the same order the map uses.
-        .sort((a, b) => {
-          const mandatory =
-            Number(b.commitment.class === 'MANDATORY') - Number(a.commitment.class === 'MANDATORY');
-          return mandatory !== 0 ? mandatory : b.footprint.units - a.footprint.units;
-        });
-
-      return {
-        teamName: team?.name ?? '—',
-        teamQuarter,
-        summary: summariseCapacity({
-          teamQuarter,
-          footprints,
-          commitmentsById: state.commitments,
-          currentQuarterId: state.workspace.currentQuarterId,
-        }),
-        blocks,
-      };
-    })
-    .sort((a, b) =>
-      a.teamName === b.teamName
-        ? a.teamQuarter.quarterId.localeCompare(b.teamQuarter.quarterId)
-        : a.teamName.localeCompare(b.teamName),
-    );
-}
-
-function PlaceForm({
-  teams,
-  ideas,
-  currentQuarter,
-  onPlace,
-}: {
-  teams: Array<{ id: string; name: string }>;
-  ideas: Array<{ id: string; name: string }>;
-  currentQuarter: string;
-  onPlace: ReturnType<typeof useWorkspace.getState>['placeFootprint'];
-}) {
-  const [commitmentId, setCommitmentId] = useState(ideas[0]?.id ?? '');
-  const [teamId, setTeamId] = useState(teams[0]?.id ?? '');
-  const [size, setSize] = useState<'XS' | 'S' | 'M' | 'L'>('M');
-
-  return (
-    <form
-      className="fm-controls fm-form"
-      aria-label={t('action.assignFootprint')}
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!commitmentId || !teamId) return;
-        void onPlace({ commitmentId, teamId, quarterId: currentQuarter, size });
-      }}
-    >
-      <label htmlFor="place-commitment">{t('list.commitment')}</label>
-      <select
-        id="place-commitment"
-        value={commitmentId}
-        onChange={(e) => setCommitmentId(e.target.value)}
-      >
-        {ideas.map((idea) => (
-          <option key={idea.id} value={idea.id}>
-            {idea.name}
-          </option>
-        ))}
-      </select>
-
-      <label htmlFor="place-team">{t('field.team')}</label>
-      <select id="place-team" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
-        {teams.map((team) => (
-          <option key={team.id} value={team.id}>
-            {team.name}
-          </option>
-        ))}
-      </select>
-
-      <label htmlFor="place-size">{t('field.size')}</label>
-      <select
-        id="place-size"
-        value={size}
-        onChange={(e) => setSize(e.target.value as 'XS' | 'S' | 'M' | 'L')}
-      >
-        {(['XS', 'S', 'M', 'L'] as const).map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-
-      <button type="submit">{t('action.place')}</button>
-    </form>
-  );
+  switch (kind) {
+    case 'quarter':
+      return toggleFilterValue(filter, 'quarters', value as FilterState['quarters'][number]);
+    case 'team':
+      return toggleFilterValue(filter, 'teams', value);
+    case 'lifecycle':
+      return toggleFilterValue(filter, 'lifecycles', value as FilterState['lifecycles'][number]);
+    case 'class':
+      return toggleFilterValue(filter, 'classes', value as FilterState['classes'][number]);
+    case 'text':
+      return { ...filter, text: '' };
+    default:
+      return filter;
+  }
 }

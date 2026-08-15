@@ -115,6 +115,9 @@ importers:
       '@flowmap/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@flowmap/visual-model':
+        specifier: workspace:*
+        version: link:../../packages/visual-model
 
   fixtures:
     dependencies:

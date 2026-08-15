@@ -10,10 +10,23 @@
   },
   "include": ["src/**/*"],
   "references": [
-    { "path": "../../packages/domain" },
-    { "path": "../../packages/i18n" },
-    { "path": "../../packages/storage" },
-    { "path": "../../packages/storage-local" },
-    { "path": "../../packages/ui" }
+    {
+      "path": "../../packages/domain"
+    },
+    {
+      "path": "../../packages/i18n"
+    },
+    {
+      "path": "../../packages/storage"
+    },
+    {
+      "path": "../../packages/storage-local"
+    },
+    {
+      "path": "../../packages/ui"
+    },
+    {
+      "path": "../../packages/visual-model"
+    }
   ]
 }

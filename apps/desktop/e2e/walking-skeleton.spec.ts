@@ -53,7 +53,9 @@ async function expectNoAxeViolations(page: Page, context: string) {
 test('empty state invites the first action, and is accessible', async ({ page }) => {
   await freshApp(page);
 
-  await expect(page.getByText('Nothing placed yet')).toBeVisible();
+  // The map exists from the start; it is simply empty of teams.
+  await expect(page.getByRole('grid')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /ideas and demand/i })).toBeVisible();
   await expectNoAxeViolations(page, 'empty state');
 });
 
@@ -65,9 +67,7 @@ test('create → place → persist → reload → render', async ({ page }) => {
   await place(page, 'L');
 
   // The vessel renders with the resolved units, and says what it means.
-  const vessel = page.getByRole('grid');
-  await expect(vessel).toBeVisible();
-  await expect(vessel).toHaveAttribute('aria-label', /Payments/);
+  await expect(page.getByRole('rowheader', { name: /Payments/ })).toBeVisible();
 
   const block = page.getByRole('gridcell', { name: /SEPA instant payments/ });
   await expect(block).toBeVisible();
@@ -93,7 +93,7 @@ test('list companion totals match the board exactly', async ({ page }) => {
   await captureIdea(page, 'One');
   await place(page, 'M');
   await captureIdea(page, 'Two');
-  await page.getByLabel('Commitment').selectOption({ label: 'Two' });
+  await page.getByLabel('Commitment', { exact: true }).selectOption({ label: 'Two' });
   await place(page, 'S');
 
   const rows = page.locator('.fm-list tbody tr');
@@ -127,13 +127,13 @@ test('clear local data empties the workspace and starts a fresh one', async ({ p
   await addTeam(page, 'Payments');
   await captureIdea(page, 'Temporary');
   await place(page, 'M');
-  await expect(page.getByRole('grid')).toBeVisible();
+  await expect(page.getByRole('gridcell', { name: /Temporary/ })).toBeVisible();
 
   await page.getByRole('button', { name: 'Clear local data' }).click();
 
-  await expect(page.getByText('Nothing placed yet')).toBeVisible();
+  await expect(page.getByRole('rowheader', { name: /Payments/ })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByText('Nothing placed yet')).toBeVisible();
+  await expect(page.getByRole('rowheader', { name: /Payments/ })).toHaveCount(0);
 });
 
 test('the whole flow works keyboard-only', async ({ page }) => {

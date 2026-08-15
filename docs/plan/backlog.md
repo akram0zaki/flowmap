@@ -11,7 +11,7 @@ capability**, not by technical layer — each ticket should leave the product me
 > This file is kept current as work lands. A ticket is ✅ only when its acceptance criteria pass and
 > the [`AGENTS.md`](../../AGENTS.md) definition of done is met — not when the code merely exists.
 
-**Progress:** M0 2/14 · **M1 22/22 — complete** · M2–M9 not started
+**Progress:** M0 2/14 · **M1 22/22 — complete** · M2 12/28 · M3–M9 not started
 
 Every ticket inherits the definition of done from [`AGENTS.md`](../../AGENTS.md). The acceptance
 criteria below are the _additional_, ticket-specific ones.
@@ -103,21 +103,21 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 
 | St  | ID       | Title                                                  | Size | Dep      | Acceptance                                                                                              |
 | --- | -------- | ------------------------------------------------------ | :--: | -------- | ------------------------------------------------------------------------------------------------------- |
-| ⬜  | M2-MAP-1 | Canvas primitives: viewport, pan, zoom, hit-testing    |  M   | M1-VS-3  | 60 fps pan/zoom at 500 commitments; hit areas ≥ 24 px even for XS blocks                                |
-| ⬜  | M2-MAP-2 | Quarter columns + team rows + current-quarter centring |  M   | M2-MAP-1 | Alphabetical default order; Planner reorder persists; pressure never reorders rows                      |
-| ⬜  | M2-MAP-3 | Semantic zoom L1/L2/L3 + explicit level control        |  L   | M2-MAP-2 | Level thresholds per spec 06 §3.3; level changes announced; ≤ 250 ms                                    |
-| ⬜  | M2-MAP-4 | Reserve plinth with per-type segments and labels       |  S   | M2-MAP-2 | Each reserve type uses its own pattern token; tooltip lists linked Ideas for refinement                 |
-| ⬜  | M2-MAP-5 | Overflow spill + units/percent/glyph label             |  S   | M2-MAP-4 | Never colour alone; matches the projection exactly                                                      |
-| ⬜  | M2-MAP-6 | Focus mode                                             |  M   | M2-MAP-3 | Unrelated content to 25 %; related footprints, products, dependencies, milestones emphasised; announced |
-| ⬜  | M2-MAP-7 | Ideas/Demand lane + refinement links                   |  M   | M2-MAP-2 | Ideas never occupy capacity blocks; links render as connector markers; links change no total            |
-| ⬜  | M2-MAP-8 | Lens switcher + filter chips (fade, not remove)        |  M   | M2-MAP-3 | Filtering preserves spatial context; "hide filtered" toggle available                                   |
+| 🔵  | M2-MAP-1 | Canvas primitives: viewport, pan, zoom, hit-testing    |  M   | M1-VS-3  | 60 fps pan/zoom at 500 commitments; hit areas ≥ 24 px even for XS blocks                                |
+| ✅  | M2-MAP-2 | Quarter columns + team rows + current-quarter centring |  M   | M2-MAP-1 | Alphabetical default order; Planner reorder persists; pressure never reorders rows                      |
+| ✅  | M2-MAP-3 | Semantic zoom L1/L2/L3 + explicit level control        |  L   | M2-MAP-2 | Level thresholds per spec 06 §3.3; level changes announced; ≤ 250 ms                                    |
+| ✅  | M2-MAP-4 | Reserve plinth with per-type segments and labels       |  S   | M2-MAP-2 | Each reserve type uses its own pattern token; tooltip lists linked Ideas for refinement                 |
+| ✅  | M2-MAP-5 | Overflow spill + units/percent/glyph label             |  S   | M2-MAP-4 | Never colour alone; matches the projection exactly                                                      |
+| ✅  | M2-MAP-6 | Focus mode                                             |  M   | M2-MAP-3 | Unrelated content to 25 %; related footprints, products, dependencies, milestones emphasised; announced |
+| ✅  | M2-MAP-7 | Ideas/Demand lane + refinement links                   |  M   | M2-MAP-2 | Ideas never occupy capacity blocks; links render as connector markers; links change no total            |
+| ✅  | M2-MAP-8 | Lens switcher + filter chips (fade, not remove)        |  M   | M2-MAP-3 | Filtering preserves spatial context; "hide filtered" toggle available                                   |
 | ⬜  | M2-MAP-9 | Scale rendering tests 25/100/500                       |  S   | M2-MAP-3 | Budgets from spec 11 §6.2 met on reference hardware                                                     |
 
 ### Epic: Commitment model in the UI
 
 | St  | ID        | Title                                               | Size | Dep       | Acceptance                                                                                                             |
 | --- | --------- | --------------------------------------------------- | :--: | --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| ⬜  | M2-COM-1  | Quick Capture (inline, title only)                  |  S   | M2-MAP-7  | Idea created in < 5 s, keyboard only, no modal                                                                         |
+| ✅  | M2-COM-1  | Quick Capture (inline, title only)                  |  S   | M2-MAP-7  | Idea created in < 5 s, keyboard only, no modal                                                                         |
 | ⬜  | M2-COM-2  | Progressive detail panel                            |  L   | M2-COM-1  | All sections from spec 06 §8; empty sections show an "Add…" affordance                                                 |
 | ⬜  | M2-COM-3  | Three-part tooltips for every domain concept        |  M   | M2-COM-2  | Definition · what it is not · example, on every capacity/lifecycle/impact/dependency/health/attention/confidence field |
 | ⬜  | M2-COM-4  | Visual quarter strip for target selection           |  S   | M2-COM-2  | No target-quarter dropdown in any primary flow; direct date entry derives the quarter                                  |
@@ -126,7 +126,7 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 | ⬜  | M2-COM-7  | Milestones (≤ 6)                                    |  S   | M2-COM-2  | Cap enforced; milestones render on blocks                                                                              |
 | ⬜  | M2-COM-8  | Typed external links                                |  S   | M2-COM-2  | HTTPS only; opens in the system browser; never embedded                                                                |
 | ⬜  | M2-COM-9  | Dependencies: draw, retype, retarget                |  M   | M2-MAP-6  | Visual creation defaults to `REQUIRES`; direction never flips; cycles allowed                                          |
-| ⬜  | M2-COM-10 | Commit Gate: hard + advisory guardrails             |  M   | M2-COM-5  | Hard checks block with specific errors; advisory checks render as a dismissible checklist                              |
+| 🔵  | M2-COM-10 | Commit Gate: hard + advisory guardrails             |  M   | M2-COM-5  | Hard checks block with specific errors; advisory checks render as a dismissible checklist                              |
 | ⬜  | M2-COM-11 | Capture unplanned work (batched three-command path) |  S   | M2-COM-10 | Single action; never creates directly in `IN_DELIVERY`                                                                 |
 | ⬜  | M2-COM-12 | Carry-over rendering                                |  S   | M2-MAP-4  | Cross-hatch + "Carried from <Q>" label; origin footprint preserved                                                     |
 
@@ -134,13 +134,13 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 
 | St  | ID        | Title                                               | Size | Dep       | Acceptance                                                                          |
 | --- | --------- | --------------------------------------------------- | :--: | --------- | ----------------------------------------------------------------------------------- |
-| ⬜  | M2-A11Y-1 | Canvas grid semantics + roving tabindex             |  M   | M2-MAP-1  | `role="grid"`, `gridcell` per block, labels carry name/units/lifecycle/signal count |
+| ✅  | M2-A11Y-1 | Canvas grid semantics + roving tabindex             |  M   | M2-MAP-1  | `role="grid"`, `gridcell` per block, labels carry name/units/lifecycle/signal count |
 | ⬜  | M2-A11Y-2 | Move mode                                           |  M   | M2-A11Y-1 | Arrows choose target; live headroom announced; `Enter` commits; `Esc` restores      |
 | ⬜  | M2-A11Y-3 | Resize mode + keyboard dependency drawing           |  S   | M2-A11Y-2 | Same command emitted as the pointer path                                            |
-| ⬜  | M2-A11Y-4 | Live-region announcements for capacity consequences |  S   | M2-A11Y-2 | Overflow, headroom change, and rule outcomes announced as they happen               |
-| ⬜  | M2-A11Y-5 | List companion for every M2 view                    |  M   | M2-MAP-8  | `Ctrl/Cmd + L`; totals match; sortable; exportable                                  |
+| ✅  | M2-A11Y-4 | Live-region announcements for capacity consequences |  S   | M2-A11Y-2 | Overflow, headroom change, and rule outcomes announced as they happen               |
+| ✅  | M2-A11Y-5 | List companion for every M2 view                    |  M   | M2-MAP-8  | `Ctrl/Cmd + L`; totals match; sortable; exportable                                  |
 | ⬜  | M2-A11Y-6 | Reduced motion + high contrast verified end to end  |  S   | M1-REP-6  | No state cue lost with motion at 0 ms; high contrast raises every signal fg ≥ 7:1   |
-| ⬜  | M2-A11Y-7 | `axe` in CI across every view and modal state       |  S   | M1-REP-3  | Zero violations; failures block merge                                               |
+| ✅  | M2-A11Y-7 | `axe` in CI across every view and modal state       |  S   | M1-REP-3  | Zero violations; failures block merge                                               |
 
 ---
 
