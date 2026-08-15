@@ -116,8 +116,10 @@ export function CapacityVessel({
       key: reserve.id,
       label: `${reserve.label} · ${reserve.amount}`,
     })),
+    // No glyph here: ↻ (U+21BB) is not in Atkinson Hyperlegible and rendered as
+    // a broken box. The cross-hatch on the block and these words carry it.
     ...(carriedUnits > 0
-      ? [{ key: 'carried', label: `↻ ${t('carryover.units', { units: carriedUnits })}` }]
+      ? [{ key: 'carried', label: t('carryover.units', { units: carriedUnits }) }]
       : []),
   ];
 
@@ -255,6 +257,19 @@ export function CapacityVessel({
             const overUnits = Math.max(0, block.top - Math.max(block.bottom, ceilingUnits));
             const isOverflow = overUnits > 0;
 
+            // The rule is drawn over the stack, so a label sitting at the same
+            // height gets struck through. A block that straddles the limit puts
+            // its label in whichever half is taller — which is also where the
+            // block's weight is, so it reads better as well as more legibly.
+            const straddles = overUnits > 0 && overUnits < block.footprint.units;
+            const underUnits = block.footprint.units - overUnits;
+            const labelCentre = straddles
+              ? overUnits > underUnits
+                ? block.top - overUnits / 2
+                : block.bottom + underUnits / 2
+              : block.top - block.footprint.units / 2;
+            const labelY = Math.max(y(block.top) + 8, y(labelCentre) + 4);
+
             return (
               // `gridcell` must be inside a `row` — axe flags the shortcut, and
               // screen readers genuinely need the structure. Each block is its
@@ -289,12 +304,17 @@ export function CapacityVessel({
                     rx={2}
                     className="fm-block__fill"
                   />
-                  {carried && (
+                  {/* Carry-over stops at the rule. Laying its cross-hatch under
+                      the overflow hatch makes plaid, and a region that carries
+                      two textures at once reads as neither. Above the rule the
+                      overflow marker has priority; the caption still names the
+                      carried units in full. */}
+                  {carried && underUnits > 0 && (
                     <rect
                       x={6}
-                      y={y(block.top) + 0.5}
+                      y={y(Math.min(block.top, ceilingUnits)) + 0.5}
                       width={BODY_WIDTH - 12}
-                      height={blockHeight}
+                      height={Math.max(2, underUnits * unitPx)}
                       rx={2}
                       fill={`url(#${patternPrefix}-carryover)`}
                     />
@@ -314,7 +334,7 @@ export function CapacityVessel({
                   {blockHeight >= 15 && (
                     <text
                       x={14}
-                      y={y(block.top) + blockHeight / 2 + 4}
+                      y={labelY}
                       className="fm-block__label"
                       data-over={isOverflow || undefined}
                     >
@@ -325,7 +345,7 @@ export function CapacityVessel({
                   {blockHeight >= 9 && (
                     <text
                       x={BODY_WIDTH - 18}
-                      y={y(block.top) + blockHeight / 2 + (blockHeight >= 15 ? 4 : 3)}
+                      y={blockHeight >= 15 ? labelY : y(block.top) + blockHeight / 2 + 3}
                       className="fm-block__units"
                       data-thin={blockHeight < 15 || undefined}
                       textAnchor="end"
@@ -390,7 +410,12 @@ export function CapacityVessel({
             overload has a visible symptom and no visible cause. */}
         {teamQuarter.capacityAdjustment !== 0 && (
           <span className="fm-vessel__reason">
-            {t('capacity.adjusted', { units: teamQuarter.capacityAdjustment })}
+            {/* Direction in the word, magnitude in the figure. "-10 units this
+                quarter" opened on a hyphen, which reads as a list bullet. */}
+            {t(
+              teamQuarter.capacityAdjustment < 0 ? 'capacity.adjustedDown' : 'capacity.adjustedUp',
+              { units: Math.abs(teamQuarter.capacityAdjustment) },
+            )}
             {teamQuarter.adjustmentNote ? ` — ${teamQuarter.adjustmentNote}` : ''}
           </span>
         )}

@@ -325,3 +325,47 @@ test('the ideas rail is a queue, ordered by how far each idea is worked up', asy
   // Colour never carries a state on its own: the gaps are named.
   await expect(ideas.last()).toContainText(/no (team|target|owner|outcome)/);
 });
+
+test('a quarter column is never left half-hidden under the pinned team column', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  // A partial scroll used to park a column under the pinned column, and the
+  // masked half of "2026-Q2 / 13%" read as "26-Q2 / 3%" — as broken text, not
+  // as a scroll position.
+  await page.locator('.fm-map__scroll').evaluate((node) => {
+    node.scrollLeft += 60;
+  });
+  await page.waitForTimeout(400);
+
+  const straddling = await page.evaluate(() => {
+    const header = document.querySelector('.fm-grid__team');
+    if (!header) return ['no row header'];
+    const edge = header.getBoundingClientRect().right;
+
+    return Array.from(document.querySelectorAll('.fm-grid__cell'))
+      .map((cell) => ({ cell, box: cell.getBoundingClientRect() }))
+      .filter(({ box }) => box.right > edge + 1 && box.left < edge - 1)
+      .map(({ box }) => `cell spans ${Math.round(box.left)}–${Math.round(box.right)}`);
+  });
+
+  expect(straddling, 'columns partly masked by the pinned team column').toEqual([]);
+});
+
+test('a reduced quarter says which way it moved, in words', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const payments = page.getByRole('gridcell', { name: /^Payments\. 2026-Q3/ });
+  const reason = payments.locator('.fm-vessel__reason');
+
+  // "-10 units this quarter" opened on a hyphen, which reads as a list bullet.
+  await expect(reason).toContainText('10 units fewer this quarter');
+  expect(((await reason.textContent()) ?? '').trimStart().startsWith('-')).toBe(false);
+});

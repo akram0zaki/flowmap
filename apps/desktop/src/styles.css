@@ -379,6 +379,12 @@ label {
 .fm-map__scroll {
   overflow: auto;
   padding: var(--space-6) var(--space-7) var(--space-7) var(--space-6);
+  /* A quarter is an atom. Left free, the scroll parks a column half under the
+     pinned team column, and the masked half of "2026-Q2 / 13%" reads as
+     "26-Q2 / 3%" — not as a scroll position but as broken text. Snapping to
+     column starts, offset by the pinned width, means that state cannot occur. */
+  scroll-snap-type: x mandatory;
+  scroll-padding-left: calc(var(--fm-row-header) + var(--space-6));
 }
 
 .fm-grid {
@@ -387,11 +393,9 @@ label {
   row-gap: var(--space-6);
 }
 
-.fm-grid:focus-visible {
-  outline: var(--focus-width) solid var(--accent);
-  outline-offset: var(--space-2);
-  border-radius: var(--radius-sm);
-}
+/* The grid is one tab stop, so its focus indicator is the cursor ring on the
+   cell you are actually on — see `.fm-grid__cell[data-cursor]`. A second ring
+   around the whole grid would say less and cost more ink. */
 
 .fm-grid__corner,
 .fm-grid__quarter {
@@ -435,6 +439,18 @@ label {
   background: var(--ground);
 }
 
+/* Mid-gesture, content still passes under the pinned column. Without an edge
+   there is nothing to say so, and the masking looks like a rendering fault. */
+.fm-grid__team::after,
+.fm-grid__corner::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  width: 1px;
+  background: var(--rule);
+}
+
 .fm-grid__team-meta {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
@@ -472,6 +488,7 @@ label {
 }
 
 .fm-grid__cell {
+  scroll-snap-align: start;
   display: flex;
   align-items: stretch;
   min-width: 176px;
@@ -479,9 +496,16 @@ label {
   transition: opacity var(--motion-base) var(--ease-out);
 }
 
-.fm-grid__cell[data-cursor] {
+.fm-grid__cell {
+  padding-left: var(--space-2);
+}
+
+/* Inset, because an outward offset lands the ring in the next column and
+   paints it over that column's figures. And only while the grid holds focus:
+   a board at rest was carrying a heavy blue box around a cell nobody chose. */
+.fm-grid:focus-visible .fm-grid__cell[data-cursor] {
   outline: var(--focus-width) solid var(--accent);
-  outline-offset: var(--space-2);
+  outline-offset: calc(var(--focus-width) * -1);
   border-radius: var(--radius-sm);
 }
 
@@ -549,19 +573,24 @@ label {
   cursor: pointer;
 }
 
+/* One step up from graphite-1, which sat so close to the ground that a block
+   read as a floating label rather than a measured quantity. */
 .fm-block__fill {
-  fill: var(--graphite-1);
+  fill: var(--graphite-2);
   stroke: var(--graphite-3);
   stroke-width: 1;
 }
 
+/* Hover moves the edge, not the fill — the fill ramp is already carrying
+   mandatory-vs-discretionary and cannot carry a second meaning. */
 .fm-block:hover .fm-block__fill {
-  fill: var(--graphite-2);
+  stroke: var(--ink-subtle);
+  stroke-width: 1.5;
 }
 
 /* Mandatory work is heavier — it is the work that cannot move. */
 .fm-block[data-mandatory] .fm-block__fill {
-  fill: var(--graphite-2);
+  fill: var(--graphite-3);
   stroke: var(--graphite-4);
 }
 
@@ -602,8 +631,10 @@ label {
   font-weight: var(--weight-medium);
 }
 
+/* Full strength, not muted: on a mandatory block --ink-muted is 3.31:1, and a
+   measurement nobody can read is not a measurement. Guarded in contrast.test. */
 .fm-block__units {
-  fill: var(--ink-muted);
+  fill: var(--ink);
   font-family: var(--font-mono);
   font-size: 11px;
   paint-order: stroke fill;
@@ -936,9 +967,9 @@ label {
 }
 
 /* Units on a thin block sit alone, so they carry a little more weight. */
+/* A thin block shows only the number, so the number cannot also fade. */
 .fm-block__units[data-thin] {
   font-size: 9px;
-  fill: var(--ink-subtle);
 }
 
 .fm-ideas__ready {

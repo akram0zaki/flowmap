@@ -57,7 +57,7 @@ export const PATTERNS: Record<PatternId, PatternSpec> = {
   },
   carryover: {
     id: 'carryover',
-    pitch: 7,
+    pitch: 5,
     strokeVar: 'var(--pattern-stroke)',
     colorVar: 'var(--graphite-4)',
     labelKey: 'pattern.carryover',
@@ -65,8 +65,12 @@ export const PATTERNS: Record<PatternId, PatternSpec> = {
   },
   overflow: {
     id: 'overflow',
-    pitch: 4,
-    strokeVar: 'var(--pattern-stroke-heavy)',
+    // Pitch 4 at the heavy stroke is 38% ink, which reads as a filled slab
+    // rather than a marked region — and on a dark ground the salmon took over
+    // the whole board. The bracket beside it is what measures the excess; this
+    // only has to say which blocks carry it.
+    pitch: 7,
+    strokeVar: 'var(--pattern-stroke)',
     colorVar: 'var(--critical-line)',
     labelKey: 'pattern.overflow',
     glyph: '▲',
