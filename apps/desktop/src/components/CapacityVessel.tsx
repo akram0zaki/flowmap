@@ -112,7 +112,7 @@ export function CapacityVessel({
   const legend = [
     ...teamQuarter.reserves.map((reserve) => ({
       key: reserve.id,
-      label: `${reserve.type === 'HOLD' ? '⁘' : '╱'} ${reserve.label} ${reserve.amount}`,
+      label: `${reserve.label} · ${reserve.amount}`,
     })),
     ...(carriedUnits > 0
       ? [{ key: 'carried', label: `↻ ${t('carryover.units', { units: carriedUnits })}` }]
@@ -130,7 +130,11 @@ export function CapacityVessel({
   ].join('. ');
 
   return (
-    <figure className="fm-vessel" data-over-capacity={overCapacity || undefined}>
+    <figure
+      className="fm-vessel"
+      data-over-capacity={overCapacity || undefined}
+      data-closed={teamQuarter.closedAt !== undefined || undefined}
+    >
       <svg
         // A grid must contain at least one row. An empty container is genuinely
         // a labelled picture of a container, not a grid with nothing in it.
@@ -263,6 +267,7 @@ export function CapacityVessel({
                   aria-label={blockLabel(block, isOverflow, carried)}
                   aria-selected={selected}
                   className="fm-block"
+                  data-mandatory={block.commitment.class === 'MANDATORY' || undefined}
                   data-selected={selected || undefined}
                   data-counted={block.counted || undefined}
                   data-dimmed={dimmed || undefined}
@@ -305,7 +310,6 @@ export function CapacityVessel({
                   {blockHeight >= 14 && (
                     <text x={14} y={y(block.top) + blockHeight / 2 + 4} className="fm-block__label">
                       {block.commitment.class === 'MANDATORY' ? '🔒 ' : ''}
-                      {carried ? '↻ ' : ''}
                       {truncate(block.commitment.name, 30)}
                     </text>
                   )}
@@ -328,21 +332,18 @@ export function CapacityVessel({
 
       {/* Never colour alone: units AND percent AND a glyph AND words. */}
       <figcaption className="fm-vessel__caption">
-        <span className="fm-vessel__team">
-          {teamName} · {teamQuarter.quarterId}
+        {/* The headline is the figure. Its label, and the team name already in
+            the row header, do not need repeating at the same weight. */}
+        <span className="fm-vessel__figure">
+          <span className="fm-vessel__percent">{percent === null ? '—' : `${percent}%`}</span>
+          <span className="fm-vessel__delta">
+            {percent === null
+              ? t('capacity.noDeliverable')
+              : overCapacity
+                ? t('capacity.overBy', { units: summary.overflow })
+                : t('capacity.headroom', { units: summary.headroom })}
+          </span>
         </span>
-        {percent === null ? (
-          <span className="fm-vessel__status">{t('capacity.noDeliverable')}</span>
-        ) : overCapacity ? (
-          <span className="fm-vessel__status fm-vessel__status--over">
-            {t('capacity.overCapacity', { units: summary.overflow, percent })}
-          </span>
-        ) : (
-          <span className="fm-vessel__status">
-            {t('capacity.utilisation', { percent })} ·{' '}
-            {t('capacity.headroom', { units: summary.headroom })}
-          </span>
-        )}
 
         {/* Why the container is smaller than a normal quarter. Without this the
             overload has a visible symptom and no visible cause. */}

@@ -137,17 +137,16 @@ export function App() {
 
   return (
     <div className="fm-shell">
-      <header className="fm-topbar">
-        <h1 className="fm-brand">
-          {t('app.name')} <span className="fm-brand__tagline">{t('app.tagline')}</span>
-        </h1>
-        <div className="fm-topbar__status" role="status">
-          <span>{t('status.local')}</span>
+      <header className="fm-header">
+        <h1 className="fm-header__brand">{t('app.name')}</h1>
+        <span className="fm-header__workspace">{state.workspace.name}</span>
+        <span className="fm-header__spacer" />
+        <div className="fm-header__status" role="status">
           {/* Pending count is sync plumbing. With no shared provider there is
               nothing for it to be pending *to*, so it is noise rather than
               status — it returns in M8 when it means something. */}
           <span aria-live="polite">{t('status.saved')}</span>
-          <span>{t('status.profile', { name: profileName })}</span>
+          <span>{profileName}</span>
         </div>
       </header>
 
@@ -163,6 +162,19 @@ export function App() {
         </div>
       )}
 
+      <div className="fm-controlbar">
+        <LensStrip
+          level={level}
+          filter={filter}
+          focusedName={focusedName}
+          onLevel={setLevelState}
+          onRemoveChip={(key) => setFilter((f) => removeChip(f, key))}
+          onClearFilters={() => setFilter(NO_FILTER)}
+          onToggleHide={() => setFilter((f) => ({ ...f, hideFiltered: !f.hideFiltered }))}
+          onClearFocus={() => setFocusedCommitmentId(null)}
+        />
+      </div>
+
       <CaptureBar
         teams={teams.map((team) => ({ id: team.id, name: team.name }))}
         ideas={ideas.map((c) => ({ id: c.id, name: c.name }))}
@@ -172,17 +184,6 @@ export function App() {
         onUndo={() => void undo()}
         onRedo={() => void redo()}
         onClearLocalData={() => void clearLocalData()}
-      />
-
-      <LensStrip
-        level={level}
-        filter={filter}
-        focusedName={focusedName}
-        onLevel={setLevelState}
-        onRemoveChip={(key) => setFilter((f) => removeChip(f, key))}
-        onClearFilters={() => setFilter(NO_FILTER)}
-        onToggleHide={() => setFilter((f) => ({ ...f, hideFiltered: !f.hideFiltered }))}
-        onClearFocus={() => setFocusedCommitmentId(null)}
       />
 
       <div className="fm-workspace">

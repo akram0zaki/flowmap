@@ -21,20 +21,15 @@ export type IdeasLaneProps = {
 export function IdeasLane({ ideas, selectedCommitmentId, onSelect }: IdeasLaneProps) {
   return (
     <section className="fm-ideas" aria-label={t('map.ideasLane')}>
-      <h2>{t('map.ideasLane')}</h2>
+      <div className="fm-ideas__head">
+        <h2>{t('map.ideasLane')}</h2>
+        <span className="fm-ideas__count">{ideas.length}</span>
+      </div>
 
       {ideas.length === 0 ? (
         <p className="fm-idea__meta">{t('map.ideasEmpty')}</p>
       ) : (
-        <ul
-          style={{
-            listStyle: 'none',
-            margin: 0,
-            padding: 0,
-            display: 'grid',
-            gap: 'var(--space-3)',
-          }}
-        >
+        <ul>
           {ideas.map((idea) => (
             <li key={idea.commitmentId}>
               <button
@@ -47,11 +42,15 @@ export function IdeasLane({ ideas, selectedCommitmentId, onSelect }: IdeasLanePr
                   {idea.commitmentClass === 'MANDATORY' ? '🔒 ' : ''}
                   {idea.name}
                 </span>
-                <span className="fm-idea__meta">
-                  {idea.targetQuarterId ?? t('field.quarter')}
-                  {idea.refinementLinks.length > 0 &&
-                    ` · ${t('map.refinementLinked', { count: idea.refinementLinks.length })}`}
-                </span>
+                {(idea.targetQuarterId !== undefined || idea.refinementLinks.length > 0) && (
+                  <span className="fm-idea__meta">
+                    {idea.targetQuarterId ?? ''}
+                    {idea.refinementLinks.length > 0 &&
+                      `${idea.targetQuarterId ? ' · ' : ''}${t('map.refinementLinked', {
+                        count: idea.refinementLinks.length,
+                      })}`}
+                  </span>
+                )}
               </button>
             </li>
           ))}

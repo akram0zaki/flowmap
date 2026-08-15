@@ -20,7 +20,7 @@ async function freshApp(page: Page) {
 async function openEditor(page: Page) {
   const summary = page.getByText('Add and place work');
   const open = await page
-    .locator('details.fm-controls')
+    .locator('details.fm-editor')
     .evaluate((d) => (d as HTMLDetailsElement).open);
   if (!open) await summary.click();
 }
@@ -226,7 +226,7 @@ test('the map gets the space, not the chrome around it', async ({ page }) => {
   expect(map.width).toBeGreaterThan(shell.width * 0.6);
 
   // Editing chrome is collapsed by default; the board is what you land on.
-  const controls = (await page.locator('.fm-controls').boundingBox())!;
+  const controls = (await page.locator('.fm-controlbar').first().boundingBox())!;
   expect(controls.height).toBeLessThan(80);
 
   // And the board is above the fold.
@@ -239,7 +239,9 @@ test('the reasons behind a number are on screen, not only in the data', async ({
   await page.getByRole('button', { name: 'Load sample workspace' }).click();
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
-  const payments = page.locator('.fm-grid__cell').filter({ hasText: 'Payments · 2026-Q3' });
+  // The caption no longer repeats the team and quarter — the row and column
+  // headers say it — so target the cell by its accessible name.
+  const payments = page.getByRole('gridcell', { name: /^Payments\. 2026-Q3/ });
 
   // Why the container is smaller than a normal quarter.
   await expect(payments).toContainText('One vacancy, recruitment in progress');
@@ -256,6 +258,6 @@ test('held capacity is a labelled band, not invisible headroom', async ({ page }
   await page.getByRole('button', { name: 'Load sample workspace' }).click();
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
-  const held = page.locator('.fm-grid__cell').filter({ hasText: 'Payments · 2027-Q1' });
+  const held = page.getByRole('gridcell', { name: /^Payments\. 2027-Q1/ });
   await expect(held).toContainText('Held: Card tokenisation');
 });

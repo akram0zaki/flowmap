@@ -119,8 +119,14 @@ Every pattern has a **text equivalent** in the list companion and in its `aria-l
 | **Figures / data** | **IBM Plex Mono** (SIL OFL, bundled)              | Every number — units, percentages, quarter ids, rule codes — sets in tabular mono so figures align down a column like a drawing schedule. This is the schedule half of "measured drawing"                                              |
 | **Display**        | Atkinson Hyperlegible Next, 700, `-0.02em`        | Empty states, first run, presentation mode. Deliberately not a second display family: a dense tool does not need one, and adding one would be decoration                                                                               |
 
-Fonts are **self-hosted and bundled** — the CSP forbids remote origins
+Fonts are **self-hosted and bundled** via `@fontsource`, imported from
+`packages/ui/tokens/fonts.css` — the CSP forbids remote origins
 ([spec 10 §2](../spec/10-desktop-security.md#2-process-and-ipc-boundary)).
+
+> Naming a typeface in a token is not loading it. The first implementation
+> referenced both families and shipped no `@font-face`, so every screen fell back
+> to `system-ui` — which was the single largest reason the interface looked
+> generic.
 
 ### Scale
 
@@ -227,6 +233,12 @@ No confetti. No gamification. No ambient animation. A portfolio in trouble shoul
 ---
 
 ## 8. Elevation and focus
+
+**Hairlines, not boxes.** Structure comes from rules and whitespace. Almost
+nothing gets a border on all four sides — the first implementation put every
+element in its own box, which is what made it read as a wireframe rather than a
+product. A border earns its place by separating two regions that whitespace
+cannot.
 
 Data surfaces get **borders, not shadows** — a drawing does not float. Shadows are reserved for
 things that genuinely sit above the desk.

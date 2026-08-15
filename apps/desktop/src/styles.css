@@ -1,12 +1,22 @@
 /**
  * Application styles.
  *
- * Every value here is a token. No raw colours, sizes, or font stacks —
- * enforced by ESLint for TS and by review for CSS.
+ * Direction: measured drawing (docs/design/design-system.md).
  *
- * Direction: "measured drawing" (docs/design/design-system.md). Data surfaces
- * get borders, not shadows; the map stays monochrome until something needs
- * attention.
+ * Three rules do most of the work, and each replaced something the first pass
+ * got wrong:
+ *
+ *   1. **Hairlines, not boxes.** Structure comes from rules and whitespace.
+ *      Almost nothing gets a border on all four sides. The first pass put every
+ *      element in its own box, which is why it read as a wireframe.
+ *   2. **Figures lead.** The capacity number is the most important thing on the
+ *      board, so it is set at display size in mono while its label whispers.
+ *      Previously both were 12px and neither led.
+ *   3. **One accent, used sparingly.** The map stays graphite until something
+ *      needs attention. Buttons are quiet by default; at most one action on a
+ *      surface is loud.
+ *
+ * Every value is a token. No raw colours, sizes, or font stacks.
  */
 
 *,
@@ -15,105 +25,202 @@
   box-sizing: border-box;
 }
 
+body {
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
 /* ── Shell ─────────────────────────────────────────────────────────────── */
 
 .fm-shell {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
   min-height: 100vh;
-  padding: var(--space-5);
-  /* Fluid to 1024×640 with no clipped content and no horizontal page scroll. */
-  max-width: 100%;
-  overflow-x: hidden;
+  background: var(--ground);
 }
 
-.fm-topbar {
+/* ── Header ────────────────────────────────────────────────────────────── */
+
+.fm-header {
   display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-5);
-  padding-bottom: var(--space-4);
+  gap: var(--space-6);
+  padding: var(--space-5) var(--space-7) var(--space-4);
   border-bottom: 1px solid var(--rule);
 }
 
-.fm-brand {
+.fm-header__brand {
   margin: 0;
-  font-size: var(--text-lg);
-  line-height: var(--leading-lg);
+  font-size: var(--text-md);
   font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-display);
 }
 
-.fm-brand__tagline {
-  margin-left: var(--space-4);
+.fm-header__workspace {
   font-size: var(--text-sm);
-  font-weight: var(--weight-regular);
-  color: var(--ink-subtle);
-  letter-spacing: var(--tracking-normal);
-}
-
-.fm-topbar__status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-5);
-  font-size: var(--text-xs);
   color: var(--ink-muted);
 }
 
-/* ── Banners ───────────────────────────────────────────────────────────── */
+.fm-header__spacer {
+  flex: 1;
+}
 
-.fm-banner {
+.fm-header__status {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-5);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
+  gap: var(--space-6);
+  font-size: var(--text-xs);
+  color: var(--ink-subtle);
 }
 
-.fm-banner--info {
-  background: var(--info-surface);
-  color: var(--info-fg);
+/* ── Control row ───────────────────────────────────────────────────────── */
+
+.fm-controlbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-7);
+  border-bottom: 1px solid var(--rule);
 }
-.fm-banner--warning {
-  background: var(--warning-surface);
-  color: var(--warning-fg);
+
+.fm-controlbar__spacer {
+  flex: 1;
 }
-.fm-banner--critical {
-  background: var(--critical-surface);
-  color: var(--critical-fg);
+
+/* Segmented control: one outline, dividers inside, no gaps. */
+.fm-levels {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.fm-levels button {
+  min-height: 26px;
+  padding: var(--space-1) var(--space-5);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.fm-levels button + button {
+  border-left: 1px solid var(--border);
+}
+
+.fm-levels button:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.fm-levels button[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--surface);
+  font-weight: var(--weight-medium);
 }
 
 /* ── Controls ──────────────────────────────────────────────────────────── */
 
-.fm-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  background: var(--surface);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-md);
-}
-
-.fm-controls summary {
+button {
+  min-height: 28px;
+  padding: var(--space-2) var(--space-4);
+  font: inherit;
   font-size: var(--text-xs);
   color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 
-.fm-controls[data-collapsed] {
-  padding: var(--space-2) var(--space-4);
+button:hover {
+  color: var(--ink);
+  background: var(--surface-hover);
 }
 
-.fm-form input,
-.fm-form select {
-  max-width: 180px;
+/* At most one loud action per surface. */
+button.fm-primary {
+  color: var(--accent-on);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: var(--weight-medium);
+}
+
+button.fm-primary:hover {
+  color: var(--accent-on);
+  background: var(--accent-hover);
+}
+
+button.fm-quiet {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+button.fm-danger:hover {
+  color: var(--critical-fg);
+  background: var(--critical-surface);
+}
+
+input,
+select {
+  min-height: 28px;
+  max-width: 200px;
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+input::placeholder {
+  color: var(--ink-subtle);
+}
+
+label {
+  font-size: var(--text-xs);
+  color: var(--ink-subtle);
+}
+
+/* ── Editing drawer ────────────────────────────────────────────────────── */
+
+.fm-editor {
+  border-bottom: 1px solid var(--rule);
+}
+
+.fm-editor > summary {
+  padding: var(--space-3) var(--space-7);
+  font-size: var(--text-xs);
+  color: var(--ink-subtle);
+  cursor: pointer;
+  list-style: none;
+}
+
+.fm-editor > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fm-editor > summary::before {
+  content: '+';
+  display: inline-block;
+  width: 1em;
+}
+
+.fm-editor[open] > summary::before {
+  content: '−';
+}
+
+.fm-editor__body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  padding: 0 var(--space-7) var(--space-5);
 }
 
 .fm-form {
@@ -121,77 +228,251 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  font-size: var(--text-sm);
 }
 
-.fm-form label {
-  color: var(--ink-muted);
+/* ── Banner ────────────────────────────────────────────────────────────── */
+
+.fm-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-7);
+  font-size: var(--text-xs);
+  border-bottom: 1px solid var(--rule);
 }
 
-input,
-select {
+.fm-banner--info {
+  color: var(--info-fg);
+  background: var(--info-surface);
+}
+.fm-banner--warning {
+  color: var(--warning-fg);
+  background: var(--warning-surface);
+}
+.fm-banner--critical {
+  color: var(--critical-fg);
+  background: var(--critical-surface);
+}
+
+/* ── Workspace ─────────────────────────────────────────────────────────── */
+
+.fm-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+/* ── Ideas lane ────────────────────────────────────────────────────────── */
+
+.fm-ideas {
+  flex: 0 0 188px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-5);
+  overflow-y: auto;
+  border-right: 1px solid var(--rule);
+}
+
+.fm-ideas__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.fm-ideas h2 {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--ink-subtle);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+
+.fm-ideas__count {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
+.fm-ideas ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+/* An Idea is not committed to anything, so it does not get a solid container. */
+.fm-idea {
+  display: block;
+  width: 100%;
   min-height: var(--hit-target-min);
-  padding: var(--space-2) var(--space-4);
-  font: inherit;
-  font-size: var(--text-sm);
+  padding: var(--space-3);
+  overflow-wrap: anywhere;
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
   color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
+  text-align: left;
+  border-left: 2px solid var(--border);
+  border-radius: 0;
+}
+
+.fm-idea:hover {
+  background: var(--surface-hover);
+  border-left-color: var(--border-strong);
+}
+
+.fm-idea[aria-pressed='true'] {
+  background: var(--accent-surface);
+  border-left-color: var(--accent);
+}
+
+.fm-idea__meta {
+  display: block;
+  margin-top: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
+/* ── The grid ──────────────────────────────────────────────────────────── */
+
+.fm-map {
+  /* Consumed by the inline grid-template-columns on .fm-grid. If this is
+     undefined the whole declaration is invalid and the grid collapses to one
+     column, which is exactly what happened once. */
+  --fm-row-header: 150px;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fm-map__scroll {
+  overflow: auto;
+  padding: var(--space-6) var(--space-7) var(--space-7) var(--space-6);
+}
+
+.fm-grid {
+  display: grid;
+  min-width: max-content;
+  row-gap: var(--space-6);
+}
+
+.fm-grid:focus-visible {
+  outline: var(--focus-width) solid var(--accent);
+  outline-offset: var(--space-2);
   border-radius: var(--radius-sm);
 }
 
-button {
+.fm-grid__corner,
+.fm-grid__quarter {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  padding-bottom: var(--space-3);
+  background: var(--ground);
+  border-bottom: 1px solid var(--rule);
+}
+
+.fm-grid__corner {
+  left: 0;
+  z-index: calc(var(--z-sticky) + 1);
+  align-self: end;
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+
+/* The current quarter is marked by a heavier rule, not a colour swap. */
+.fm-grid__quarter[data-current] {
+  border-bottom: 2px solid var(--accent);
+}
+
+.fm-grid__now {
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-weight: var(--weight-regular);
+}
+
+.fm-grid__team {
+  position: sticky;
+  left: 0;
+  z-index: var(--z-canvas-overlay);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-right: var(--space-6);
+  background: var(--ground);
+}
+
+.fm-grid__team-meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
+.fm-grid__team-over {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  color: var(--critical-fg);
+}
+
+/* Headers double as filter toggles and must stay quiet. */
+.fm-grid__filter {
   min-height: var(--hit-target-min);
-  padding: var(--space-2) var(--space-5);
+  padding: var(--space-1) var(--space-2);
+  margin-left: calc(var(--space-2) * -1);
   font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  text-align: left;
+}
+
+.fm-grid__team .fm-grid__filter {
+  font-family: var(--font-ui);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  color: var(--accent-on);
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background var(--motion-fast) var(--ease-out);
-}
-
-button:hover {
-  background: var(--accent-hover);
-}
-
-button[aria-pressed='true'] {
-  background: var(--accent-active);
-}
-
-button.fm-danger {
-  color: var(--critical-fg);
-  background: var(--surface);
-  border-color: var(--critical-line);
-}
-
-/* ── Board ─────────────────────────────────────────────────────────────── */
-
-.fm-board {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-6);
-  align-items: flex-end;
-  /* Wide content scrolls inside its own region; the shell never scrolls. */
-  overflow-x: auto;
-  padding-bottom: var(--space-4);
-}
-
-.fm-empty {
-  padding: var(--space-8);
-  color: var(--ink-muted);
-  text-align: center;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-md);
-}
-
-.fm-empty h2 {
-  margin: 0 0 var(--space-3);
-  font-size: var(--text-md);
   color: var(--ink);
+}
+
+.fm-grid__filter[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-surface);
+}
+
+.fm-grid__cell {
+  display: flex;
+  align-items: stretch;
+  min-width: 176px;
+  padding-right: var(--space-6);
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+
+.fm-grid__cell[data-cursor] {
+  outline: var(--focus-width) solid var(--accent);
+  outline-offset: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.fm-grid__cell[data-dimmed],
+.fm-grid__team[data-dimmed] {
+  opacity: 0.22;
+}
+
+.fm-grid__empty {
+  align-self: end;
+  padding-bottom: var(--space-6);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-subtle);
 }
 
 /* ── The capacity vessel ───────────────────────────────────────────────── */
@@ -201,26 +482,29 @@ button.fm-danger {
   flex-direction: column;
   width: 100%;
   margin: 0;
-  padding: var(--space-3);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+}
+
+/* A closed quarter is settled history. Only the drawing recedes — dimming the
+   caption too dropped its contrast below 4.5:1, which axe caught. */
+.fm-vessel[data-closed] svg {
+  opacity: 0.6;
 }
 
 .fm-vessel__body {
-  fill: var(--surface);
-  stroke: var(--border-strong);
+  fill: none;
+  stroke: var(--rule);
   stroke-width: 1;
 }
 
-.fm-vessel__reserve {
-  stroke: none;
-}
-
-/* The line work must fit under — drawn heavier than the container edge. */
+/* The one line the work has to fit under. Heavier than anything near it. */
 .fm-vessel__rule {
   stroke: var(--ink-muted);
   stroke-width: var(--vessel-rule-width);
+}
+
+.fm-vessel__baseline {
+  stroke: var(--border-strong);
+  stroke-width: 1;
 }
 
 .fm-tick {
@@ -229,14 +513,13 @@ button.fm-danger {
 }
 
 .fm-tick--major {
-  stroke: var(--border-strong);
+  stroke: var(--border);
 }
 
 .fm-tick__label {
   fill: var(--ink-subtle);
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-variant-numeric: tabular-nums;
+  font-size: 9px;
 }
 
 .fm-block {
@@ -244,15 +527,26 @@ button.fm-danger {
 }
 
 .fm-block__fill {
-  fill: var(--graphite-2);
-  stroke: var(--graphite-4);
+  fill: var(--graphite-1);
+  stroke: var(--graphite-3);
   stroke-width: 1;
 }
 
-/* Uncounted work is present but not consuming — shown, never hidden. */
+.fm-block:hover .fm-block__fill {
+  fill: var(--graphite-2);
+}
+
+/* Mandatory work is heavier — it is the work that cannot move. */
+.fm-block[data-mandatory] .fm-block__fill {
+  fill: var(--graphite-2);
+  stroke: var(--graphite-4);
+}
+
+/* Present but not consuming: outlined rather than filled. */
 .fm-block:not([data-counted]) .fm-block__fill {
   fill: var(--surface);
-  stroke-dasharray: 4 3;
+  stroke: var(--border);
+  stroke-dasharray: 3 3;
 }
 
 .fm-block[data-selected] .fm-block__fill {
@@ -260,118 +554,272 @@ button.fm-danger {
   stroke-width: 2;
 }
 
+.fm-block[data-dimmed] {
+  opacity: 0.25;
+}
+
 .fm-block:focus-visible {
   outline: var(--focus-width) solid var(--accent);
-  outline-offset: var(--focus-outline-offset);
+  outline-offset: 1px;
 }
 
 .fm-block__label {
   fill: var(--ink);
-  font-size: var(--text-xs);
+  font-size: 11px;
 }
 
 .fm-block__units {
   fill: var(--ink-muted);
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  font-variant-numeric: tabular-nums;
+  font-size: 11px;
 }
+
+/* ── The cell caption: the number leads ────────────────────────────────── */
 
 .fm-vessel__caption {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  padding-top: var(--space-3);
-  font-size: var(--text-xs);
+  /* Without this the reason text runs into the next column instead of wrapping
+     — flex children default to min-width: auto. */
+  min-width: 0;
+  /* The figure is 22px on a 1.0 line-height, so it needs real space beneath it
+     or the reason line collides with its baseline. */
+  gap: var(--space-3);
+  padding-top: var(--space-4);
 }
 
-.fm-vessel__team {
-  font-weight: var(--weight-medium);
+.fm-vessel__figure {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
 }
 
-.fm-vessel__status {
-  color: var(--ink-muted);
+/* The headline: large, mono, quiet. The number is the point of the cell. */
+.fm-vessel__percent {
   font-family: var(--font-mono);
+  font-size: var(--figure-md);
+  font-weight: var(--weight-regular);
+  line-height: 1;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
-/* Never colour alone — the text already says "over capacity", the glyph is in
-   the string, and the border adds a third channel. */
-.fm-vessel__status--over {
+.fm-vessel[data-over-capacity] .fm-vessel__percent {
+  color: var(--critical-fg);
+  font-weight: var(--weight-medium);
+}
+
+.fm-vessel__delta {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-subtle);
+}
+
+.fm-vessel[data-over-capacity] .fm-vessel__delta {
   color: var(--critical-fg);
   font-weight: var(--weight-bold);
 }
 
-.fm-vessel[data-over-capacity] {
-  border-color: var(--critical-line);
-  border-width: 2px;
+.fm-vessel__reason {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  color: var(--warning-fg);
+  overflow-wrap: anywhere;
+}
+
+.fm-vessel__legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
+/* ── Level 1 aggregate ─────────────────────────────────────────────────── */
+
+.fm-aggregate {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  width: 100%;
+  padding-bottom: var(--space-2);
+}
+
+.fm-aggregate__track {
+  position: relative;
+  height: var(--space-4);
+  background: var(--graphite-1);
+}
+
+.fm-aggregate__fill {
+  height: 100%;
+  background: var(--graphite-3);
+}
+
+.fm-aggregate[data-over] .fm-aggregate__fill {
+  background: var(--critical-line);
+}
+
+/* The capacity line the bar is measured against. */
+.fm-aggregate__track::after {
+  content: '';
+  position: absolute;
+  inset-block: -2px;
+  right: 0;
+  width: 1px;
+  background: var(--border-strong);
+}
+
+.fm-aggregate__figure {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.fm-aggregate__label {
+  font-family: var(--font-mono);
+  font-size: var(--figure-sm);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.fm-aggregate[data-over] .fm-aggregate__label {
+  color: var(--critical-fg);
+  font-weight: var(--weight-medium);
+}
+
+.fm-aggregate__count {
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
+/* ── Lens strip ────────────────────────────────────────────────────────── */
+
+.fm-lens {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.fm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 26px;
+  padding: var(--space-1) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--accent);
+  background: var(--accent-surface);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+}
+
+.fm-chip:hover {
+  color: var(--accent);
+  background: var(--accent-surface);
+  border-color: var(--accent);
+}
+
+.fm-chip--plain {
+  font-family: var(--font-ui);
+  color: var(--ink-subtle);
+  background: transparent;
+}
+
+.fm-lens__none,
+.fm-lens__hint {
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
 }
 
 /* ── List companion ────────────────────────────────────────────────────── */
 
 .fm-list {
   overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  padding: 0 var(--space-7) var(--space-7);
 }
 
 .fm-list table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
 }
 
 .fm-list caption {
-  padding: var(--space-4);
-  color: var(--ink-muted);
-  font-size: var(--text-xs);
+  padding: var(--space-5) 0 var(--space-3);
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
   text-align: left;
 }
 
 .fm-list th,
 .fm-list td {
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-2) var(--space-5) var(--space-2) 0;
   text-align: left;
   border-bottom: 1px solid var(--rule);
-  height: var(--row-height);
 }
 
 .fm-list thead th {
-  color: var(--ink-muted);
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
   font-weight: var(--weight-medium);
+  color: var(--ink-subtle);
   text-transform: uppercase;
   letter-spacing: var(--tracking-caps);
+  border-bottom-color: var(--border);
 }
 
-.fm-list tbody tr:nth-child(even) {
-  background: var(--surface-sunken);
+.fm-list tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.fm-list tr[data-filtered] {
+  opacity: 0.35;
 }
 
 .fm-list tfoot th,
 .fm-list tfoot td {
-  font-weight: var(--weight-bold);
-  border-top: 2px solid var(--border-strong);
+  padding-top: var(--space-4);
+  font-weight: var(--weight-medium);
   border-bottom: none;
 }
 
-/* Figures set tabular and right-aligned, so columns line up like a schedule. */
 .fm-num {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
-/* ── Error state ───────────────────────────────────────────────────────── */
+/* ── Empty and error states ────────────────────────────────────────────── */
+
+.fm-empty {
+  max-width: 42ch;
+  margin: var(--space-9) auto;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.fm-empty h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+}
+
+.fm-empty p {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
 
 .fm-error {
   max-width: 60ch;
   margin: var(--space-9) auto;
   padding: var(--space-7);
-  border: 1px solid var(--critical-line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
 }
 
 .fm-error h1 {
@@ -388,305 +836,6 @@ button.fm-danger {
   border-radius: var(--radius-sm);
 }
 
-/* ── Portfolio Map ─────────────────────────────────────────────────────── */
-
-.fm-map {
-  --fm-row-header: 168px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-
-/* Wide content scrolls inside its own region; the shell never scrolls. */
-.fm-map__scroll {
-  overflow: auto;
-  max-height: 68vh;
-}
-
-.fm-grid {
-  display: grid;
-  min-width: max-content;
-}
-
-.fm-grid:focus-visible {
-  outline: var(--focus-width) solid var(--accent);
-  outline-offset: calc(var(--focus-outline-offset) * -1);
-}
-
-.fm-grid__corner,
-.fm-grid__quarter {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
-  padding: var(--space-4) var(--space-5);
-  background: var(--surface-sunken);
-  border-bottom: 1px solid var(--border-strong);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: var(--ink-muted);
-}
-
-.fm-grid__corner {
-  left: 0;
-  z-index: calc(var(--z-sticky) + 1);
-}
-
-.fm-grid__quarter {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The current quarter is marked with a rule, not just a colour. */
-.fm-grid__quarter[data-current] {
-  color: var(--ink);
-  border-bottom: 3px solid var(--accent);
-}
-
-.fm-grid__now {
-  font-family: var(--font-ui);
-  font-weight: var(--weight-regular);
-  color: var(--accent);
-}
-
-.fm-grid__team {
-  position: sticky;
-  left: 0;
-  z-index: var(--z-canvas-overlay);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-5);
-  background: var(--surface);
-  border-right: 1px solid var(--border-strong);
-  border-bottom: 1px solid var(--rule);
-}
-
-.fm-grid__team-name {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-}
-
-.fm-grid__team-meta {
-  font-size: var(--text-xs);
-  color: var(--ink-muted);
-  text-align: left;
-}
-
-.fm-grid__team-over {
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-bold);
-  color: var(--critical-fg);
-}
-
-.fm-grid__cell {
-  display: flex;
-  align-items: stretch;
-  justify-content: stretch;
-  min-width: 190px;
-  padding: var(--space-3);
-  border-right: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-  transition: opacity var(--motion-base) var(--ease-out);
-}
-
-.fm-grid__cell[data-cursor] {
-  outline: var(--focus-width) solid var(--accent);
-  outline-offset: calc(var(--focus-outline-offset) * -1);
-}
-
-/* Focus mode: unrelated content recedes but stays legible and reachable. */
-.fm-grid__cell[data-dimmed],
-.fm-grid__team[data-dimmed] {
-  opacity: 0.25;
-}
-
-.fm-grid__cell[data-closed] {
-  background: var(--surface-sunken);
-}
-
-.fm-grid__empty {
-  color: var(--ink-subtle);
-  font-size: var(--text-sm);
-}
-
-.fm-block[data-dimmed] {
-  opacity: 0.3;
-}
-
-/* The axis is the first thing to go when space is tight. */
-.fm-vessel__axis[data-hidden] {
-  display: none;
-}
-
-/* ── Level 1 aggregate ─────────────────────────────────────────────────── */
-
-.fm-aggregate {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-3);
-}
-
-.fm-aggregate__track {
-  height: var(--space-5);
-  background: var(--graphite-1);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-
-.fm-aggregate__fill {
-  height: 100%;
-  background: var(--graphite-3);
-}
-
-.fm-aggregate[data-over] .fm-aggregate__fill {
-  background: var(--critical-line);
-}
-
-.fm-aggregate__label {
-  font-size: var(--text-xs);
-  color: var(--ink-muted);
-  text-align: left;
-}
-
-.fm-aggregate__count {
-  font-size: var(--text-2xs);
-  color: var(--ink-subtle);
-}
-
-.fm-aggregate__over {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  color: var(--critical-fg);
-}
-
-/* ── Lens strip ────────────────────────────────────────────────────────── */
-
-.fm-lens {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4) 0;
-}
-
-.fm-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--hit-target-min);
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-xs);
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-full);
-  cursor: pointer;
-}
-
-.fm-chip[aria-pressed='true'] {
-  color: var(--accent-on);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.fm-levels {
-  display: inline-flex;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-
-.fm-levels button {
-  border: none;
-  border-radius: 0;
-  background: var(--surface);
-  color: var(--ink);
-}
-
-.fm-levels button[aria-pressed='true'] {
-  background: var(--accent);
-  color: var(--accent-on);
-}
-
-/* ── Ideas lane ────────────────────────────────────────────────────────── */
-
-/* The map is the point; the lane is a sidebar, not a peer. */
-.fm-ideas {
-  flex: 0 0 200px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  max-height: 68vh;
-  overflow-y: auto;
-  padding: var(--space-4);
-  background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-}
-
-.fm-ideas h2 {
-  margin: 0;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-}
-
-.fm-idea {
-  overflow-wrap: anywhere;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  width: 100%;
-  min-height: var(--hit-target-min);
-  padding: var(--space-3) var(--space-4);
-  text-align: left;
-  font-size: var(--text-sm);
-  color: var(--ink);
-  background: var(--surface);
-  /* Dashed, because an Idea has not been committed to anything yet. */
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.fm-idea[aria-pressed='true'] {
-  border-style: solid;
-  border-color: var(--accent);
-}
-
-.fm-idea__meta {
-  font-size: var(--text-2xs);
-  color: var(--ink-subtle);
-}
-
-.fm-workspace {
-  display: flex;
-  gap: var(--space-6);
-  align-items: flex-start;
-}
-
-.fm-workspace > .fm-map {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* Filtered rows fade rather than disappear, matching the board. */
-.fm-list tr[data-filtered] {
-  opacity: 0.4;
-}
-
-.fm-lens__none,
-.fm-lens__hint {
-  font-size: var(--text-xs);
-  color: var(--ink-subtle);
-}
-
 /* Announcements reach screen readers without occupying layout. */
 .fm-visually-hidden {
   position: absolute;
@@ -698,51 +847,4 @@ button.fm-danger {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
-}
-
-/* The reason a team-quarter is short of capacity, stated rather than implied. */
-.fm-vessel__reason {
-  color: var(--warning-fg);
-  font-size: var(--text-2xs);
-}
-
-.fm-vessel__legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  font-size: var(--text-2xs);
-  color: var(--ink-muted);
-}
-
-.fm-vessel__legend span {
-  white-space: nowrap;
-}
-
-.fm-toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-/* Headers double as filter toggles; they must not look like primary buttons. */
-.fm-grid__filter {
-  min-height: var(--hit-target-min);
-  padding: var(--space-1) var(--space-2);
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  text-align: left;
-}
-
-.fm-grid__filter:hover {
-  background: var(--surface-hover);
-  border-color: var(--border);
-}
-
-.fm-grid__filter[aria-pressed='true'] {
-  color: var(--accent-on);
-  background: var(--accent);
-  border-color: var(--accent);
 }

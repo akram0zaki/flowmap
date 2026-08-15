@@ -24,7 +24,7 @@ async function openEditor(page: Page) {
   const summary = page.getByText('Add and place work');
   if (await summary.isVisible()) {
     const open = await page
-      .locator('details.fm-controls')
+      .locator('details.fm-editor')
       .evaluate((d) => (d as HTMLDetailsElement).open);
     if (!open) await summary.click();
   }

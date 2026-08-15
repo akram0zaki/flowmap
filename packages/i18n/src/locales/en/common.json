@@ -102,7 +102,7 @@
   "map.zoomOut": "Zoom out",
   "map.ideasLane": "Ideas and demand",
   "map.ideasEmpty": "No ideas captured yet.",
-  "map.refinementLinked": "Supported by refinement in {count} team-quarters",
+  "map.refinementLinked": "refining",
   "map.clearFocus": "Clear focus",
   "map.focused": "Focused: {name}. {footprints} footprints across {teams} teams and {quarters} quarters.",
   "filter.quarter": "Quarter",
@@ -127,5 +127,6 @@
   "sample.badge": "Sample data",
   "capacity.adjusted": "{units} units this quarter",
   "carryover.units": "{units} carried over",
-  "action.edit": "Add and place work"
+  "action.edit": "Add and place work",
+  "capacity.overBy": "▲ +{units} over"
 }

@@ -66,13 +66,13 @@ export function LensStrip({
               {t(chip.labelKey)}: {chip.value} ✕
             </button>
           ))}
-          <button type="button" className="fm-chip" onClick={onClearFilters}>
+          <button type="button" className="fm-chip fm-chip--plain" onClick={onClearFilters}>
             {t('filter.clear')}
           </button>
           {/* Fade preserves spatial context; hiding is opt-in for density. */}
           <button
             type="button"
-            className="fm-chip"
+            className="fm-chip fm-chip--plain"
             aria-pressed={filter.hideFiltered}
             onClick={onToggleHide}
           >

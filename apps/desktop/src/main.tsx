@@ -14,6 +14,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { applyTheme } from '@flowmap/ui';
 
+import '@flowmap/ui/fonts.css';
 import '@flowmap/ui/tokens.css';
 import './styles.css';
 
