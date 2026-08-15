@@ -118,7 +118,9 @@ export function CapacityVessel({
   return (
     <figure className="fm-vessel" data-over-capacity={overCapacity || undefined}>
       <svg
-        role="grid"
+        // A grid must contain at least one row. An empty container is genuinely
+        // a labelled picture of a container, not a grid with nothing in it.
+        role={laidOut.length > 0 ? 'grid' : 'img'}
         aria-label={summaryLabel}
         width={axisWidth + BODY_WIDTH}
         height={height}
@@ -339,7 +341,7 @@ function blockLabel(
     t('capacity.units', { units: block.footprint.units }),
     block.commitment.class === 'MANDATORY' ? t('class.MANDATORY') : null,
     carried ? t('carryover.from', { quarter: block.footprint.carryOverFromQuarterId ?? '' }) : null,
-    isOverflow ? t('pattern.overflow') : null,
+    isOverflow ? t('patterns.overflow') : null,
     block.counted ? null : t('vessel.notCounted'),
   ]
     .filter(Boolean)

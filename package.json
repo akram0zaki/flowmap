@@ -21,7 +21,8 @@
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm i18n:check",
     "test:e2e": "pnpm --filter @flowmap/desktop test:e2e",
     "dev": "pnpm --filter @flowmap/desktop dev",
-    "build:desktop": "pnpm --filter @flowmap/desktop build && tauri build"
+    "build:desktop": "pnpm --filter @flowmap/desktop build && tauri build",
+    "dev:desktop": "tauri dev"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

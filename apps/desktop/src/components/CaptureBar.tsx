@@ -33,7 +33,7 @@ export function CaptureBar({
   onRedo,
   onClearLocalData,
 }: CaptureBarProps) {
-  const { captureIdea, addTeam, placeFootprint } = useWorkspace.getState();
+  const { captureIdea, addTeam, placeFootprint, loadSample } = useWorkspace.getState();
 
   const [ideaName, setIdeaName] = useState('');
   const [teamName, setTeamName] = useState('');
@@ -145,6 +145,9 @@ export function CaptureBar({
         </button>
         <button type="button" onClick={onToggleList} aria-pressed={showList}>
           {t('nav.listCompanion')}
+        </button>
+        <button type="button" onClick={() => void loadSample()}>
+          {t('action.loadSample')}
         </button>
         <button type="button" className="fm-danger" onClick={onClearLocalData}>
           {t('action.clearLocalData')}

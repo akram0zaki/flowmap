@@ -28,6 +28,32 @@ async function seed(page: Page) {
   await page.getByRole('button', { name: 'Capture idea' }).click();
 }
 
+/**
+ * `t()` returns the key when it cannot resolve one — correct at runtime (a
+ * missing string must never blank a planning board) but it means a namespace
+ * typo ships silently. This catches the leak where a user would see it.
+ */
+async function expectNoUnresolvedKeys(page: Page) {
+  const leaked = await page.evaluate(() => {
+    const pattern = /(?:^|\s)[a-z][a-zA-Z]*\.[a-zA-Z][a-zA-Z0-9.]*(?:$|\s)/;
+    const found = new Set<string>();
+
+    for (const el of Array.from(document.querySelectorAll('[aria-label]'))) {
+      const label = el.getAttribute('aria-label') ?? '';
+      for (const part of label.split('. ')) {
+        if (pattern.test(part.trim()) && !part.includes(' ')) found.add(part.trim());
+      }
+    }
+    for (const el of Array.from(document.querySelectorAll('button, td, th, span'))) {
+      const text = (el.textContent ?? '').trim();
+      if (text && !text.includes(' ') && pattern.test(text)) found.add(text);
+    }
+    return [...found];
+  });
+
+  expect(leaked, 'unresolved i18n keys rendered to the user').toEqual([]);
+}
+
 async function expectNoAxeViolations(page: Page, context: string) {
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
@@ -127,4 +153,44 @@ test('the map is accessible at every zoom level', async ({ page }) => {
     await page.getByRole('button', { name: level, exact: true }).click();
     await expectNoAxeViolations(page, `map at level ${level}`);
   }
+});
+
+test('the sample workspace makes the map worth looking at', async ({ page }) => {
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+
+  const grid = page.getByRole('grid');
+
+  // Five teams as rows, six quarters as columns.
+  await expect(grid.getByRole('rowheader')).toHaveCount(5);
+  await expect(grid.getByRole('columnheader')).toHaveCount(7);
+
+  // The engineered conditions are visible, not just present in the data.
+  await expect(grid.getByRole('rowheader', { name: /Payments/ })).toContainText('over capacity');
+
+  // One commitment, two teams, same quarter — the multi-team footprint model
+  // drawn as two blocks rather than one duplicated commitment.
+  await expect(page.getByRole('gridcell', { name: /SEPA instant payments/ })).toHaveCount(2);
+
+  // Carry-over and held capacity are named, not merely styled.
+  // Two teams carried work out of the closed quarter.
+  await expect(page.getByRole('gridcell', { name: /Carried over from 2026-Q2/ })).toHaveCount(2);
+  await expect(
+    page.getByRole('gridcell', { name: /Not consuming capacity/ }).first(),
+  ).toBeVisible();
+
+  // Ideas stay in the lane, out of the grid.
+  const lane = page.getByRole('region', { name: /ideas and demand/i });
+  await expect(lane.getByRole('button')).toHaveCount(10);
+
+  await expectNoAxeViolations(page, 'sample workspace');
+  await expectNoUnresolvedKeys(page);
+});
+
+test('loading the sample twice replaces rather than duplicates', async ({ page }) => {
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+
+  await expect(page.getByRole('grid').getByRole('rowheader')).toHaveCount(5);
 });
