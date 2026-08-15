@@ -1,0 +1,41 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/domain"
+    },
+    {
+      "path": "./packages/rules"
+    },
+    {
+      "path": "./packages/visual-model"
+    },
+    {
+      "path": "./packages/storage"
+    },
+    {
+      "path": "./packages/storage-local"
+    },
+    {
+      "path": "./packages/storage-file"
+    },
+    {
+      "path": "./packages/import-export"
+    },
+    {
+      "path": "./packages/i18n"
+    },
+    {
+      "path": "./packages/ui"
+    },
+    {
+      "path": "./packages/testing"
+    },
+    {
+      "path": "./fixtures"
+    },
+    {
+      "path": "./apps/desktop"
+    }
+  ]
+}

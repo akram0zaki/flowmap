@@ -1,0 +1,9 @@
+{
+  "reserve": "Reserved capacity",
+  "refinement": "Refinement reserve",
+  "hold": "Held capacity",
+  "carryover": "Carried over",
+  "overflow": "Over capacity",
+  "ghost": "Scenario only",
+  "archived": "Archived"
+}

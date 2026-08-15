@@ -1,0 +1,39 @@
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Local environment
+.env
+.env.*
+!.env.example
+.local/
+
+# Tauri
+apps/desktop/src-tauri/target/
+
+# Local workspace data — never commit portfolio data
+*.flowmap
+!fixtures/**/*.flowmap
+.flowmap-local/
+
+# Benchmarks write here; results/ is committed, traces are not
+bench/traces/
+
+# Playwright
+playwright-report/
+apps/desktop/test-results/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Other
+.local/

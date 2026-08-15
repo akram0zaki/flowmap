@@ -1,0 +1,367 @@
+/**
+ * Application styles.
+ *
+ * Every value here is a token. No raw colours, sizes, or font stacks —
+ * enforced by ESLint for TS and by review for CSS.
+ *
+ * Direction: "measured drawing" (docs/design/design-system.md). Data surfaces
+ * get borders, not shadows; the map stays monochrome until something needs
+ * attention.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* ── Shell ─────────────────────────────────────────────────────────────── */
+
+.fm-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 100vh;
+  padding: var(--space-5);
+  /* Fluid to 1024×640 with no clipped content and no horizontal page scroll. */
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.fm-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--rule);
+}
+
+.fm-brand {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-display);
+}
+
+.fm-brand__tagline {
+  margin-left: var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  color: var(--ink-subtle);
+  letter-spacing: var(--tracking-normal);
+}
+
+.fm-topbar__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+/* ── Banners ───────────────────────────────────────────────────────────── */
+
+.fm-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.fm-banner--info {
+  background: var(--info-surface);
+  color: var(--info-fg);
+}
+.fm-banner--warning {
+  background: var(--warning-surface);
+  color: var(--warning-fg);
+}
+.fm-banner--critical {
+  background: var(--critical-surface);
+  color: var(--critical-fg);
+}
+
+/* ── Controls ──────────────────────────────────────────────────────────── */
+
+.fm-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-5);
+}
+
+.fm-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.fm-form label {
+  color: var(--ink-muted);
+}
+
+input,
+select {
+  min-height: var(--hit-target-min);
+  padding: var(--space-2) var(--space-4);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+button {
+  min-height: var(--hit-target-min);
+  padding: var(--space-2) var(--space-5);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--accent-on);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+button:hover {
+  background: var(--accent-hover);
+}
+
+button[aria-pressed='true'] {
+  background: var(--accent-active);
+}
+
+button.fm-danger {
+  color: var(--critical-fg);
+  background: var(--surface);
+  border-color: var(--critical-line);
+}
+
+/* ── Board ─────────────────────────────────────────────────────────────── */
+
+.fm-board {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  align-items: flex-end;
+  /* Wide content scrolls inside its own region; the shell never scrolls. */
+  overflow-x: auto;
+  padding-bottom: var(--space-4);
+}
+
+.fm-empty {
+  padding: var(--space-8);
+  color: var(--ink-muted);
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+.fm-empty h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-md);
+  color: var(--ink);
+}
+
+/* ── The capacity vessel ───────────────────────────────────────────────── */
+
+.fm-vessel {
+  margin: 0;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.fm-vessel__body {
+  fill: var(--surface);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.fm-vessel__reserve {
+  stroke: none;
+}
+
+/* The line work must fit under — drawn heavier than the container edge. */
+.fm-vessel__rule {
+  stroke: var(--ink-muted);
+  stroke-width: var(--vessel-rule-width);
+}
+
+.fm-tick {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.fm-tick--major {
+  stroke: var(--border-strong);
+}
+
+.fm-tick__label {
+  fill: var(--ink-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.fm-block {
+  cursor: pointer;
+}
+
+.fm-block__fill {
+  fill: var(--graphite-2);
+  stroke: var(--graphite-4);
+  stroke-width: 1;
+}
+
+/* Uncounted work is present but not consuming — shown, never hidden. */
+.fm-block:not([data-counted]) .fm-block__fill {
+  fill: var(--surface);
+  stroke-dasharray: 4 3;
+}
+
+.fm-block[data-selected] .fm-block__fill {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.fm-block:focus-visible {
+  outline: var(--focus-width) solid var(--accent);
+  outline-offset: var(--focus-outline-offset);
+}
+
+.fm-block__label {
+  fill: var(--ink);
+  font-size: var(--text-xs);
+}
+
+.fm-block__units {
+  fill: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.fm-vessel__caption {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.fm-vessel__team {
+  font-weight: var(--weight-medium);
+}
+
+.fm-vessel__status {
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Never colour alone — the text already says "over capacity", the glyph is in
+   the string, and the border adds a third channel. */
+.fm-vessel__status--over {
+  color: var(--critical-fg);
+  font-weight: var(--weight-bold);
+}
+
+.fm-vessel[data-over-capacity] {
+  border-color: var(--critical-line);
+  border-width: 2px;
+}
+
+/* ── List companion ────────────────────────────────────────────────────── */
+
+.fm-list {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.fm-list table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.fm-list caption {
+  padding: var(--space-4);
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  text-align: left;
+}
+
+.fm-list th,
+.fm-list td {
+  padding: var(--space-3) var(--space-5);
+  text-align: left;
+  border-bottom: 1px solid var(--rule);
+  height: var(--row-height);
+}
+
+.fm-list thead th {
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+
+.fm-list tbody tr:nth-child(even) {
+  background: var(--surface-sunken);
+}
+
+.fm-list tfoot th,
+.fm-list tfoot td {
+  font-weight: var(--weight-bold);
+  border-top: 2px solid var(--border-strong);
+  border-bottom: none;
+}
+
+/* Figures set tabular and right-aligned, so columns line up like a schedule. */
+.fm-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── Error state ───────────────────────────────────────────────────────── */
+
+.fm-error {
+  max-width: 60ch;
+  margin: var(--space-9) auto;
+  padding: var(--space-7);
+  border: 1px solid var(--critical-line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.fm-error h1 {
+  margin-top: 0;
+  font-size: var(--text-lg);
+}
+
+.fm-error pre {
+  padding: var(--space-4);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+}

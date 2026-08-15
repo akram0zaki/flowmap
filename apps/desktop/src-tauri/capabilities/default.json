@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Flowmap makes no network calls. The only outward action is opening an https: link in the system browser.",
+  "windows": ["main"],
+  "permissions": ["core:default", "opener:allow-open-url"]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@flowmap/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Flowmap desktop application.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@flowmap/domain": "workspace:*",
+    "@flowmap/i18n": "workspace:*",
+    "@flowmap/storage": "workspace:*",
+    "@flowmap/storage-local": "workspace:*",
+    "@flowmap/ui": "workspace:*"
+  }
+}

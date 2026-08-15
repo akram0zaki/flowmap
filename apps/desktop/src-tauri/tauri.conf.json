@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Flowmap",
+  "version": "0.1.0",
+  "identifier": "com.flowmap.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "pnpm --filter @flowmap/desktop dev",
+    "beforeBuildCommand": "pnpm --filter @flowmap/desktop build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Flowmap",
+        "width": 1280,
+        "height": 840,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": ["icons/icon.png"],
+    "category": "Productivity",
+    "shortDescription": "Visual portfolio control",
+    "longDescription": "A management-level model of a delivery portfolio, rendered as a manipulable landscape."
+  }
+}

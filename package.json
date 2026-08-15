@@ -1,0 +1,57 @@
+{
+  "name": "flowmap",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Visual portfolio control for leads coordinating multiple teams, products, and commitments.",
+  "packageManager": "pnpm@10.24.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "i18n:check": "tsx scripts/check-i18n.ts",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm i18n:check",
+    "test:e2e": "pnpm --filter @flowmap/desktop test:e2e",
+    "dev": "pnpm --filter @flowmap/desktop dev",
+    "build:desktop": "pnpm --filter @flowmap/desktop build && tauri build"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.62.1",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/cli": "^2.11.4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.4",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "axe-core": "^4.13.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-boundaries": "^5.0.1",
+    "fast-check": "^3.23.2",
+    "jsdom": "^25.0.1",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.15"
+  }
+}

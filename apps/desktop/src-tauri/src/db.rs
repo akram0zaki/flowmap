@@ -1,0 +1,261 @@
+//! SQLite behind the IPC boundary.
+//!
+//! The web layer has no filesystem, network, or database access. It reaches
+//! SQLite only through the `db_*` commands here, and every value it supplies is
+//! **bound as a parameter** — never interpolated into SQL text.
+//!
+//! Portable data directory resolution (spec 10 §3.1), in order:
+//!   1. `FLOWMAP_DATA_DIR`
+//!   2. a writable `data/` folder beside the executable — "fully portable" mode
+//!   3. the per-user application-data directory
+//!
+//! A portable app must be able to tell you where its state actually lives, so
+//! the resolved path is returned to the UI and shown in Settings.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+use rusqlite::types::{Value, ValueRef};
+use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
+
+#[derive(Default)]
+pub struct DbState {
+    pub conn: Mutex<Option<Connection>>,
+}
+
+#[derive(Serialize)]
+pub struct OpenInfo {
+    #[serde(rename = "dataDir")]
+    pub data_dir: String,
+    pub portable: bool,
+}
+
+/// JSON-compatible parameter. `bigint` and byte arrays are converted on the JS
+/// side before they get here.
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum Param {
+    Null,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Text(String),
+    Blob(Vec<u8>),
+}
+
+impl Param {
+    fn to_sql_value(&self) -> Value {
+        match self {
+            Param::Null => Value::Null,
+            Param::Bool(b) => Value::Integer(i64::from(*b)),
+            Param::Int(i) => Value::Integer(*i),
+            Param::Float(f) => Value::Real(*f),
+            Param::Text(s) => Value::Text(s.clone()),
+            Param::Blob(b) => Value::Blob(b.clone()),
+        }
+    }
+}
+
+/// Cloud-sync roots. A SQLite file opened from two machines is corrupted
+/// silently, so the database never lives in one — the shared *workspace
+/// document* does. See docs/spec/07-persistence-sync.md §1.
+const CLOUD_MARKERS: [&str; 6] = [
+    "onedrive",
+    "icloud drive",
+    "com~apple~clouddocs",
+    "dropbox",
+    "google drive",
+    "box sync",
+];
+
+fn is_cloud_synced(path: &Path) -> Option<String> {
+    let lower = path.to_string_lossy().to_lowercase();
+    CLOUD_MARKERS
+        .iter()
+        .find(|marker| lower.contains(*marker))
+        .map(|marker| (*marker).to_string())
+}
+
+fn portable_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let candidate = exe.parent()?.join("data");
+    if candidate.is_dir() {
+        // Probe writability rather than trusting permissions: the folder may sit
+        // on a read-only share.
+        let probe = candidate.join(".flowmap-write-probe");
+        if fs::write(&probe, b"1").is_ok() {
+            let _ = fs::remove_file(&probe);
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+pub fn resolve_data_dir(app_data: PathBuf) -> (PathBuf, bool) {
+    if let Ok(explicit) = std::env::var("FLOWMAP_DATA_DIR") {
+        return (PathBuf::from(explicit), true);
+    }
+    if let Some(dir) = portable_dir() {
+        return (dir, true);
+    }
+    (app_data, false)
+}
+
+pub fn open_at(dir: PathBuf, portable: bool) -> Result<(Connection, OpenInfo), String> {
+    fs::create_dir_all(&dir).map_err(|e| format!("Cannot create data directory: {e}"))?;
+
+    let path = dir.join("flowmap.db");
+
+    if std::env::var("FLOWMAP_ALLOW_SYNCED_DB").is_err() {
+        if let Some(marker) = is_cloud_synced(&path) {
+            return Err(format!(
+                "Refusing to open a Flowmap database inside a cloud-synced folder (matched \"{marker}\"). \
+                 SQLite must never be opened by two machines. Move it, or set FLOWMAP_ALLOW_SYNCED_DB=1."
+            ));
+        }
+    }
+
+    let conn = Connection::open(&path).map_err(|e| e.to_string())?;
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA foreign_keys = ON;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA busy_timeout = 5000;",
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok((
+        conn,
+        OpenInfo {
+            data_dir: dir.to_string_lossy().to_string(),
+            portable,
+        },
+    ))
+}
+
+fn with_conn<T>(
+    state: &DbState,
+    f: impl FnOnce(&Connection) -> Result<T, rusqlite::Error>,
+) -> Result<T, String> {
+    let guard = state.conn.lock().map_err(|_| "database lock poisoned".to_string())?;
+    let conn = guard.as_ref().ok_or_else(|| "database is not open".to_string())?;
+    f(conn).map_err(|e| e.to_string())
+}
+
+pub fn exec(state: &DbState, sql: &str) -> Result<(), String> {
+    with_conn(state, |conn| conn.execute_batch(sql))
+}
+
+pub fn run(state: &DbState, sql: &str, params: &[Param]) -> Result<(), String> {
+    with_conn(state, |conn| {
+        let values: Vec<Value> = params.iter().map(Param::to_sql_value).collect();
+        let refs: Vec<&dyn rusqlite::ToSql> =
+            values.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
+        conn.execute(sql, refs.as_slice()).map(|_| ())
+    })
+}
+
+pub fn query(
+    state: &DbState,
+    sql: &str,
+    params: &[Param],
+) -> Result<Vec<serde_json::Map<String, serde_json::Value>>, String> {
+    with_conn(state, |conn| {
+        let mut stmt = conn.prepare(sql)?;
+        let columns: Vec<String> = stmt.column_names().iter().map(|c| (*c).to_string()).collect();
+
+        let values: Vec<Value> = params.iter().map(Param::to_sql_value).collect();
+        let refs: Vec<&dyn rusqlite::ToSql> =
+            values.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
+
+        let mut rows = stmt.query(refs.as_slice())?;
+        let mut out = Vec::new();
+
+        while let Some(row) = rows.next()? {
+            let mut map = serde_json::Map::new();
+            for (index, name) in columns.iter().enumerate() {
+                let json = match row.get_ref(index)? {
+                    ValueRef::Null => serde_json::Value::Null,
+                    ValueRef::Integer(i) => serde_json::Value::from(i),
+                    ValueRef::Real(f) => serde_json::Value::from(f),
+                    ValueRef::Text(t) => {
+                        serde_json::Value::from(String::from_utf8_lossy(t).to_string())
+                    }
+                    ValueRef::Blob(b) => serde_json::Value::from(b.to_vec()),
+                };
+                map.insert(name.clone(), json);
+            }
+            out.push(map);
+        }
+        Ok(out)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn open_memory() -> DbState {
+        let state = DbState::default();
+        let conn = Connection::open_in_memory().unwrap();
+        *state.conn.lock().unwrap() = Some(conn);
+        state
+    }
+
+    #[test]
+    fn rejects_a_cloud_synced_path() {
+        assert_eq!(
+            is_cloud_synced(Path::new("/Users/x/OneDrive - Co/flowmap.db")),
+            Some("onedrive".to_string())
+        );
+        assert_eq!(
+            is_cloud_synced(Path::new("/Users/x/Library/Application Support/Flowmap/flowmap.db")),
+            None
+        );
+    }
+
+    #[test]
+    fn binds_parameters_rather_than_interpolating() {
+        let state = open_memory();
+        exec(&state, "CREATE TABLE t (a TEXT, b INTEGER)").unwrap();
+
+        // A value that would be catastrophic if interpolated.
+        let injection = "'); DROP TABLE t; --";
+        run(
+            &state,
+            "INSERT INTO t (a, b) VALUES (?, ?)",
+            &[Param::Text(injection.to_string()), Param::Int(42)],
+        )
+        .unwrap();
+
+        let rows = query(&state, "SELECT a, b FROM t", &[]).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["a"], serde_json::Value::from(injection));
+        assert_eq!(rows[0]["b"], serde_json::Value::from(42));
+    }
+
+    #[test]
+    fn returns_null_and_typed_values() {
+        let state = open_memory();
+        exec(&state, "CREATE TABLE t (a TEXT, b REAL, c INTEGER)").unwrap();
+        run(
+            &state,
+            "INSERT INTO t VALUES (?, ?, ?)",
+            &[Param::Null, Param::Float(1.5), Param::Bool(true)],
+        )
+        .unwrap();
+
+        let rows = query(&state, "SELECT * FROM t", &[]).unwrap();
+        assert_eq!(rows[0]["a"], serde_json::Value::Null);
+        assert_eq!(rows[0]["b"], serde_json::Value::from(1.5));
+        assert_eq!(rows[0]["c"], serde_json::Value::from(1));
+    }
+
+    #[test]
+    fn refuses_to_work_when_closed() {
+        let state = DbState::default();
+        assert!(exec(&state, "SELECT 1").is_err());
+    }
+}
