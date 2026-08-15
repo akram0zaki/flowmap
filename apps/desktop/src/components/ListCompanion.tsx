@@ -1,44 +1,49 @@
 /**
  * The list companion.
  *
- * Every graphical view has one, and its totals MUST equal the projection's.
- * That equality is asserted by test — a list that quietly disagrees with the
- * board is worse than no list at all.
+ * Every graphical view has one, and its totals MUST equal the projection's —
+ * a list that quietly disagrees with the board is worse than no list at all.
  *
+ * "Visual for understanding; structured lists for precision."
  * See docs/spec/06-views-interaction.md §10.
  */
 
-import type { CapacitySummary, CapacityFootprint, Commitment, TeamQuarter } from '@flowmap/domain';
+import type { BoardModel, FilterState } from '@flowmap/visual-model';
+import { allBlocks, matchesFilter, isFilterActive } from '@flowmap/visual-model';
 
 import { t } from '../i18n/t.js';
 
-type Cell = {
-  teamName: string;
-  teamQuarter: TeamQuarter;
-  summary: CapacitySummary;
-  blocks: ReadonlyArray<{ footprint: CapacityFootprint; commitment: Commitment; counted: boolean }>;
-};
-
-export function ListCompanion({ cells }: { cells: readonly Cell[] }) {
-  const rows = cells.flatMap((cell) =>
-    cell.blocks.map((block) => ({
-      key: block.footprint.id,
-      commitment: block.commitment.name,
-      lifecycle: block.commitment.lifecycle,
-      team: cell.teamName,
-      quarter: cell.teamQuarter.quarterId,
-      units: block.footprint.units,
+export function ListCompanion({
+  board,
+  filter,
+}: {
+  readonly board: BoardModel;
+  readonly filter: FilterState;
+}) {
+  const rows = allBlocks(board)
+    .filter((block) => !filter.hideFiltered || matchesFilter(filter, block, block.cell))
+    .map((block) => ({
+      key: block.footprintId,
+      commitment: block.name,
+      lifecycle: block.lifecycle,
+      team: block.cell.teamName,
+      quarter: block.cell.quarterId,
+      units: block.units,
       counted: block.counted,
-    })),
-  );
+      filtered: !matchesFilter(filter, block, block.cell),
+    }));
 
-  const totalLoad = cells.reduce((sum, cell) => sum + cell.summary.committedLoad, 0);
-  const totalCapacity = cells.reduce((sum, cell) => sum + cell.summary.deliverableCapacity, 0);
+  // Totals come from the board's own summaries, so they cannot drift from what
+  // the vessels draw.
+  const { load, capacity } = board.totals;
 
   return (
     <section className="fm-list" aria-label={t('nav.listCompanion')}>
       <table>
-        <caption>{t('list.caption')}</caption>
+        <caption>
+          {t('list.caption')}
+          {isFilterActive(filter) && ` · ${t('list.filtered', { count: rows.length })}`}
+        </caption>
         <thead>
           <tr>
             <th scope="col">{t('list.commitment')}</th>
@@ -53,7 +58,7 @@ export function ListCompanion({ cells }: { cells: readonly Cell[] }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.key}>
+            <tr key={row.key} data-filtered={row.filtered || undefined}>
               <td>{row.commitment}</td>
               <td>{t(`lifecycle.${row.lifecycle}`)}</td>
               <td>{row.team}</td>
@@ -71,7 +76,7 @@ export function ListCompanion({ cells }: { cells: readonly Cell[] }) {
               {t('list.totalLoad')}
             </th>
             <td className="fm-num" data-figure="" data-testid="total-load">
-              {totalLoad}
+              {load}
             </td>
             <td />
           </tr>
@@ -80,7 +85,7 @@ export function ListCompanion({ cells }: { cells: readonly Cell[] }) {
               {t('list.totalCapacity')}
             </th>
             <td className="fm-num" data-figure="" data-testid="total-capacity">
-              {totalCapacity}
+              {capacity}
             </td>
             <td />
           </tr>

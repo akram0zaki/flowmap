@@ -9,163 +9,42 @@
  */
 
 import {
+  isActive,
   DEFAULT_RESERVES,
   DEFAULT_SIZE_MAPPING,
   DEFAULT_TEAM_QUARTER_CAPACITY,
   DEFAULT_VALUE_DRIVERS,
   DEFAULT_CHANGE_LOAD_SETTINGS,
-  isActive,
   type CapacityFootprint,
   type Commitment,
   type Team,
   type TeamQuarter,
   type Workspace,
-  type WorkspaceRole,
 } from './entities.js';
-import {
-  diffFields,
-  roleAtLeast,
-  type Command,
-  type CommandContext,
-  type CommandEffects,
-  type CommandResult,
-  type DomainEvent,
-  type EntityChange,
-  type WorkspaceState,
+import type {
+  Command,
+  CommandContext,
+  CommandEffects,
+  CommandResult,
+  WorkspaceState,
 } from './command.js';
-import { domainError, type DomainErrorCode } from './errors.js';
+import {
+  archivedChange as archived,
+  authorise,
+  bumped,
+  created,
+  domainFail as fail,
+  event,
+  newEnvelope,
+  requireName,
+  succeed,
+  updated,
+} from './handler-kit.js';
+import { domainError } from './errors.js';
 import { capacityKey, commitmentKey, type ProjectionKey } from './refs.js';
 import { deliverableCapacity, reservedTotal, resolveUnits, summariseCapacity } from './capacity.js';
 import type { CapacityUnits, EntityId, RelativeSize } from './primitives.js';
 import { isQuarterId, type QuarterId } from './quarter.js';
-
-const SCHEMA_VERSION = 1;
-
-// ── Result helpers ─────────────────────────────────────────────────────────
-
-function fail(
-  code: DomainErrorCode,
-  detail: Parameters<typeof domainError>[1] = {},
-): CommandResult {
-  return { ok: false, error: domainError(code, detail) };
-}
-
-function succeed(effects: CommandEffects): CommandResult {
-  return { ok: true, effects };
-}
-
-function authorise(ctx: CommandContext, required: WorkspaceRole): CommandResult | null {
-  return roleAtLeast(ctx.role, required)
-    ? null
-    : fail('UNAUTHORISED', { params: { required, actual: ctx.role } });
-}
-
-function requireName(name: unknown, max: number): CommandResult | null {
-  if (typeof name !== 'string' || name.trim().length === 0) return fail('NAME_REQUIRED');
-  if (name.length > max) return fail('NAME_TOO_LONG', { params: { max, actual: name.length } });
-  return null;
-}
-
-// ── Change / event builders ────────────────────────────────────────────────
-
-type Envelope = {
-  id: EntityId;
-  workspaceId: string;
-  schemaVersion: number;
-  entityVersion: number;
-  createdAt: string;
-  createdBy: string;
-  updatedAt: string;
-  updatedBy: string;
-};
-
-function newEnvelope(id: EntityId, cmd: Command, ctx: CommandContext): Envelope {
-  return {
-    id,
-    workspaceId: cmd.workspaceId,
-    schemaVersion: SCHEMA_VERSION,
-    entityVersion: 1,
-    createdAt: ctx.clock.now(),
-    createdBy: ctx.actorId,
-    updatedAt: ctx.clock.now(),
-    updatedBy: ctx.actorId,
-  };
-}
-
-function bumped<T extends { entityVersion: number }>(entity: T, ctx: CommandContext): T {
-  return {
-    ...entity,
-    entityVersion: entity.entityVersion + 1,
-    updatedAt: ctx.clock.now(),
-    updatedBy: ctx.actorId,
-  };
-}
-
-function created(ref: EntityChange['ref'], after: object): EntityChange {
-  return {
-    ref,
-    op: 'CREATE',
-    toVersion: 1,
-    after,
-    changedFields: Object.keys(after).sort(),
-  };
-}
-
-function updated(
-  ref: EntityChange['ref'],
-  before: Record<string, unknown>,
-  after: Record<string, unknown>,
-): EntityChange {
-  return {
-    ref,
-    op: 'UPDATE',
-    fromVersion: before['entityVersion'] as number,
-    toVersion: after['entityVersion'] as number,
-    before,
-    after,
-    changedFields: diffFields(before, after),
-  };
-}
-
-function archived(
-  ref: EntityChange['ref'],
-  before: Record<string, unknown>,
-  after: Record<string, unknown>,
-): EntityChange {
-  return {
-    ref,
-    op: 'ARCHIVE',
-    fromVersion: before['entityVersion'] as number,
-    toVersion: after['entityVersion'] as number,
-    before,
-    after,
-    changedFields: diffFields(before, after),
-  };
-}
-
-function event(
-  cmd: Command,
-  ctx: CommandContext,
-  offset: number,
-  eventType: string,
-  refs: EntityChange['ref'][],
-  facts: Record<string, unknown>,
-): DomainEvent {
-  return {
-    id: ctx.ids.next(),
-    workspaceId: cmd.workspaceId,
-    sequence: ctx.nextSequence + offset,
-    occurredAt: ctx.clock.now(),
-    actorId: ctx.actorId,
-    commandName: cmd.name,
-    eventType,
-    entityRefs: refs,
-    summaryKey: `event.${eventType}`,
-    facts,
-    ...(cmd.reason !== undefined ? { reason: cmd.reason } : {}),
-    ...(cmd.scenarioId !== undefined ? { scenarioId: cmd.scenarioId } : {}),
-  };
-}
 
 // ── CreateWorkspace ────────────────────────────────────────────────────────
 

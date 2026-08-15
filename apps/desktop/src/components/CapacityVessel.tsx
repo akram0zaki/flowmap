@@ -44,11 +44,16 @@ export type CapacityVesselProps = {
   readonly blocks: readonly VesselBlock[];
   readonly zoom?: number;
   readonly selectedFootprintId?: string;
+  /** Level 2: drop labels and the axis, keep the shape and the caption. */
+  readonly compact?: boolean;
+  /** Out of focus or filtered out — faded, never removed. */
+  readonly dimmedFootprintIds?: ReadonlySet<string>;
   readonly onSelect?: (footprintId: string) => void;
 };
 
 const AXIS_WIDTH = 34;
-const BODY_WIDTH = 220;
+const COMPACT_AXIS_WIDTH = 20;
+const BODY_WIDTH = 260;
 const TOP_PAD = 28;
 const BOTTOM_PAD = 24;
 
@@ -59,10 +64,15 @@ export function CapacityVessel({
   blocks,
   zoom = 1,
   selectedFootprintId,
+  compact = false,
+  dimmedFootprintIds,
   onSelect,
 }: CapacityVesselProps) {
   const patternPrefix = useId().replace(/:/g, '');
   const unitPx = UNIT_PX * zoom;
+  // The axis is the first thing to go when space is tight; the vessel shape and
+  // the caption still carry the meaning.
+  const axisWidth = compact ? COMPACT_AXIS_WIDTH : AXIS_WIDTH;
 
   // The axis spans the effective capacity, or the load when work overflows past
   // it — otherwise the spill would be drawn outside the viewBox.
@@ -95,6 +105,20 @@ export function CapacityVessel({
   const ticks: number[] = [];
   for (let u = 0; u <= axisMax; u += UNIT_TICK_MINOR) ticks.push(u);
 
+  const carriedUnits = laidOut
+    .filter((block) => block.footprint.carryOverFromQuarterId !== undefined)
+    .reduce((sum, block) => sum + block.footprint.units, 0);
+
+  const legend = [
+    ...teamQuarter.reserves.map((reserve) => ({
+      key: reserve.id,
+      label: `${reserve.type === 'HOLD' ? '⁘' : '╱'} ${reserve.label} ${reserve.amount}`,
+    })),
+    ...(carriedUnits > 0
+      ? [{ key: 'carried', label: `↻ ${t('carryover.units', { units: carriedUnits })}` }]
+      : []),
+  ];
+
   const summaryLabel = [
     teamName,
     teamQuarter.quarterId,
@@ -108,11 +132,16 @@ export function CapacityVessel({
   return (
     <figure className="fm-vessel" data-over-capacity={overCapacity || undefined}>
       <svg
-        role="grid"
+        // A grid must contain at least one row. An empty container is genuinely
+        // a labelled picture of a container, not a grid with nothing in it.
+        role={laidOut.length > 0 ? 'grid' : 'img'}
         aria-label={summaryLabel}
-        width={AXIS_WIDTH + BODY_WIDTH}
+        // Scales to fill its cell rather than sitting at a fixed size in a sea
+        // of white — the block heights stay proportional either way.
+        width="100%"
         height={height}
-        viewBox={`0 0 ${AXIS_WIDTH + BODY_WIDTH} ${height}`}
+        viewBox={`0 0 ${axisWidth + BODY_WIDTH} ${height}`}
+        preserveAspectRatio="xMidYMax meet"
       >
         <defs>
           {Object.values(PATTERNS)
@@ -144,7 +173,7 @@ export function CapacityVessel({
         </defs>
 
         {/* Unit scale — drawn so block heights are measurable, not impressionistic. */}
-        <g className="fm-vessel__axis" aria-hidden="true">
+        <g className="fm-vessel__axis" aria-hidden="true" data-hidden={compact || undefined}>
           {ticks.map((units) => {
             const major = units % UNIT_TICK_MAJOR === 0;
             return (
@@ -171,7 +200,7 @@ export function CapacityVessel({
           })}
         </g>
 
-        <g transform={`translate(${AXIS_WIDTH} 0)`}>
+        <g transform={`translate(${axisWidth} 0)`}>
           <rect
             x={0}
             y={TOP_PAD}
@@ -221,6 +250,7 @@ export function CapacityVessel({
             const carried = block.footprint.carryOverFromQuarterId !== undefined;
             const blockHeight = Math.max(6, block.footprint.units * unitPx);
             const selected = block.footprint.id === selectedFootprintId;
+            const dimmed = dimmedFootprintIds?.has(block.footprint.id) ?? false;
 
             return (
               // `gridcell` must be inside a `row` — axe flags the shortcut, and
@@ -235,6 +265,7 @@ export function CapacityVessel({
                   className="fm-block"
                   data-selected={selected || undefined}
                   data-counted={block.counted || undefined}
+                  data-dimmed={dimmed || undefined}
                   onClick={() => onSelect?.(block.footprint.id)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -274,7 +305,8 @@ export function CapacityVessel({
                   {blockHeight >= 14 && (
                     <text x={14} y={y(block.top) + blockHeight / 2 + 4} className="fm-block__label">
                       {block.commitment.class === 'MANDATORY' ? '🔒 ' : ''}
-                      {truncate(block.commitment.name, 22)}
+                      {carried ? '↻ ' : ''}
+                      {truncate(block.commitment.name, 30)}
                     </text>
                   )}
                   {blockHeight >= 14 && (
@@ -311,6 +343,24 @@ export function CapacityVessel({
             {t('capacity.headroom', { units: summary.headroom })}
           </span>
         )}
+
+        {/* Why the container is smaller than a normal quarter. Without this the
+            overload has a visible symptom and no visible cause. */}
+        {teamQuarter.capacityAdjustment !== 0 && (
+          <span className="fm-vessel__reason">
+            {t('capacity.adjusted', { units: teamQuarter.capacityAdjustment })}
+            {teamQuarter.adjustmentNote ? ` — ${teamQuarter.adjustmentNote}` : ''}
+          </span>
+        )}
+
+        {/* Reserves and carry-over named, not left to the hatching alone. */}
+        {!compact && legend.length > 0 && (
+          <span className="fm-vessel__legend">
+            {legend.map((entry) => (
+              <span key={entry.key}>{entry.label}</span>
+            ))}
+          </span>
+        )}
       </figcaption>
     </figure>
   );
@@ -327,7 +377,7 @@ function blockLabel(
     t('capacity.units', { units: block.footprint.units }),
     block.commitment.class === 'MANDATORY' ? t('class.MANDATORY') : null,
     carried ? t('carryover.from', { quarter: block.footprint.carryOverFromQuarterId ?? '' }) : null,
-    isOverflow ? t('pattern.overflow') : null,
+    isOverflow ? t('patterns.overflow') : null,
     block.counted ? null : t('vessel.notCounted'),
   ]
     .filter(Boolean)

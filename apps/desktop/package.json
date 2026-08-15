@@ -16,6 +16,8 @@
     "@flowmap/i18n": "workspace:*",
     "@flowmap/storage": "workspace:*",
     "@flowmap/storage-local": "workspace:*",
-    "@flowmap/ui": "workspace:*"
+    "@flowmap/ui": "workspace:*",
+    "@flowmap/visual-model": "workspace:*",
+    "@flowmap/fixtures": "workspace:*"
   }
 }

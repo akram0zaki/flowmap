@@ -19,17 +19,31 @@ async function freshApp(page: Page) {
   await expect(page.getByRole('heading', { name: /flowmap/i })).toBeVisible();
 }
 
+/** Creation forms fold away by default; open them before using them. */
+async function openEditor(page: Page) {
+  const summary = page.getByText('Add and place work');
+  if (await summary.isVisible()) {
+    const open = await page
+      .locator('details.fm-controls')
+      .evaluate((d) => (d as HTMLDetailsElement).open);
+    if (!open) await summary.click();
+  }
+}
+
 async function addTeam(page: Page, name: string) {
+  await openEditor(page);
   await page.getByLabel('Team', { exact: true }).fill(name);
   await page.getByRole('button', { name: 'Add team' }).click();
 }
 
 async function captureIdea(page: Page, name: string) {
+  await openEditor(page);
   await page.getByLabel('What is it?').fill(name);
   await page.getByRole('button', { name: 'Capture idea' }).click();
 }
 
 async function place(page: Page, size: 'XS' | 'S' | 'M' | 'L') {
+  await openEditor(page);
   await page.getByLabel('Size').selectOption(size);
   await page.getByRole('button', { name: 'Place', exact: true }).click();
 }
@@ -53,7 +67,9 @@ async function expectNoAxeViolations(page: Page, context: string) {
 test('empty state invites the first action, and is accessible', async ({ page }) => {
   await freshApp(page);
 
-  await expect(page.getByText('Nothing placed yet')).toBeVisible();
+  // The map exists from the start; it is simply empty of teams.
+  await expect(page.getByRole('grid')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /ideas and demand/i })).toBeVisible();
   await expectNoAxeViolations(page, 'empty state');
 });
 
@@ -65,9 +81,7 @@ test('create → place → persist → reload → render', async ({ page }) => {
   await place(page, 'L');
 
   // The vessel renders with the resolved units, and says what it means.
-  const vessel = page.getByRole('grid');
-  await expect(vessel).toBeVisible();
-  await expect(vessel).toHaveAttribute('aria-label', /Payments/);
+  await expect(page.getByRole('rowheader', { name: /Payments/ })).toBeVisible();
 
   const block = page.getByRole('gridcell', { name: /SEPA instant payments/ });
   await expect(block).toBeVisible();
@@ -93,7 +107,7 @@ test('list companion totals match the board exactly', async ({ page }) => {
   await captureIdea(page, 'One');
   await place(page, 'M');
   await captureIdea(page, 'Two');
-  await page.getByLabel('Commitment').selectOption({ label: 'Two' });
+  await page.getByLabel('Commitment', { exact: true }).selectOption({ label: 'Two' });
   await place(page, 'S');
 
   const rows = page.locator('.fm-list tbody tr');
@@ -127,17 +141,19 @@ test('clear local data empties the workspace and starts a fresh one', async ({ p
   await addTeam(page, 'Payments');
   await captureIdea(page, 'Temporary');
   await place(page, 'M');
-  await expect(page.getByRole('grid')).toBeVisible();
+  await expect(page.getByRole('gridcell', { name: /Temporary/ })).toBeVisible();
 
   await page.getByRole('button', { name: 'Clear local data' }).click();
 
-  await expect(page.getByText('Nothing placed yet')).toBeVisible();
+  await expect(page.getByRole('rowheader', { name: /Payments/ })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByText('Nothing placed yet')).toBeVisible();
+  await expect(page.getByRole('rowheader', { name: /Payments/ })).toHaveCount(0);
 });
 
 test('the whole flow works keyboard-only', async ({ page }) => {
   await freshApp(page);
+
+  await openEditor(page);
 
   // Team
   await page.getByLabel('Team', { exact: true }).focus();

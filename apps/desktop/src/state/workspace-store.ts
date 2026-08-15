@@ -29,6 +29,7 @@ import {
 import type { WorkspaceRepository } from '@flowmap/storage';
 
 import { t } from '../i18n/t.js';
+import { seedSampleWorkspace } from './sample-workspace.js';
 
 const WORKSPACE_ID = 'flowmap-local-workspace';
 const PROFILE_ID = 'local-profile';
@@ -92,6 +93,7 @@ type StoreState = {
   select(footprintId: string | null): void;
   clearStatus(): void;
   clearLocalData(): Promise<void>;
+  loadSample(): Promise<void>;
 };
 
 export const useWorkspace = create<StoreState>((set, get) => ({
@@ -299,6 +301,37 @@ export const useWorkspace = create<StoreState>((set, get) => ({
 
   clearStatus() {
     set({ status: null });
+  },
+
+  async loadSample() {
+    const { runtime, profileName } = get();
+    if (!runtime) return;
+
+    const report = await seedSampleWorkspace({
+      repository: runtime.repository,
+      workspaceId: WORKSPACE_ID,
+      actorId: `local:${PROFILE_ID}`,
+      now: runtime.now(),
+      newId: runtime.newId,
+    });
+
+    // A sample replaces everything, so the history that produced the old state
+    // no longer applies.
+    set({ undoStack: [], redoStack: [], selectedFootprintId: null });
+    set({ state: await runtime.repository.load(WORKSPACE_ID) });
+    await refreshPending(get, set);
+
+    set({
+      status: {
+        tone: 'info',
+        message: t('sample.loaded', {
+          teams: report.teams,
+          commitments: report.commitments,
+          ideas: report.ideas,
+        }),
+      },
+      profileName,
+    });
   },
 
   async clearLocalData() {

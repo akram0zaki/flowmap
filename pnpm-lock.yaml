@@ -103,6 +103,9 @@ importers:
       '@flowmap/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@flowmap/fixtures':
+        specifier: workspace:*
+        version: link:../../fixtures
       '@flowmap/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
@@ -115,6 +118,9 @@ importers:
       '@flowmap/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@flowmap/visual-model':
+        specifier: workspace:*
+        version: link:../../packages/visual-model
 
   fixtures:
     dependencies:
