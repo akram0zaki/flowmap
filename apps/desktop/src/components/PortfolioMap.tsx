@@ -41,6 +41,8 @@ export type PortfolioMapProps = {
   readonly vesselBlocksFor: (cell: CellModel) => VesselBlock[];
   readonly onSelectBlock: (footprintId: string, commitmentId: string) => void;
   readonly onSelectCell: (teamId: string, quarterId: QuarterId) => void;
+  readonly onFilterTeam: (teamId: string) => void;
+  readonly onFilterQuarter: (quarterId: QuarterId) => void;
   readonly onAnnounce: (message: string) => void;
 };
 
@@ -53,6 +55,8 @@ export function PortfolioMap({
   vesselBlocksFor,
   onSelectBlock,
   onSelectCell,
+  onFilterTeam,
+  onFilterQuarter,
   onAnnounce,
 }: PortfolioMapProps) {
   // Roving focus: the grid is one tab stop, arrows move within it.
@@ -151,10 +155,18 @@ export function PortfolioMap({
                 data-current={quarterId === board.currentQuarterId || undefined}
                 className="fm-grid__quarter"
               >
-                {quarterId}
-                {quarterId === board.currentQuarterId && (
-                  <span className="fm-grid__now"> · {t('map.now')}</span>
-                )}
+                {/* A header is the obvious place to narrow to one quarter. */}
+                <button
+                  type="button"
+                  className="fm-grid__filter"
+                  aria-pressed={filter.quarters.includes(quarterId)}
+                  onClick={() => onFilterQuarter(quarterId)}
+                >
+                  {quarterId}
+                  {quarterId === board.currentQuarterId && (
+                    <span className="fm-grid__now"> · {t('map.now')}</span>
+                  )}
+                </button>
               </div>
             ))}
           </div>
@@ -169,7 +181,14 @@ export function PortfolioMap({
                   undefined
                 }
               >
-                <span className="fm-grid__team-name">{row.teamName}</span>
+                <button
+                  type="button"
+                  className="fm-grid__filter fm-grid__team-name"
+                  aria-pressed={filter.teams.includes(row.teamId)}
+                  onClick={() => onFilterTeam(row.teamId)}
+                >
+                  {row.teamName}
+                </button>
                 <span className="fm-grid__team-meta" data-figure="">
                   {row.capacity === 0
                     ? '—'

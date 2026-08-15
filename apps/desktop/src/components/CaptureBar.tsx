@@ -40,102 +40,17 @@ export function CaptureBar({
   const [commitmentId, setCommitmentId] = useState('');
   const [teamId, setTeamId] = useState('');
   const [size, setSize] = useState<'XS' | 'S' | 'M' | 'L'>('M');
+  // Collapsed by default: the map is the product, this is scaffolding until
+  // Quick Capture lands on the board itself (M2-COM-1 proper).
+  const [open, setOpen] = useState(false);
 
   const canPlace = ideas.length > 0 && teams.length > 0;
   const resolvedCommitment = commitmentId || ideas[0]?.id || '';
   const resolvedTeam = teamId || teams[0]?.id || '';
 
   return (
-    <section className="fm-controls" aria-label={t('action.captureIdea')}>
-      <form
-        className="fm-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!teamName.trim()) return;
-          void addTeam(teamName.trim()).then(() => setTeamName(''));
-        }}
-      >
-        <label htmlFor="team-name">{t('field.team')}</label>
-        <input
-          id="team-name"
-          value={teamName}
-          onChange={(e) => setTeamName(e.target.value)}
-          placeholder="Payments"
-        />
-        <button type="submit">Add team</button>
-      </form>
-
-      <form
-        className="fm-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!ideaName.trim()) return;
-          void captureIdea(ideaName.trim()).then(() => setIdeaName(''));
-        }}
-      >
-        <label htmlFor="idea-name">{t('field.ideaName')}</label>
-        <input
-          id="idea-name"
-          value={ideaName}
-          onChange={(e) => setIdeaName(e.target.value)}
-          placeholder="SEPA instant payments"
-        />
-        <button type="submit">{t('action.captureIdea')}</button>
-      </form>
-
-      {canPlace && (
-        <form
-          className="fm-form"
-          aria-label={t('action.assignFootprint')}
-          onSubmit={(e) => {
-            e.preventDefault();
-            void placeFootprint({
-              commitmentId: resolvedCommitment,
-              teamId: resolvedTeam,
-              quarterId: currentQuarter,
-              size,
-            });
-          }}
-        >
-          <label htmlFor="place-commitment">{t('list.commitment')}</label>
-          <select
-            id="place-commitment"
-            value={resolvedCommitment}
-            onChange={(e) => setCommitmentId(e.target.value)}
-          >
-            {ideas.map((idea) => (
-              <option key={idea.id} value={idea.id}>
-                {idea.name}
-              </option>
-            ))}
-          </select>
-
-          <label htmlFor="place-team">{t('field.team')}</label>
-          <select id="place-team" value={resolvedTeam} onChange={(e) => setTeamId(e.target.value)}>
-            {teams.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
-          </select>
-
-          <label htmlFor="place-size">{t('field.size')}</label>
-          <select
-            id="place-size"
-            value={size}
-            onChange={(e) => setSize(e.target.value as 'XS' | 'S' | 'M' | 'L')}
-          >
-            {(['XS', 'S', 'M', 'L'] as const).map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-
-          <button type="submit">{t('action.place')}</button>
-        </form>
-      )}
-
+    <div className="fm-toolbar">
+      {/* Always reachable. Only the creation forms fold away. */}
       <div className="fm-form">
         <button type="button" onClick={onUndo}>
           {t('action.undo')}
@@ -153,6 +68,102 @@ export function CaptureBar({
           {t('action.clearLocalData')}
         </button>
       </div>
-    </section>
+
+      <details className="fm-controls" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+        <summary>{t('action.edit')}</summary>
+        <form
+          className="fm-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!teamName.trim()) return;
+            void addTeam(teamName.trim()).then(() => setTeamName(''));
+          }}
+        >
+          <label htmlFor="team-name">{t('field.team')}</label>
+          <input
+            id="team-name"
+            value={teamName}
+            onChange={(e) => setTeamName(e.target.value)}
+            placeholder="Payments"
+          />
+          <button type="submit">Add team</button>
+        </form>
+
+        <form
+          className="fm-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!ideaName.trim()) return;
+            void captureIdea(ideaName.trim()).then(() => setIdeaName(''));
+          }}
+        >
+          <label htmlFor="idea-name">{t('field.ideaName')}</label>
+          <input
+            id="idea-name"
+            value={ideaName}
+            onChange={(e) => setIdeaName(e.target.value)}
+            placeholder="SEPA instant payments"
+          />
+          <button type="submit">{t('action.captureIdea')}</button>
+        </form>
+
+        {canPlace && (
+          <form
+            className="fm-form"
+            aria-label={t('action.assignFootprint')}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void placeFootprint({
+                commitmentId: resolvedCommitment,
+                teamId: resolvedTeam,
+                quarterId: currentQuarter,
+                size,
+              });
+            }}
+          >
+            <label htmlFor="place-commitment">{t('list.commitment')}</label>
+            <select
+              id="place-commitment"
+              value={resolvedCommitment}
+              onChange={(e) => setCommitmentId(e.target.value)}
+            >
+              {ideas.map((idea) => (
+                <option key={idea.id} value={idea.id}>
+                  {idea.name}
+                </option>
+              ))}
+            </select>
+
+            <label htmlFor="place-team">{t('field.team')}</label>
+            <select
+              id="place-team"
+              value={resolvedTeam}
+              onChange={(e) => setTeamId(e.target.value)}
+            >
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+
+            <label htmlFor="place-size">{t('field.size')}</label>
+            <select
+              id="place-size"
+              value={size}
+              onChange={(e) => setSize(e.target.value as 'XS' | 'S' | 'M' | 'L')}
+            >
+              {(['XS', 'S', 'M', 'L'] as const).map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+
+            <button type="submit">{t('action.place')}</button>
+          </form>
+        )}
+      </details>
+    </div>
   );
 }

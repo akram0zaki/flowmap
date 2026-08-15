@@ -71,7 +71,11 @@ If any of those takes more than a glance, the layout is not doing its job.
 
 ### 2. Does the vessel read the way it is meant to?
 
-Switch to **Detail** (level 3) and look at Payments 2026-Q3:
+Switch to **Detail** (level 3) and look at Payments 2026-Q3. It should state,
+in words: the overflow (`+13 units · 121% ▲ Over capacity`), the reason the
+container is small (`-10 units this quarter — One vacancy, recruitment in
+progress`), and what the hatching is (`BAU & support 20 · Refinement 8 · ↻ 10
+carried over`).
 
 - Is it obvious that the hatched band at the bottom is _reserved_ and not
   available?
@@ -133,6 +137,8 @@ So you are not surprised by absence:
   not a design (`M2-COM-2`).
 - **No drag and drop.** Placement is through the form at the top (`M2-COM-5`).
 - **No dependencies, products, milestones, or Radar.** The domain supports them;
-  nothing renders them yet (M2 remainder and M3).
+  nothing renders them yet (M2 remainder and M3). So a _dependency_-caused
+  bottleneck is not traceable on screen — only a capacity-caused one. An earlier
+  version of this document claimed otherwise; it was wrong.
 - **No Commit Gate UI.** The rules exist and are tested; the dialog does not.
 - **No performance evidence.** Five teams is not twenty (`M2-MAP-9`).

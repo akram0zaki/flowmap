@@ -32,7 +32,6 @@ export function App() {
   const state = useWorkspace((s) => s.state);
   const status = useWorkspace((s) => s.status);
   const profileName = useWorkspace((s) => s.profileName);
-  const pendingCount = useWorkspace((s) => s.pendingCount);
   const selectedFootprintId = useWorkspace((s) => s.selectedFootprintId);
   const { undo, redo, select, clearStatus, clearLocalData } = useWorkspace.getState();
 
@@ -144,9 +143,10 @@ export function App() {
         </h1>
         <div className="fm-topbar__status" role="status">
           <span>{t('status.local')}</span>
-          <span aria-live="polite">
-            {pendingCount > 0 ? t('status.pending', { count: pendingCount }) : t('status.saved')}
-          </span>
+          {/* Pending count is sync plumbing. With no shared provider there is
+              nothing for it to be pending *to*, so it is noise rather than
+              status — it returns in M8 when it means something. */}
+          <span aria-live="polite">{t('status.saved')}</span>
           <span>{t('status.profile', { name: profileName })}</span>
         </div>
       </header>
@@ -205,10 +205,13 @@ export function App() {
             select(footprintId);
             setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId));
           }}
-          onSelectCell={(teamId, quarterId) =>
-            setFilter((f) =>
-              toggleFilterValue(toggleFilterValue(f, 'teams', teamId), 'quarters', quarterId),
-            )
+          // Selecting a cell used to toggle filters, which quietly stacked up
+          // until the board was unreadable. Until the detail panel exists
+          // (M2-COM-2), selecting a cell does nothing but move the cursor.
+          onSelectCell={() => undefined}
+          onFilterTeam={(teamId) => setFilter((f) => toggleFilterValue(f, 'teams', teamId))}
+          onFilterQuarter={(quarterId) =>
+            setFilter((f) => toggleFilterValue(f, 'quarters', quarterId))
           }
           onAnnounce={announce}
         />

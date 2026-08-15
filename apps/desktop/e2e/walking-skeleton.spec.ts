@@ -19,17 +19,31 @@ async function freshApp(page: Page) {
   await expect(page.getByRole('heading', { name: /flowmap/i })).toBeVisible();
 }
 
+/** Creation forms fold away by default; open them before using them. */
+async function openEditor(page: Page) {
+  const summary = page.getByText('Add and place work');
+  if (await summary.isVisible()) {
+    const open = await page
+      .locator('details.fm-controls')
+      .evaluate((d) => (d as HTMLDetailsElement).open);
+    if (!open) await summary.click();
+  }
+}
+
 async function addTeam(page: Page, name: string) {
+  await openEditor(page);
   await page.getByLabel('Team', { exact: true }).fill(name);
   await page.getByRole('button', { name: 'Add team' }).click();
 }
 
 async function captureIdea(page: Page, name: string) {
+  await openEditor(page);
   await page.getByLabel('What is it?').fill(name);
   await page.getByRole('button', { name: 'Capture idea' }).click();
 }
 
 async function place(page: Page, size: 'XS' | 'S' | 'M' | 'L') {
+  await openEditor(page);
   await page.getByLabel('Size').selectOption(size);
   await page.getByRole('button', { name: 'Place', exact: true }).click();
 }
@@ -138,6 +152,8 @@ test('clear local data empties the workspace and starts a fresh one', async ({ p
 
 test('the whole flow works keyboard-only', async ({ page }) => {
   await freshApp(page);
+
+  await openEditor(page);
 
   // Team
   await page.getByLabel('Team', { exact: true }).focus();

@@ -52,8 +52,8 @@ export type CapacityVesselProps = {
 };
 
 const AXIS_WIDTH = 34;
-const COMPACT_AXIS_WIDTH = 8;
-const BODY_WIDTH = 220;
+const COMPACT_AXIS_WIDTH = 20;
+const BODY_WIDTH = 260;
 const TOP_PAD = 28;
 const BOTTOM_PAD = 24;
 
@@ -105,6 +105,20 @@ export function CapacityVessel({
   const ticks: number[] = [];
   for (let u = 0; u <= axisMax; u += UNIT_TICK_MINOR) ticks.push(u);
 
+  const carriedUnits = laidOut
+    .filter((block) => block.footprint.carryOverFromQuarterId !== undefined)
+    .reduce((sum, block) => sum + block.footprint.units, 0);
+
+  const legend = [
+    ...teamQuarter.reserves.map((reserve) => ({
+      key: reserve.id,
+      label: `${reserve.type === 'HOLD' ? '⁘' : '╱'} ${reserve.label} ${reserve.amount}`,
+    })),
+    ...(carriedUnits > 0
+      ? [{ key: 'carried', label: `↻ ${t('carryover.units', { units: carriedUnits })}` }]
+      : []),
+  ];
+
   const summaryLabel = [
     teamName,
     teamQuarter.quarterId,
@@ -122,9 +136,12 @@ export function CapacityVessel({
         // a labelled picture of a container, not a grid with nothing in it.
         role={laidOut.length > 0 ? 'grid' : 'img'}
         aria-label={summaryLabel}
-        width={axisWidth + BODY_WIDTH}
+        // Scales to fill its cell rather than sitting at a fixed size in a sea
+        // of white — the block heights stay proportional either way.
+        width="100%"
         height={height}
         viewBox={`0 0 ${axisWidth + BODY_WIDTH} ${height}`}
+        preserveAspectRatio="xMidYMax meet"
       >
         <defs>
           {Object.values(PATTERNS)
@@ -288,7 +305,8 @@ export function CapacityVessel({
                   {blockHeight >= 14 && (
                     <text x={14} y={y(block.top) + blockHeight / 2 + 4} className="fm-block__label">
                       {block.commitment.class === 'MANDATORY' ? '🔒 ' : ''}
-                      {truncate(block.commitment.name, 22)}
+                      {carried ? '↻ ' : ''}
+                      {truncate(block.commitment.name, 30)}
                     </text>
                   )}
                   {blockHeight >= 14 && (
@@ -323,6 +341,24 @@ export function CapacityVessel({
           <span className="fm-vessel__status">
             {t('capacity.utilisation', { percent })} ·{' '}
             {t('capacity.headroom', { units: summary.headroom })}
+          </span>
+        )}
+
+        {/* Why the container is smaller than a normal quarter. Without this the
+            overload has a visible symptom and no visible cause. */}
+        {teamQuarter.capacityAdjustment !== 0 && (
+          <span className="fm-vessel__reason">
+            {t('capacity.adjusted', { units: teamQuarter.capacityAdjustment })}
+            {teamQuarter.adjustmentNote ? ` — ${teamQuarter.adjustmentNote}` : ''}
+          </span>
+        )}
+
+        {/* Reserves and carry-over named, not left to the hatching alone. */}
+        {!compact && legend.length > 0 && (
+          <span className="fm-vessel__legend">
+            {legend.map((entry) => (
+              <span key={entry.key}>{entry.label}</span>
+            ))}
           </span>
         )}
       </figcaption>

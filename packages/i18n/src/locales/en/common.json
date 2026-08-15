@@ -124,5 +124,8 @@
   "list.filtered": "{count} shown",
   "action.loadSample": "Load sample workspace",
   "sample.loaded": "Sample workspace loaded: {teams} teams, {commitments} commitments, {ideas} ideas.",
-  "sample.badge": "Sample data"
+  "sample.badge": "Sample data",
+  "capacity.adjusted": "{units} units this quarter",
+  "carryover.units": "{units} carried over",
+  "action.edit": "Add and place work"
 }

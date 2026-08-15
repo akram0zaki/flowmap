@@ -202,6 +202,18 @@ const NON_DEFAULT_RESERVES: readonly ReserveSpec[] = [
       { type: 'REFINEMENT', label: 'Refinement', amount: 5 },
     ],
   },
+  {
+    // Card tokenisation is on hold with its capacity deliberately preserved, so
+    // the held slot is visible as a labelled band rather than as headroom that
+    // is not really there. See docs/spec/02-capacity-model.md §2.1.
+    team: 'Payments',
+    quarter: Q_PLUS2,
+    reserves: [
+      { type: 'BAU_SUPPORT', label: 'BAU & support', amount: 15 },
+      { type: 'REFINEMENT', label: 'Refinement', amount: 5 },
+      { type: 'HOLD', label: 'Held: Card tokenisation', amount: 20, systemManaged: true },
+    ],
+  },
 ];
 
 /** Payments is short-staffed this quarter — half of why it tips into overflow. */

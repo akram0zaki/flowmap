@@ -16,7 +16,17 @@ async function freshApp(page: Page) {
   await expect(page.getByRole('heading', { name: /flowmap/i })).toBeVisible();
 }
 
+/** Creation forms fold away by default; open them before using them. */
+async function openEditor(page: Page) {
+  const summary = page.getByText('Add and place work');
+  const open = await page
+    .locator('details.fm-controls')
+    .evaluate((d) => (d as HTMLDetailsElement).open);
+  if (!open) await summary.click();
+}
+
 async function seed(page: Page) {
+  await openEditor(page);
   await page.getByLabel('Team', { exact: true }).fill('Payments');
   await page.getByRole('button', { name: 'Add team' }).click();
   await page.getByLabel('Team', { exact: true }).fill('Platform');
@@ -132,13 +142,19 @@ test('the grid is navigable by keyboard from a single tab stop', async ({ page }
   await expect(page.getByRole('status').filter({ hasText: /Platform/ })).toBeVisible();
 });
 
-test('filter chips show what is filtered and clear cleanly', async ({ page }) => {
+test('headers filter, chips show what is filtered, and clearing works', async ({ page }) => {
   await freshApp(page);
   await seed(page);
-  await page.getByRole('button', { name: 'Place', exact: true }).click();
 
-  await page.getByRole('gridcell').first().click();
+  // A header is the obvious place to narrow to one team or one quarter.
+  await page.getByRole('grid').getByRole('button', { name: 'Payments' }).click();
   await expect(page.getByRole('button', { name: /Team:/ })).toBeVisible();
+
+  await page
+    .getByRole('grid')
+    .getByRole('button', { name: /2026-Q4/ })
+    .click();
+  await expect(page.getByRole('button', { name: /Quarter: 2026-Q4/ })).toBeVisible();
 
   await page.getByRole('button', { name: 'Clear filters' }).click();
   await expect(page.getByText('No filters')).toBeVisible();
@@ -193,4 +209,53 @@ test('loading the sample twice replaces rather than duplicates', async ({ page }
   await page.getByRole('button', { name: 'Load sample workspace' }).click();
 
   await expect(page.getByRole('grid').getByRole('rowheader')).toHaveCount(5);
+});
+
+test('the map gets the space, not the chrome around it', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await expect(page.getByRole('grid').getByRole('rowheader')).toHaveCount(5);
+
+  const shell = (await page.locator('.fm-shell').boundingBox())!;
+  const lane = (await page.locator('.fm-ideas').boundingBox())!;
+  const map = (await page.locator('.fm-map').boundingBox())!;
+
+  // The lane is a sidebar, not a peer of the map.
+  expect(lane.width).toBeLessThanOrEqual(220);
+  expect(map.width).toBeGreaterThan(shell.width * 0.6);
+
+  // Editing chrome is collapsed by default; the board is what you land on.
+  const controls = (await page.locator('.fm-controls').boundingBox())!;
+  expect(controls.height).toBeLessThan(80);
+
+  // And the board is above the fold.
+  expect(map.y).toBeLessThan(300);
+});
+
+test('the reasons behind a number are on screen, not only in the data', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const payments = page.locator('.fm-grid__cell').filter({ hasText: 'Payments · 2026-Q3' });
+
+  // Why the container is smaller than a normal quarter.
+  await expect(payments).toContainText('One vacancy, recruitment in progress');
+  // What the hatched plinth actually is.
+  await expect(payments).toContainText('BAU & support');
+  await expect(payments).toContainText('Refinement');
+  // How much of the load is carried over rather than new.
+  await expect(payments).toContainText('carried over');
+});
+
+test('held capacity is a labelled band, not invisible headroom', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const held = page.locator('.fm-grid__cell').filter({ hasText: 'Payments · 2027-Q1' });
+  await expect(held).toContainText('Held: Card tokenisation');
 });
