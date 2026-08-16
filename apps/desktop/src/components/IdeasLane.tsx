@@ -14,6 +14,7 @@
  * See docs/spec/06-views-interaction.md §3.1 and 05-scenarios-qbr.md §8.
  */
 
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { READINESS_GAPS, type IdeaModel, type IdeaReadinessMap } from '@flowmap/visual-model';
 
 import { t } from '../i18n/t.js';
@@ -23,12 +24,22 @@ export type IdeasLaneProps = {
   readonly readiness: IdeaReadinessMap;
   readonly selectedCommitmentId: string | null;
   readonly onSelect: (commitmentId: string) => void;
+  /** Pick this Idea up to place it — pointer press, or Space. */
+  readonly onPickUp: (commitmentId: string, event?: ReactPointerEvent) => void;
+  readonly draggingCommitmentId: string | null;
 };
 
 /** Ideas that need a decision to be made rank above ones that need a name. */
 const IMPORTANCE_ORDER: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 
-export function IdeasLane({ ideas, readiness, selectedCommitmentId, onSelect }: IdeasLaneProps) {
+export function IdeasLane({
+  ideas,
+  readiness,
+  selectedCommitmentId,
+  onSelect,
+  onPickUp,
+  draggingCommitmentId,
+}: IdeasLaneProps) {
   const ready = ideas.filter((idea) => readiness.get(idea.commitmentId)?.readyToPlace).length;
 
   const ordered = [...ideas].sort((a, b) => {
@@ -53,6 +64,7 @@ export function IdeasLane({ ideas, readiness, selectedCommitmentId, onSelect }: 
       ) : (
         <>
           {ready > 0 && <p className="fm-ideas__ready">{t('idea.readyCount', { count: ready })}</p>}
+          <p className="fm-ideas__hint">{t('drop.railHint')}</p>
 
           <ul>
             {ordered.map((idea) => {
@@ -67,8 +79,19 @@ export function IdeasLane({ ideas, readiness, selectedCommitmentId, onSelect }: 
                     className="fm-idea"
                     data-ready={readyToPlace || undefined}
                     data-importance={idea.importance}
+                    data-dragging={draggingCommitmentId === idea.commitmentId || undefined}
                     aria-pressed={selectedCommitmentId === idea.commitmentId}
                     onClick={() => onSelect(idea.commitmentId)}
+                    onPointerDown={(event) => onPickUp(idea.commitmentId, event)}
+                    onKeyDown={(event) => {
+                      // Space picks it up, arrows carry it across the board.
+                      // The rail is where demand starts, so the shortest route
+                      // from here to a quarter is the one that matters.
+                      if (event.key === ' ') {
+                        event.preventDefault();
+                        onPickUp(idea.commitmentId);
+                      }
+                    }}
                   >
                     <span className="fm-idea__name">
                       {idea.commitmentClass === 'MANDATORY' ? '🔒 ' : ''}

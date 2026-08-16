@@ -101,6 +101,29 @@ export function summariseCapacity(input: CapacityInput): CapacitySummary {
   };
 }
 
+/**
+ * The same container carrying a different load.
+ *
+ * For asking "what would this become" — a drag preview, a scenario — without
+ * building the footprints that would produce it. Derived here rather than at
+ * the call site so a projected figure can never disagree with a real one about
+ * what utilisation means.
+ */
+export function withCommittedLoad(
+  summary: CapacitySummary,
+  committedLoad: CapacityUnits,
+): CapacitySummary {
+  const headroom = summary.deliverableCapacity - committedLoad;
+  return {
+    ...summary,
+    committedLoad,
+    headroom,
+    overflow: Math.max(0, -headroom),
+    utilisation:
+      summary.deliverableCapacity === 0 ? null : committedLoad / summary.deliverableCapacity,
+  };
+}
+
 /** Whole percent, rounded half-up. `null` when there is no deliverable capacity. */
 export function utilisationPercent(summary: CapacitySummary): number | null {
   return summary.utilisation === null ? null : Math.round(summary.utilisation * 100);

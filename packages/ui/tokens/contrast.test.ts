@@ -111,6 +111,9 @@ const TEXT_PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   // and those blocks carry the numbers that matter most.
   ['--ink', '--graphite-2', 4.5],
   ['--ink', '--graphite-3', 4.5],
+  // The over-capacity portion of a block is a tint the block's own name is
+  // printed on, so it is a text background like any other.
+  ['--ink', '--critical-surface', 4.5],
 ];
 
 /** Graphical objects and interactive boundaries need 3:1, not 4.5:1. */

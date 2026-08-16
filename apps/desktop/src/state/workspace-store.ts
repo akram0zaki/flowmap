@@ -11,6 +11,7 @@
 
 import { create } from 'zustand';
 import {
+  applyTransition,
   assignCapacityFootprint,
   createIdea,
   createTeam,
@@ -84,8 +85,30 @@ type StoreState = {
     quarterId: string;
     units?: number;
     size?: 'XS' | 'S' | 'M' | 'L' | 'XL';
+    isPrimary?: boolean;
   }): Promise<boolean>;
-  moveFootprint(footprintId: EntityId, quarterId: string): Promise<boolean>;
+  /**
+   * Cross-team as well as cross-quarter: a drag can land anywhere on the board,
+   * and the domain payload always supported both even though the first caller
+   * only ever changed the quarter.
+   */
+  moveFootprint(
+    footprintId: EntityId,
+    target: { teamId?: EntityId; quarterId?: string },
+  ): Promise<boolean>;
+  /**
+   * The drop that turns an Idea into committed work.
+   *
+   * Placing it and passing the gate are one gesture because they are one
+   * decision — and because an Idea may not hold a capacity block on the near
+   * side of the gate, so the intermediate state must not outlive the call.
+   */
+  commitIdeaInto(input: {
+    commitmentId: EntityId;
+    teamId: EntityId;
+    quarterId: string;
+    units: number;
+  }): Promise<boolean>;
   resizeFootprint(footprintId: EntityId, units: number): Promise<boolean>;
   removeFootprint(footprintId: EntityId): Promise<boolean>;
   undo(): Promise<void>;
@@ -234,6 +257,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
             quarterId: input.quarterId as never,
             ...(input.units !== undefined ? { units: input.units } : {}),
             ...(input.size !== undefined ? { size: input.size } : {}),
+            ...(input.isPrimary !== undefined ? { isPrimary: input.isPrimary } : {}),
           },
           cmd,
           ctx,
@@ -242,12 +266,67 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     );
   },
 
-  async moveFootprint(footprintId, quarterId) {
+  async moveFootprint(footprintId, target) {
+    // MoveCapacityFootprint does not materialise its destination, unlike
+    // assign. Dragging into a quarter a team has never been given lands on a
+    // container that does not exist yet, so create it first.
+    if (target.teamId !== undefined && target.quarterId !== undefined) {
+      const ensured = await get().dispatch('EnsureTeamQuarter', (state, cmd, ctx) =>
+        ensureTeamQuarter(
+          state,
+          { teamId: target.teamId as EntityId, quarterId: target.quarterId as never },
+          cmd,
+          ctx,
+        ),
+      );
+      if (ensured === false) return false;
+    }
+
     return (
       (await get().dispatch('MoveCapacityFootprint', (state, cmd, ctx) =>
-        moveCapacityFootprint(state, { footprintId, quarterId: quarterId as never }, cmd, ctx),
+        moveCapacityFootprint(
+          state,
+          {
+            footprintId,
+            ...(target.teamId !== undefined ? { teamId: target.teamId } : {}),
+            ...(target.quarterId !== undefined ? { quarterId: target.quarterId as never } : {}),
+          },
+          cmd,
+          ctx,
+        ),
       )) !== false
     );
+  },
+
+  async commitIdeaInto(input) {
+    const placed = await get().placeFootprint({
+      commitmentId: input.commitmentId,
+      teamId: input.teamId,
+      quarterId: input.quarterId,
+      units: input.units,
+      isPrimary: true,
+    });
+    if (!placed) return false;
+
+    const passed = await get().dispatch('PassCommitGate', (state, cmd, ctx) =>
+      applyTransition('PassCommitGate', state, { commitmentId: input.commitmentId }, cmd, ctx),
+    );
+
+    // The gate refused after the footprint landed. Leaving it there would put an
+    // Idea in a capacity block, which the model does not allow, so take it back
+    // out — the status message from the failed gate is what the user sees.
+    if (passed === false) {
+      const footprint = [...(get().state?.footprints.values() ?? [])].find(
+        (f) =>
+          f.commitmentId === input.commitmentId &&
+          f.teamId === input.teamId &&
+          f.quarterId === input.quarterId &&
+          f.archivedAt === undefined,
+      );
+      if (footprint) await get().removeFootprint(footprint.id);
+      return false;
+    }
+    return true;
   },
 
   async resizeFootprint(footprintId, units) {
@@ -377,6 +456,18 @@ function runNamed(
       return removeCapacityFootprint(state, payload as never, cmd, ctx);
     case 'RestoreCapacityFootprint':
       return restoreCapacityFootprint(state, payload as never, cmd, ctx);
+    // Every lifecycle transition is its own inverse's handler. Without these,
+    // committing an Idea produced a RevertCommitGate inverse that undo could
+    // not run, so the action looked undoable and silently was not.
+    case 'PassCommitGate':
+    case 'RevertCommitGate':
+    case 'StartDelivery':
+    case 'CorrectToCommitted':
+    case 'HoldCommitment':
+    case 'ResumeCommitment':
+    case 'CompleteCommitment':
+    case 'DropCommitment':
+      return applyTransition(name, state, payload as never, cmd, ctx);
     default:
       return {
         ok: false,

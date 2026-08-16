@@ -13,14 +13,20 @@ import {
   focusOn,
   NO_FILTER,
   NO_FOCUS,
+  defaultDropUnits,
+  findCell,
+  previewDrop,
   readinessForIdeas,
   toggleFilterValue,
   type CellModel,
+  type DragPayload,
   type FilterState,
   type ZoomLevel,
 } from '@flowmap/visual-model';
 
 import { useWorkspace } from '../state/workspace-store.js';
+import { usePlacement, type DropTarget } from '../state/use-placement.js';
+import type { QuarterId } from '@flowmap/domain';
 import { PortfolioMap } from '../components/PortfolioMap.jsx';
 import { LensStrip } from '../components/LensStrip.jsx';
 import { IdeasLane } from '../components/IdeasLane.jsx';
@@ -34,7 +40,8 @@ export function App() {
   const status = useWorkspace((s) => s.status);
   const profileName = useWorkspace((s) => s.profileName);
   const selectedFootprintId = useWorkspace((s) => s.selectedFootprintId);
-  const { undo, redo, select, clearStatus, clearLocalData } = useWorkspace.getState();
+  const { undo, redo, select, clearStatus, clearLocalData, commitIdeaInto, moveFootprint } =
+    useWorkspace.getState();
 
   const [level, setLevelState] = useState<ZoomLevel>(2);
   const [filter, setFilter] = useState<FilterState>(NO_FILTER);
@@ -108,6 +115,113 @@ export function App() {
       null
     );
   }, [board, focusedCommitmentId]);
+
+  // ── Placing work ───────────────────────────────────────────────────────
+  //
+  // Dragging is not a shortcut for the form; it is the product's argument. You
+  // pick work up, every container tells you what it would become, and the drop
+  // is the decision. For an Idea the drop is also the Commit Gate — the gesture
+  // supplies a team, a footprint, and a primary footprint, which is three of
+  // the four hard blockers, so there is nothing left to fill in.
+
+  const describeDrag = useCallback(
+    (payload: DragPayload, target: DropTarget | null): string => {
+      if (!board || !target) return t('drop.carrying', { name: payload.name });
+      const cell = findCell(board, target.teamId, target.quarterId as QuarterId);
+      if (!cell) return t('drop.carrying', { name: payload.name });
+
+      const preview = previewDrop(cell, payload);
+      if (!preview.allowed) {
+        return t('drop.refusedAt', {
+          team: cell.teamName,
+          quarter: cell.quarterId,
+          reason: preview.refusal ? t(`drop.no.${preview.refusal}`) : '',
+        });
+      }
+      return t('drop.wouldLand', {
+        name: payload.name,
+        team: cell.teamName,
+        quarter: cell.quarterId,
+        percent: preview.percent ?? 0,
+      });
+    },
+    [board],
+  );
+
+  const applyDrop = useCallback(
+    (payload: DragPayload, target: DropTarget) => {
+      if (!board) return;
+      const cell = findCell(board, target.teamId, target.quarterId as QuarterId);
+      // Re-check on release. The board can change under a slow drag, and the
+      // preview that allowed it may no longer be the truth.
+      if (!cell || !previewDrop(cell, payload).allowed) return;
+
+      if (payload.kind === 'BLOCK') {
+        void moveFootprint(payload.footprintId, {
+          teamId: target.teamId,
+          quarterId: target.quarterId,
+        });
+      } else {
+        void commitIdeaInto({
+          commitmentId: payload.commitmentId,
+          teamId: target.teamId,
+          quarterId: target.quarterId,
+          units: payload.units,
+        });
+      }
+      announce(
+        t('drop.placed', { name: payload.name, team: cell.teamName, quarter: cell.quarterId }),
+      );
+    },
+    [board, moveFootprint, commitIdeaInto, announce],
+  );
+
+  const { placement, beginPointer, beginKeyboard, aim, drop, cancel } = usePlacement({
+    onDrop: applyDrop,
+    onCancel: (payload) => announce(t('drop.cancelled', { name: payload.name })),
+    announce,
+    describe: describeDrag,
+  });
+
+  const pickUpIdea = useCallback(
+    (commitmentId: string, event?: React.PointerEvent) => {
+      const idea = board?.ideas.find((i) => i.commitmentId === commitmentId);
+      if (!idea || !state) return;
+      const payload: DragPayload = {
+        kind: 'IDEA',
+        commitmentId,
+        name: idea.name,
+        units: defaultDropUnits(state.workspace.settings.capacity.sizeMapping),
+        commitmentClass: idea.commitmentClass,
+        hasTargetDate: state.commitments.get(commitmentId)?.targetDate !== undefined,
+      };
+      if (event) beginPointer(payload, event);
+      else beginKeyboard(payload);
+    },
+    [board, state, beginPointer, beginKeyboard],
+  );
+
+  const pickUpBlock = useCallback(
+    (footprintId: string, teamId: string, quarterId: string, event?: React.PointerEvent) => {
+      const block = board?.rows
+        .flatMap((row) => row.cells)
+        .flatMap((cell) => cell.blocks)
+        .find((b) => b.footprintId === footprintId);
+      if (!block) return;
+      const payload: DragPayload = {
+        kind: 'BLOCK',
+        footprintId,
+        commitmentId: block.commitmentId,
+        name: block.name,
+        units: block.units,
+        fromTeamId: teamId,
+        fromQuarterId: quarterId as never,
+      };
+      if (event) beginPointer(payload, event);
+      else beginKeyboard(payload);
+    },
+    [board, beginPointer, beginKeyboard],
+  );
 
   const vesselBlocksFor = useCallback(
     (cell: CellModel): VesselBlock[] => {
@@ -197,9 +311,11 @@ export function App() {
           ideas={board.ideas}
           readiness={readiness}
           selectedCommitmentId={focusedCommitmentId}
+          draggingCommitmentId={placement?.payload.commitmentId ?? null}
           onSelect={(commitmentId) =>
             setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId))
           }
+          onPickUp={pickUpIdea}
         />
 
         <PortfolioMap
@@ -222,8 +338,34 @@ export function App() {
             setFilter((f) => toggleFilterValue(f, 'quarters', quarterId))
           }
           onAnnounce={announce}
+          dragging={placement?.payload ?? null}
+          dragTarget={placement?.target ?? null}
+          onPickUpBlock={pickUpBlock}
+          onAimDrag={(teamId, quarterId) => aim({ teamId, quarterId })}
+          onDropHere={drop}
         />
       </div>
+
+      {/* The piece that follows the cursor. Small and quiet — the answer is on
+          the board, not under the pointer. */}
+      {placement?.at && (
+        <div
+          className="fm-carry"
+          aria-hidden="true"
+          style={{ transform: `translate(${placement.at.x + 12}px, ${placement.at.y + 12}px)` }}
+        >
+          {placement.payload.name} · {placement.payload.units}
+        </div>
+      )}
+
+      {placement?.via === 'keyboard' && (
+        <div className="fm-carry fm-carry--keyboard" aria-hidden="true">
+          {t('drop.keyboardHint', { name: placement.payload.name })}
+          <button type="button" onClick={cancel}>
+            {t('drop.cancel')}
+          </button>
+        </div>
+      )}
 
       {/* Capacity consequences reach a non-sighted user the moment they happen. */}
       <div className="fm-visually-hidden" role="status" aria-live="polite">

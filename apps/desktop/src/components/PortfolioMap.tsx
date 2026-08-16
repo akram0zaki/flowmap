@@ -15,14 +15,23 @@
  * and text, never colour alone.
  */
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import {
   allBlocks,
   isBlockFocused,
   isCellFocused,
   matchesFilter,
+  previewDrop,
   type BoardModel,
   type CellModel,
+  type DragPayload,
   type FilterState,
   type FocusModel,
   type ZoomLevel,
@@ -44,6 +53,18 @@ export type PortfolioMapProps = {
   readonly onFilterTeam: (teamId: string) => void;
   readonly onFilterQuarter: (quarterId: QuarterId) => void;
   readonly onAnnounce: (message: string) => void;
+  /** Work currently in the hand, if any — drives the drop preview. */
+  readonly dragging: DragPayload | null;
+  /** Where a keyboard drag is aimed. The pointer aims itself, by hit-testing. */
+  readonly dragTarget: { teamId: string; quarterId: string } | null;
+  readonly onPickUpBlock: (
+    footprintId: string,
+    teamId: string,
+    quarterId: QuarterId,
+    event?: ReactPointerEvent,
+  ) => void;
+  readonly onAimDrag: (teamId: string, quarterId: QuarterId) => void;
+  readonly onDropHere: () => void;
 };
 
 export function PortfolioMap({
@@ -58,6 +79,11 @@ export function PortfolioMap({
   onFilterTeam,
   onFilterQuarter,
   onAnnounce,
+  dragging,
+  dragTarget,
+  onPickUpBlock,
+  onAimDrag,
+  onDropHere,
 }: PortfolioMapProps) {
   // Roving focus: the grid is one tab stop, arrows move within it.
   const [cursor, setCursor] = useState<{ row: number; col: number }>({ row: 0, col: 0 });
@@ -69,11 +95,17 @@ export function PortfolioMap({
         const row = Math.min(board.rows.length - 1, Math.max(0, prev.row + dRow));
         const col = Math.min(board.quarters.length - 1, Math.max(0, prev.col + dCol));
         const cell = board.rows[row]?.cells[col];
-        if (cell) onAnnounce(describeCell(cell));
+        // While work is in the hand the cursor *is* the aim: the same arrows
+        // that browse the board carry the piece, so there is nothing extra to
+        // learn and no second cursor to keep track of.
+        if (cell) {
+          if (dragging) onAimDrag(cell.teamId, cell.quarterId);
+          else onAnnounce(describeCell(cell));
+        }
         return { row, col };
       });
     },
-    [board, onAnnounce],
+    [board, onAnnounce, dragging, onAimDrag],
   );
 
   const onKeyDown = useCallback(
@@ -106,6 +138,10 @@ export function PortfolioMap({
         case 'Enter':
         case ' ': {
           e.preventDefault();
+          if (dragging) {
+            onDropHere();
+            break;
+          }
           const cell = board.rows[cursor.row]?.cells[cursor.col];
           if (cell) onSelectCell(cell.teamId, cell.quarterId);
           break;
@@ -114,7 +150,7 @@ export function PortfolioMap({
           break;
       }
     },
-    [board, cursor, move, onSelectCell],
+    [board, cursor, move, onSelectCell, dragging, onDropHere],
   );
 
   // Centre the current quarter on first render, as the spec requires.
@@ -207,22 +243,35 @@ export function PortfolioMap({
                 const focused = isCellFocused(focus, cell);
                 const isCursor = cursor.row === rowIndex && cursor.col === colIndex;
 
+                // Every container answers the question during the drag, not
+                // after it: what would this become, and would it take this.
+                const preview = dragging ? previewDrop(cell, dragging) : null;
+                const aimedHere =
+                  dragTarget?.teamId === cell.teamId && dragTarget.quarterId === cell.quarterId;
+
                 return (
                   <div
                     key={cell.key}
                     role="gridcell"
                     data-column={colIndex}
+                    data-drop-team={cell.teamId}
+                    data-drop-quarter={cell.quarterId}
                     aria-selected={isCursor}
                     aria-label={describeCell(cell)}
                     className="fm-grid__cell"
                     data-cursor={isCursor || undefined}
                     data-dimmed={!focused || undefined}
                     data-closed={cell.closed || undefined}
+                    data-drop={aimedHere ? (preview?.allowed ? 'ok' : 'no') : undefined}
                     onClick={() => {
                       setCursor({ row: rowIndex, col: colIndex });
                       onSelectCell(cell.teamId, cell.quarterId);
                     }}
                   >
+                    {/* The reason arrives before the commitment does. */}
+                    {aimedHere && preview && !preview.allowed && preview.refusal && (
+                      <span className="fm-drop__refusal">{t(`drop.no.${preview.refusal}`)}</span>
+                    )}
                     {level === 1 ? (
                       <AggregateBar cell={cell} />
                     ) : cell.teamQuarter && cell.summary ? (
@@ -234,10 +283,23 @@ export function PortfolioMap({
                         compact={level === 2}
                         dimmedFootprintIds={dimmedIds(cell, focus, filter)}
                         {...(selectedFootprintId !== null ? { selectedFootprintId } : {})}
+                        {...(aimedHere && preview
+                          ? {
+                              incoming: {
+                                units: dragging?.units ?? 0,
+                                allowed: preview.allowed,
+                                percent: preview.percent,
+                                overflow: preview.overflow,
+                              },
+                            }
+                          : {})}
                         onSelect={(footprintId) => {
                           const block = cell.blocks.find((b) => b.footprintId === footprintId);
                           if (block) onSelectBlock(footprintId, block.commitmentId);
                         }}
+                        onPickUp={(footprintId: string, event?: ReactPointerEvent) =>
+                          onPickUpBlock(footprintId, cell.teamId, cell.quarterId, event)
+                        }
                       />
                     ) : (
                       <span className="fm-grid__empty" aria-hidden="true">

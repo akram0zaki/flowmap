@@ -84,7 +84,12 @@ function footprint(
   };
 }
 
-function renderVessel(blocks: VesselBlock[], tq = teamQuarter(), onSelect?: (id: string) => void) {
+function renderVessel(
+  blocks: VesselBlock[],
+  tq = teamQuarter(),
+  onSelect?: (id: string) => void,
+  onPickUp?: (id: string) => void,
+) {
   const summary = summariseCapacity({
     teamQuarter: tq,
     footprints: blocks.map((b) => b.footprint),
@@ -99,6 +104,7 @@ function renderVessel(blocks: VesselBlock[], tq = teamQuarter(), onSelect?: (id:
       summary={summary}
       blocks={blocks}
       {...(onSelect ? { onSelect } : {})}
+      {...(onPickUp ? { onPickUp } : {})}
     />,
   );
 }
@@ -216,8 +222,24 @@ describe('keyboard', () => {
     expect(onSelect).toHaveBeenCalledWith('f1');
 
     await user.tab();
-    await user.keyboard(' ');
+    await user.keyboard('{Enter}');
     expect(onSelect).toHaveBeenCalledWith('f2');
+  });
+
+  // Enter inspects, Space picks up — the WAI-ARIA drag idiom. Space used to
+  // select too, which left no key at all for moving a block by keyboard.
+  it('picks a block up with Space rather than selecting it', async () => {
+    const onSelect = vi.fn();
+    const onPickUp = vi.fn();
+    const user = userEvent.setup();
+
+    renderVessel(oneBlock, teamQuarter(), onSelect, onPickUp);
+
+    await user.tab();
+    await user.keyboard(' ');
+
+    expect(onPickUp).toHaveBeenCalledWith('f1');
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it('makes every block focusable', () => {

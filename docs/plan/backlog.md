@@ -11,7 +11,7 @@ capability**, not by technical layer — each ticket should leave the product me
 > This file is kept current as work lands. A ticket is ✅ only when its acceptance criteria pass and
 > the [`AGENTS.md`](../../AGENTS.md) definition of done is met — not when the code merely exists.
 
-**Progress:** M0 2/14 · **M1 22/22 — complete** · M2 13/28 · M6-WSP-2 pulled forward · M3–M9 not started
+**Progress:** M0 2/14 · **M1 22/22 — complete** · M2 14/28 · M6-WSP-2 pulled forward · M3–M9 not started
 
 Every ticket inherits the definition of done from [`AGENTS.md`](../../AGENTS.md). The acceptance
 criteria below are the _additional_, ticket-specific ones.
@@ -121,7 +121,7 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 | ⬜  | M2-COM-2  | Progressive detail panel                            |  L   | M2-COM-1  | All sections from spec 06 §8; empty sections show an "Add…" affordance                                                 |
 | ⬜  | M2-COM-3  | Three-part tooltips for every domain concept        |  M   | M2-COM-2  | Definition · what it is not · example, on every capacity/lifecycle/impact/dependency/health/attention/confidence field |
 | ⬜  | M2-COM-4  | Visual quarter strip for target selection           |  S   | M2-COM-2  | No target-quarter dropdown in any primary flow; direct date entry derives the quarter                                  |
-| ⬜  | M2-COM-5  | Multi-team / multi-quarter footprint editing        |  M   | M2-MAP-1  | Drag between cells; split across quarters; primary-footprint invariant enforced                                        |
+| 🔵  | M2-COM-5  | Multi-team / multi-quarter footprint editing        |  M   | M2-MAP-1  | Drag between cells; split across quarters; primary-footprint invariant enforced                                        |
 | ⬜  | M2-COM-6  | Product impacts + themes                            |  M   | M2-COM-2  | Single-`PRIMARY` invariant enforced with a clear error                                                                 |
 | ⬜  | M2-COM-7  | Milestones (≤ 6)                                    |  S   | M2-COM-2  | Cap enforced; milestones render on blocks                                                                              |
 | ⬜  | M2-COM-8  | Typed external links                                |  S   | M2-COM-2  | HTTPS only; opens in the system browser; never embedded                                                                |
@@ -135,7 +135,7 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 | St  | ID        | Title                                               | Size | Dep       | Acceptance                                                                          |
 | --- | --------- | --------------------------------------------------- | :--: | --------- | ----------------------------------------------------------------------------------- |
 | ✅  | M2-A11Y-1 | Canvas grid semantics + roving tabindex             |  M   | M2-MAP-1  | `role="grid"`, `gridcell` per block, labels carry name/units/lifecycle/signal count |
-| ⬜  | M2-A11Y-2 | Move mode                                           |  M   | M2-A11Y-1 | Arrows choose target; live headroom announced; `Enter` commits; `Esc` restores      |
+| ✅  | M2-A11Y-2 | Move mode                                           |  M   | M2-A11Y-1 | Arrows choose target; live headroom announced; `Enter` commits; `Esc` restores      |
 | ⬜  | M2-A11Y-3 | Resize mode + keyboard dependency drawing           |  S   | M2-A11Y-2 | Same command emitted as the pointer path                                            |
 | ✅  | M2-A11Y-4 | Live-region announcements for capacity consequences |  S   | M2-A11Y-2 | Overflow, headroom change, and rule outcomes announced as they happen               |
 | ✅  | M2-A11Y-5 | List companion for every M2 view                    |  M   | M2-MAP-8  | `Ctrl/Cmd + L`; totals match; sortable; exportable                                  |

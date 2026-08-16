@@ -273,10 +273,10 @@ test('overflow is drawn as a measured excess, not a red block', async ({ page })
   // The bracket states the quantity. Without it the spill is a texture.
   await expect(payments.locator('.fm-overflow__label')).toHaveText('+13');
 
-  // The hatch must cover 13 units and no more. It once covered whole blocks,
+  // The tint must cover 13 units and no more. It once covered whole blocks,
   // which claimed 20 units were over while the bracket said 13.
   const hatched = await payments
-    .locator('.fm-block rect[fill*="overflow"]')
+    .locator('.fm-block__over')
     .evaluateAll((rects) =>
       rects.reduce((sum, rect) => sum + rect.getBoundingClientRect().height, 0),
     );
@@ -368,4 +368,128 @@ test('a reduced quarter says which way it moved, in words', async ({ page }) => 
   // "-10 units this quarter" opened on a hyphen, which reads as a list bullet.
   await expect(reason).toContainText('10 units fewer this quarter');
   expect(((await reason.textContent()) ?? '').trimStart().startsWith('-')).toBe(false);
+});
+
+/**
+ * Placing work by dragging it.
+ *
+ * The premise of the product: you pick work up, every container tells you what
+ * it would become, and the drop is the decision. If these break, Flowmap is a
+ * form with a chart next to it.
+ */
+
+async function dragTo(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  // Past the threshold first, or the press is read as a click.
+  await page.mouse.move(from.x + 40, from.y + 20, { steps: 4 });
+  await page.mouse.move(to.x, to.y, { steps: 10 });
+}
+
+test('an Idea dragged onto a quarter shows what it would do before it does it', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const idea = page.locator('.fm-idea').filter({ hasText: 'Request to pay' });
+  const cell = page.locator('[data-drop-team][data-drop-quarter="2026-Q4"]').first();
+
+  const from = await idea.boundingBox();
+  const to = await cell.boundingBox();
+  if (!from || !to) throw new Error('missing geometry');
+
+  await expect(cell).toContainText('47%');
+
+  await dragTo(
+    page,
+    { x: from.x + 40, y: from.y + 15 },
+    { x: to.x + to.width / 2, y: to.y + to.height / 2 },
+  );
+
+  // The consequence is on the board while the pointer is still down.
+  await expect(cell).toHaveAttribute('data-drop', 'ok');
+  await expect(cell.locator('.fm-incoming__band')).toBeVisible();
+  await expect(cell).toContainText('60%');
+  await expect(cell).toContainText('was 47%');
+
+  await page.mouse.up();
+
+  // The drop is the Commit Gate: it supplies the team, the footprint, and the
+  // primary footprint, so the Idea leaves the rail as committed work.
+  await expect(cell).toContainText('Request to pay');
+  await expect(page.locator('.fm-idea').filter({ hasText: 'Request to pay' })).toHaveCount(0);
+});
+
+test('a drop the model would refuse is refused during the drag, with the reason', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  // Instant payments regulation already holds a block in Payments 2026-Q4, so
+  // dragging its 2026-Q3 block there would be a second footprint in one cell.
+  const source = page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^Instant payments regulation/ });
+  const target = page.locator('[data-drop-team][data-drop-quarter="2026-Q4"]').first();
+
+  const from = await source.boundingBox();
+  const to = await target.boundingBox();
+  if (!from || !to) throw new Error('missing geometry');
+
+  await dragTo(
+    page,
+    { x: from.x + 40, y: from.y + 10 },
+    { x: to.x + to.width / 2, y: to.y + to.height / 2 },
+  );
+
+  await expect(target).toHaveAttribute('data-drop', 'no');
+  await expect(target).toContainText('already has a block here');
+
+  await page.mouse.up();
+  // Refused means unchanged, not partially applied.
+  await expect(page.getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })).toContainText('121%');
+});
+
+test('work can be placed with the keyboard alone', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const idea = page.locator('.fm-idea').filter({ hasText: 'Request to pay' });
+  await idea.focus();
+  await page.keyboard.press(' ');
+
+  // Space picks it up; the board says so rather than leaving it to the cursor.
+  await expect(page.locator('.fm-carry--keyboard')).toContainText('Request to pay');
+
+  // The grid's own arrows carry it — no second cursor to learn.
+  await page.locator('.fm-grid').focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('.fm-carry--keyboard')).toHaveCount(0);
+  await expect(page.locator('.fm-idea').filter({ hasText: 'Request to pay' })).toHaveCount(0);
+});
+
+test('Escape abandons a drag without changing anything', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+
+  const before = await page.locator('.fm-idea').count();
+  await page.locator('.fm-idea').first().focus();
+  await page.keyboard.press(' ');
+  await expect(page.locator('.fm-carry--keyboard')).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.fm-carry--keyboard')).toHaveCount(0);
+  expect(await page.locator('.fm-idea').count()).toBe(before);
 });

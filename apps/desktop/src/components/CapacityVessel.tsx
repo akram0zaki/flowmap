@@ -17,7 +17,7 @@
  * a list companion that must show identical totals.
  */
 
-import { useId } from 'react';
+import { useId, type PointerEvent as ReactPointerEvent } from 'react';
 import type { CapacitySummary, CapacityFootprint, Commitment, TeamQuarter } from '@flowmap/domain';
 import { utilisationPercent } from '@flowmap/domain';
 import {
@@ -48,7 +48,21 @@ export type CapacityVesselProps = {
   readonly compact?: boolean;
   /** Out of focus or filtered out — faded, never removed. */
   readonly dimmedFootprintIds?: ReadonlySet<string>;
+  /**
+   * Work being held over this container. Drawn as an outline landing on top of
+   * the stack, so the answer to "will it fit" is the picture rather than a
+   * number you have to compare against another number.
+   */
+  readonly incoming?: {
+    readonly units: number;
+    readonly allowed: boolean;
+    /** Utilisation the container would show after the drop. */
+    readonly percent: number | null;
+    readonly overflow: number;
+  };
   readonly onSelect?: (footprintId: string) => void;
+  /** Start moving this block — pointer press, or Space on the keyboard. */
+  readonly onPickUp?: (footprintId: string, event?: ReactPointerEvent) => void;
 };
 
 const AXIS_WIDTH = 34;
@@ -66,7 +80,9 @@ export function CapacityVessel({
   selectedFootprintId,
   compact = false,
   dimmedFootprintIds,
+  incoming,
   onSelect,
+  onPickUp,
 }: CapacityVesselProps) {
   const patternPrefix = useId().replace(/:/g, '');
   const unitPx = UNIT_PX * zoom;
@@ -76,9 +92,10 @@ export function CapacityVessel({
 
   // The axis spans the effective capacity, or the load when work overflows past
   // it — otherwise the spill would be drawn outside the viewBox.
+  const incomingUnits = incoming?.allowed ? incoming.units : 0;
   const axisMax = Math.max(
     summary.effectiveCapacity,
-    summary.reservedTotal + summary.committedLoad,
+    summary.reservedTotal + summary.committedLoad + incomingUnits,
   );
   const bodyHeight = axisMax * unitPx;
   const height = bodyHeight + TOP_PAD + BOTTOM_PAD;
@@ -285,11 +302,18 @@ export function CapacityVessel({
                   data-selected={selected || undefined}
                   data-counted={block.counted || undefined}
                   data-dimmed={dimmed || undefined}
+                  onPointerDown={(e) => onPickUp?.(block.footprint.id, e)}
                   onClick={() => onSelect?.(block.footprint.id)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+                    // Enter inspects, Space picks up — the WAI-ARIA drag idiom,
+                    // and the same split the pointer makes between a click and
+                    // a press that travels.
+                    if (e.key === 'Enter') {
                       e.preventDefault();
                       onSelect?.(block.footprint.id);
+                    } else if (e.key === ' ') {
+                      e.preventDefault();
+                      onPickUp?.(block.footprint.id);
                     }
                   }}
                 >
@@ -319,6 +343,11 @@ export function CapacityVessel({
                       fill={`url(#${patternPrefix}-carryover)`}
                     />
                   )}
+                  {/* Colour, not texture. "Never colour alone" asks for a second
+                      channel, not for stripes printed through the label — the
+                      bracket, the ▲, and "+13 over" in the caption are that
+                      channel, and they survive greyscale and screen readers
+                      alike. Striping the fill only made the words unreadable. */}
                   {isOverflow && (
                     <rect
                       x={6}
@@ -326,7 +355,7 @@ export function CapacityVessel({
                       width={BODY_WIDTH - 12}
                       height={Math.max(2, overUnits * unitPx)}
                       rx={2}
-                      fill={`url(#${patternPrefix}-overflow)`}
+                      className="fm-block__over"
                     />
                   )}
                   {/* Three tiers of degradation. A block too thin for both keeps
@@ -370,6 +399,33 @@ export function CapacityVessel({
             className="fm-vessel__rule"
           />
 
+          {/* Work being held over this container: an outline sitting where it
+              would land, so "will it fit" is answered by the drawing rather
+              than by comparing two numbers. Above the rule it is already
+              breaching; the caption states the projected figure either way. */}
+          {incoming?.allowed && (
+            <g className="fm-incoming" aria-hidden="true">
+              <rect
+                x={6}
+                y={y(summary.reservedTotal + summary.committedLoad + incomingUnits)}
+                width={BODY_WIDTH - 12}
+                height={Math.max(3, incomingUnits * unitPx)}
+                rx={2}
+                className="fm-incoming__band"
+              />
+              {incomingUnits * unitPx >= 15 && (
+                <text
+                  x={BODY_WIDTH / 2}
+                  y={y(summary.reservedTotal + summary.committedLoad + incomingUnits / 2) + 4}
+                  className="fm-incoming__label"
+                  textAnchor="middle"
+                >
+                  +{incoming.units}
+                </text>
+              )}
+            </g>
+          )}
+
           {/* The excess, measured. A bracket from the rule to the top of the
               stack turns overflow into a drawn quantity rather than a texture. */}
           {overCapacity && !compact && (
@@ -395,14 +451,34 @@ export function CapacityVessel({
       <figcaption className="fm-vessel__caption">
         {/* The headline is the figure. Its label, and the team name already in
             the row header, do not need repeating at the same weight. */}
-        <span className="fm-vessel__figure">
-          <span className="fm-vessel__percent">{percent === null ? '—' : `${percent}%`}</span>
+        {/* While work is held over this container the figure shows what it
+            would become, with the current value kept alongside — the whole
+            argument for dragging is that you see the consequence before you
+            commit to it, not in a toast afterwards. */}
+        <span
+          className="fm-vessel__figure"
+          data-projected={incoming?.allowed || undefined}
+          data-over={(incoming?.allowed ? incoming.overflow > 0 : overCapacity) || undefined}
+        >
+          <span className="fm-vessel__percent">
+            {incoming?.allowed
+              ? incoming.percent === null
+                ? '—'
+                : `${incoming.percent}%`
+              : percent === null
+                ? '—'
+                : `${percent}%`}
+          </span>
           <span className="fm-vessel__delta">
-            {percent === null
-              ? t('capacity.noDeliverable')
-              : overCapacity
-                ? t('capacity.overBy', { units: summary.overflow })
-                : t('capacity.headroom', { units: summary.headroom })}
+            {incoming?.allowed
+              ? incoming.overflow > 0
+                ? t('capacity.overBy', { units: incoming.overflow })
+                : t('drop.wouldBe', { percent: percent ?? 0 })
+              : percent === null
+                ? t('capacity.noDeliverable')
+                : overCapacity
+                  ? t('capacity.overBy', { units: summary.overflow })
+                  : t('capacity.headroom', { units: summary.headroom })}
           </span>
         </span>
 
