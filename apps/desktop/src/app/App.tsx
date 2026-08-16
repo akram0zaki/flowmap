@@ -23,6 +23,14 @@ import {
   utilisationPercent,
 } from '@flowmap/domain';
 import {
+  NO_RULE_SETTINGS,
+  countByRule,
+  type RadarMode,
+  type RuleResult,
+  type RuleSettings as Settings,
+  type SuggestedAction,
+} from '@flowmap/rules';
+import {
   buildBoard,
   focusOn,
   NO_FILTER,
@@ -55,6 +63,9 @@ import { ListCompanion } from '../components/ListCompanion.jsx';
 import { DetailPanel, type PanelFootprint } from '../components/DetailPanel.jsx';
 import type { DependencyEdge } from '../components/DependencyLayer.jsx';
 import { CaptureBar } from '../components/CaptureBar.jsx';
+import { Radar } from '../components/Radar.jsx';
+import { RuleSettings } from '../components/RuleSettings.jsx';
+import { useSignals } from '../state/use-signals.js';
 import type { VesselBlock } from '../components/CapacityVessel.jsx';
 import { t } from '../i18n/t.js';
 
@@ -82,6 +93,9 @@ export function App() {
     openLink,
     linkIdeaToRefinement,
     unlinkIdeaFromRefinement,
+    reviewSignal,
+    snoozeSignal,
+    clearSignal,
   } = useWorkspace.getState();
 
   /**
@@ -98,6 +112,18 @@ export function App() {
   const [showList, setShowList] = useState(true);
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [announcement, setAnnouncement] = useState('');
+  const [showRadar, setShowRadar] = useState(false);
+  const [showRuleSettings, setShowRuleSettings] = useState(false);
+  const [radarMode, setRadarMode] = useState<RadarMode>('PORTFOLIO');
+  /**
+   * Rule settings live in view state for now.
+   *
+   * They belong on the workspace and travel with it (`SetRuleThresholds` in
+   * spec 03 §3.1); that command arrives with workspace settings in M6. Held
+   * here so the tuning screen is real and usable rather than a mock, and
+   * flagged so nobody mistakes it for the finished thing.
+   */
+  const [ruleSettings, setRuleSettings] = useState<Settings>(NO_RULE_SETTINGS);
 
   // Announcements are debounced through a ref so rapid arrow-key movement does
   // not queue a dozen utterances.
@@ -157,6 +183,53 @@ export function App() {
           })
         : null,
     [state],
+  );
+
+  const events = useWorkspace((s) => s.events);
+  const runtime = useWorkspace((s) => s.runtime);
+
+  /**
+   * The rules, evaluated. Pure and synchronous, so this is a memo rather than
+   * an effect — signals are a function of state, never a thing that happens to
+   * it, and there is no window in which the board and the Radar disagree.
+   */
+  const signals = useSignals(state, {
+    actorId: `local:local-profile`,
+    settings: ruleSettings,
+    now: runtime?.now ?? (() => new Date().toISOString()),
+    events,
+  });
+
+  /**
+   * What a quick action does.
+   *
+   * `OPEN` and `NAVIGATE` move the view; `COMMAND` actions name a command the
+   * rule believes would help. The commands are deliberately *not* executed
+   * blind — most need a value the signal cannot supply (who the owner is, what
+   * date) — so they focus the thing and let the panel ask. A rule that could
+   * silently mutate the portfolio would be a rule nobody could trust.
+   */
+  const actOnSignal = useCallback(
+    (signal: RuleResult, action: SuggestedAction) => {
+      const ref =
+        action.kind === 'OPEN' ? action.ref : action.kind === 'NAVIGATE' ? action.focus : undefined;
+      const target = ref ?? signal.entityRef;
+
+      const commitmentId =
+        target.kind === 'COMMITMENT'
+          ? target.id
+          : String(signal.facts['commitmentId'] ?? signal.facts['sourceCommitmentId'] ?? '');
+
+      if (commitmentId) {
+        setFocusedCommitmentId(commitmentId);
+        setShowRadar(false);
+        return;
+      }
+
+      // Nothing to open — say so rather than appearing to do nothing.
+      announce(t('radar.noTarget'));
+    },
+    [announce],
   );
 
   const readiness = useMemo(
@@ -739,17 +812,19 @@ export function App() {
         const commitment = state.commitments.get(block.commitmentId);
         if (!footprint || !commitment) return [];
         const milestones = milestonesByCommitment.get(commitment.id);
+        const health = signals.health.get(commitment.id);
         return [
           {
             footprint,
             commitment,
             counted: isCounted(footprint, commitment, state.workspace.currentQuarterId),
             ...(milestones ? { milestones } : {}),
+            ...(health ? { health } : {}),
           },
         ];
       });
     },
-    [state, milestonesByCommitment],
+    [state, milestonesByCommitment, signals.health],
   );
 
   if (!state || !board) {
@@ -816,6 +891,11 @@ export function App() {
         onUndo={() => void undo()}
         onRedo={() => void redo()}
         onClearLocalData={() => void clearLocalData()}
+        radarCount={signals.visible.length}
+        highCount={signals.visible.filter((signal) => signal.severity === 'HIGH').length}
+        showRadar={showRadar}
+        onToggleRadar={() => setShowRadar((v) => !v)}
+        onOpenRuleSettings={() => setShowRuleSettings(true)}
       />
 
       <div className="fm-workspace">
@@ -890,12 +970,58 @@ export function App() {
           ideaNames={ideaNames}
         />
 
+        {showRadar && (
+          <Radar
+            signals={signals.visible}
+            allSignals={signals.all}
+            dispositions={signals.dispositions}
+            ownedRefs={signals.ownedRefs}
+            today={signals.today}
+            mode={radarMode}
+            onModeChange={setRadarMode}
+            onAct={actOnSignal}
+            onReview={(signal) =>
+              void reviewSignal({
+                signalKey: signal.signalKey,
+                atFingerprint: signal.conditionFingerprint,
+                atSeverity: signal.severity,
+              })
+            }
+            onSnooze={(signal, until) =>
+              void snoozeSignal({
+                signalKey: signal.signalKey,
+                atFingerprint: signal.conditionFingerprint,
+                atSeverity: signal.severity,
+                snoozeUntil: until,
+              })
+            }
+            onClear={(signal) => void clearSignal(signal.signalKey)}
+            onClose={() => setShowRadar(false)}
+          />
+        )}
+
+        {showRuleSettings && (
+          <RuleSettings
+            settings={ruleSettings}
+            counts={countByRule(signals.all)}
+            onChange={setRuleSettings}
+            onClose={() => setShowRuleSettings(false)}
+          />
+        )}
+
         {/* Inside the workspace row, not floating over it: the board narrows
             rather than being hidden. Editing a field and watching the figure
             move is the point, and a panel covering the board defeats it. */}
         {panelCommitment && state && (
           <DetailPanel
             commitment={panelCommitment}
+            health={signals.health.get(panelCommitment.id) ?? 'OK'}
+            healthSignals={signals.all.filter(
+              (signal) =>
+                signal.surfaces.includes('HEALTH') &&
+                signal.entityRef.kind === 'COMMITMENT' &&
+                signal.entityRef.id === panelCommitment.id,
+            )}
             teams={teams}
             products={[...(state.products?.values() ?? [])]}
             people={[...(state.people?.values() ?? [])]}

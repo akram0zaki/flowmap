@@ -27,6 +27,7 @@ export type EntityKind =
   | 'PERSON'
   | 'WORKSPACE_USER'
   | 'EXTERNAL_LINK'
+  | 'SIGNAL_DISPOSITION'
   | 'SCENARIO'
   | 'SNAPSHOT'
   | 'SAVED_VIEW';

@@ -17,6 +17,9 @@
       "path": "../../packages/i18n"
     },
     {
+      "path": "../../packages/rules"
+    },
+    {
       "path": "../../packages/storage"
     },
     {

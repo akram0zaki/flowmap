@@ -51,6 +51,11 @@ export type VesselBlock = {
   readonly commitment: Commitment;
   readonly counted: boolean;
   /**
+   * Is this in trouble? Orthogonal to attention, and never merged with it into
+   * one number or one colour (spec 04 §2). A user cannot dispose of it.
+   */
+  readonly health?: 'OK' | 'WATCH' | 'AT_RISK';
+  /**
    * The checkable points inside this work, capped at six by the domain.
    *
    * Drawn on the block because that is where the question is asked — "is this
@@ -430,6 +435,7 @@ export function CapacityVessel({
                   className="fm-block"
                   data-commitment={block.commitment.id}
                   data-mandatory={block.commitment.class === 'MANDATORY' || undefined}
+                  data-health={block.health && block.health !== 'OK' ? block.health : undefined}
                   data-selected={selected || undefined}
                   data-counted={block.counted || undefined}
                   data-dimmed={dimmed || undefined}
@@ -758,6 +764,8 @@ function blockLabel(
     carried ? t('carryover.from', { quarter: block.footprint.carryOverFromQuarterId ?? '' }) : null,
     isOverflow ? t('patterns.overflow') : null,
     block.counted ? null : t('vessel.notCounted'),
+    // Health is a separate answer from attention, so it is said separately.
+    block.health && block.health !== 'OK' ? t(`health.${block.health}`) : null,
     // Announced at every level, including the ones too small to draw them —
     // a marker a sighted user can see and a screen-reader user cannot is the
     // failure this line exists to prevent.

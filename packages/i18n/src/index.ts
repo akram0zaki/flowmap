@@ -18,6 +18,7 @@ import commonEn from './locales/en/common.json' with { type: 'json' };
 import errorsEn from './locales/en/errors.json' with { type: 'json' };
 import fieldsEn from './locales/en/fields.json' with { type: 'json' };
 import patternsEn from './locales/en/patterns.json' with { type: 'json' };
+import rulesEn from './locales/en/rules.json' with { type: 'json' };
 import severityEn from './locales/en/severity.json' with { type: 'json' };
 
 export const SUPPORTED_LOCALES = ['en'] as const;
@@ -30,7 +31,7 @@ export const DEFAULT_LOCALE: Locale = 'en';
  * one helps, on every capacity, lifecycle, impact, dependency, attention and
  * confidence field. Keeping them apart is what lets the checker enforce it.
  */
-export const NAMESPACES = ['common', 'errors', 'fields', 'patterns', 'severity'] as const;
+export const NAMESPACES = ['common', 'errors', 'fields', 'patterns', 'rules', 'severity'] as const;
 export type Namespace = (typeof NAMESPACES)[number];
 
 export type Catalogue = Readonly<Record<string, string>>;
@@ -41,11 +42,17 @@ export const catalogues: Readonly<Record<Locale, Readonly<Record<Namespace, Cata
     errors: errorsEn,
     fields: fieldsEn,
     patterns: patternsEn,
+    rules: rulesEn,
     severity: severityEn,
   },
 };
 
-export type TranslateParams = Readonly<Record<string, string | number>>;
+/**
+ * Booleans are allowed because rule facts carry them — `isHard` on a
+ * dependency, for one — and a fact that cannot be interpolated is a fact the
+ * message has to work around.
+ */
+export type TranslateParams = Readonly<Record<string, string | number | boolean>>;
 
 /**
  * Resolves a dotted key such as `errors.NOTE_TOO_LONG` and interpolates

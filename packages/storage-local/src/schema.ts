@@ -388,6 +388,40 @@ CREATE INDEX IF NOT EXISTS ix_ctheme_commit     ON commitment_theme(workspace_id
 CREATE INDEX IF NOT EXISTS ix_link_commit       ON external_link(workspace_id, commitment_id);
 `;
 
+/**
+ * Signal dispositions.
+ *
+ * Keyed by signal *and* actor, so one lead's "reviewed — no change" never hides
+ * another's signal in a shared workspace. There is no DISMISSED state: the
+ * check constraint is the schema-level statement of that product decision.
+ */
+const V3_SQL = `
+CREATE TABLE IF NOT EXISTS signal_disposition (
+  id              TEXT PRIMARY KEY,
+  workspace_id    TEXT NOT NULL,
+  signal_key      TEXT NOT NULL,
+  disposition     TEXT NOT NULL CHECK (disposition IN ('REVIEWED', 'SNOOZED')),
+  at_fingerprint  TEXT NOT NULL,
+  at_severity     TEXT NOT NULL CHECK (at_severity IN ('INFO', 'LOW', 'MEDIUM', 'HIGH')),
+  snooze_until    TEXT,
+  actor_id        TEXT NOT NULL,
+  note            TEXT,
+  schema_version  INTEGER NOT NULL,
+  entity_version  INTEGER NOT NULL,
+  created_at      TEXT NOT NULL,
+  created_by      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+  updated_by      TEXT NOT NULL,
+  archived_at     TEXT,
+  archived_by     TEXT,
+  deleted_at      TEXT,
+  remote_version  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_disposition_key
+  ON signal_disposition(workspace_id, signal_key, actor_id);
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
@@ -411,6 +445,20 @@ export const MIGRATIONS: readonly Migration[] = [
     checksumSource: V2_SQL,
     up: async (ctx) => {
       for (const statement of V2_SQL.split(';')) {
+        const trimmed = statement.trim();
+        if (trimmed.length > 0) await ctx.exec(trimmed);
+      }
+    },
+  },
+  {
+    version: 3,
+    // Radar dispositions. Added with M3; nothing before it could produce a
+    // signal, so there is no backfill — an absent row means "not disposed",
+    // which is exactly the default the suppression rule already assumes.
+    name: 'signal-dispositions',
+    checksumSource: V3_SQL,
+    up: async (ctx) => {
+      for (const statement of V3_SQL.split(';')) {
         const trimmed = statement.trim();
         if (trimmed.length > 0) await ctx.exec(trimmed);
       }

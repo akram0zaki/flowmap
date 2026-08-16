@@ -31,9 +31,17 @@ import {
   type Command,
   type CommandContext,
   type CommandResult,
+  type DomainEvent,
   type EntityId,
   type QuarterId,
   type WorkspaceState,
+} from '@flowmap/domain';
+import {
+  clearSignalDisposition,
+  reviewSignal,
+  snoozeSignal,
+  type SignalState,
+  type Severity,
 } from '@flowmap/domain';
 import {
   addDependency,
@@ -188,6 +196,28 @@ type StoreState = {
   /** Hands an https link to the OS. Never embedded, never navigated to in-app. */
   openLink(url: string): Promise<void>;
   /**
+   * Signal dispositions.
+   *
+   * `Reviewed — no change` records the fingerprint and severity it was taken
+   * at, which is what lets it expire when the situation changes rather than on
+   * a timer. There is deliberately no dismiss.
+   */
+  reviewSignal(input: {
+    signalKey: string;
+    atFingerprint: string;
+    atSeverity: Severity;
+    note?: string;
+  }): Promise<boolean>;
+  snoozeSignal(input: {
+    signalKey: string;
+    atFingerprint: string;
+    atSeverity: Severity;
+    snoozeUntil: string;
+  }): Promise<boolean>;
+  clearSignal(signalKey: string): Promise<boolean>;
+  /** Events, for the rules a snapshot cannot answer. Loaded alongside state. */
+  events: DomainEvent[];
+  /**
    * Take work off the board.
    *
    * Not a delete: the commitment survives, and when this was its last placement
@@ -244,6 +274,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   undoStack: [],
   redoStack: [],
   pendingCount: 0,
+  events: [],
 
   async init(runtime, profileName) {
     await runtime.repository.ensureLocalProfile?.(PROFILE_ID, profileName, runtime.now());
@@ -271,7 +302,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       }
       state = await runtime.repository.load(WORKSPACE_ID);
     }
-    set({ state });
+    set({ state, events: await runtime.repository.listEvents(WORKSPACE_ID, 500) });
     await refreshPending(get, set);
   },
 
@@ -348,7 +379,10 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       };
     });
 
-    set({ state: await runtime.repository.load(WORKSPACE_ID) });
+    set({
+      state: await runtime.repository.load(WORKSPACE_ID),
+      events: await runtime.repository.listEvents(WORKSPACE_ID, 500),
+    });
     await refreshPending(get, set);
     return inverse;
   },
@@ -576,6 +610,30 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     );
   },
 
+  async reviewSignal(input) {
+    return (
+      (await get().dispatch('ReviewSignal', (state, cmd, ctx) =>
+        reviewSignal(state as SignalState, input, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async snoozeSignal(input) {
+    return (
+      (await get().dispatch('SnoozeSignal', (state, cmd, ctx) =>
+        snoozeSignal(state as SignalState, input, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async clearSignal(signalKey) {
+    return (
+      (await get().dispatch('ClearSignalDisposition', (state, cmd, ctx) =>
+        clearSignalDisposition(state as SignalState, { signalKey }, cmd, ctx),
+      )) !== false
+    );
+  },
+
   async openLink(url) {
     const { runtime } = get();
     // Refused here as well as in the domain, so a link that somehow got stored
@@ -792,6 +850,12 @@ function runNamed(
       return unlinkIdeaFromRefinementReserve(state, payload as never, cmd, ctx);
     case 'SetCommitmentThemes':
       return setCommitmentThemes(relationView(state), payload as never, cmd, ctx);
+    case 'ReviewSignal':
+      return reviewSignal(state as SignalState, payload as never, cmd, ctx);
+    case 'SnoozeSignal':
+      return snoozeSignal(state as SignalState, payload as never, cmd, ctx);
+    case 'ClearSignalDisposition':
+      return clearSignalDisposition(state as SignalState, payload as never, cmd, ctx);
     // Relations replay through the same view the forward command used.
     case 'SetProductImpact':
       return setProductImpact(relationView(state), payload as never, cmd, ctx);

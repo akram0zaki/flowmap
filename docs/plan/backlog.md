@@ -11,7 +11,7 @@ capability**, not by technical layer — each ticket should leave the product me
 > This file is kept current as work lands. A ticket is ✅ only when its acceptance criteria pass and
 > the [`AGENTS.md`](../../AGENTS.md) definition of done is met — not when the code merely exists.
 
-**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · M6-WSP-2 pulled forward · M3–M9 not started
+**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · **M3 13/14 done, 1 partial** · M6-WSP-2 pulled forward · M4–M9 not started
 
 > **Closed out of M2.** The seven code-side gaps carried out of the first pass
 > are done, each with unit and Playwright coverage and verified in a browser:
@@ -46,6 +46,32 @@ capability**, not by technical layer — each ticket should leave the product me
 
 > M2-MAP-1's 60 fps figure is asserted only as a trend on CI. Spec 11 §6.1 makes
 > the reference device the gate, and that measurement is owed per release.
+
+> **M3 — Radar and rules.** 55 rule codes across capacity, dependency, timing,
+> readiness, ownership, health, product and integrity, each with a firing and a
+> non-firing fixture. The determinism guarantees in spec 04 §8 are all
+> property-tested: referential transparency, stable signal identity across a
+> JSON round trip, `evaluateIncremental` ≡ `evaluateAll`, and suppression that
+> never hides a worsened signal.
+>
+> **Deliberately not in M3, and why:**
+>
+> - **History rules (spec 04 §4.7)** evaluate against closed-quarter reviews,
+>   which arrive with quarter close in M5. They are absent from `RULE_CODES`
+>   rather than listed and unimplemented, so the coverage test stays honest.
+> - **`SCN_STALE` / `SCN_CONFLICT`** are scenario integrity rules; scenarios are
+>   M4. Same treatment.
+> - **M3-RUL-2 (incremental evaluation)** is built and property-tested in the
+>   engine, but the app still calls `evaluateAll` on a memo. At the current
+>   fixture size that is a few milliseconds and cannot drift; wiring the
+>   incremental path in is a performance change owed when the 500-commitment
+>   measurement says so.
+>
+> **Two decisions worth review:** `HLT_MOVED_REPEATEDLY` needs history a
+> snapshot cannot answer, so it reads a `ctx.history` map the caller derives
+> from the event log — absent means the rule stays silent rather than reporting
+> zero. And rule settings currently live in view state; they belong on the
+> workspace via `SetRuleThresholds`, which arrives with workspace settings in M6.
 
 Every ticket inherits the definition of done from [`AGENTS.md`](../../AGENTS.md). The acceptance
 criteria below are the _additional_, ticket-specific ones.
@@ -182,20 +208,20 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 
 | St  | ID        | Title                                                      | Size | Dep                | Acceptance                                                                                  |
 | --- | --------- | ---------------------------------------------------------- | :--: | ------------------ | ------------------------------------------------------------------------------------------- |
-| ⬜  | M3-RUL-1  | Rules engine core + rule clock + declared projection reads |  M   | M1-DOM-7           | Pure; referentially transparent; golden-file test over the validation fixture               |
-| ⬜  | M3-RUL-2  | Incremental evaluation                                     |  M   | M3-RUL-1           | `evaluateIncremental` ≡ `evaluateAll` (property-tested); ≤ 150 ms after one command         |
-| ⬜  | M3-RUL-3  | Capacity rules                                             |  S   | M3-RUL-1           | All seven codes; firing + non-firing fixtures each                                          |
-| ⬜  | M3-RUL-4  | Dependency rules incl. cycle and hub detection             |  M   | M3-RUL-1, M2-COM-9 | All thirteen codes; cycle detection ≤ 100 ms at 600 dependencies                            |
-| ⬜  | M3-RUL-5  | Timing rules                                               |  S   | M3-RUL-1           | All twelve codes; all comparisons in workspace timezone                                     |
-| ⬜  | M3-RUL-6  | Readiness, ownership, health rules                         |  M   | M3-RUL-1           | `OWN_MISSING` provably does not fire on a newly captured Idea                               |
-| ⬜  | M3-RUL-7  | Product change-load calculation                            |  M   | M2-COM-6           | Formula exactly as spec 04 §5; contributor breakdown rendered                               |
-| ⬜  | M3-RUL-8  | Signal identity + condition fingerprints                   |  M   | M3-RUL-1           | Keys stable across restart, machine, and export/import round trip                           |
-| ⬜  | M3-RUL-9  | Dispositions: review, snooze, breakthrough                 |  M   | M3-RUL-8           | Severity increase always breaks through (property-tested); no permanent dismissal exists    |
-| ⬜  | M3-RUL-10 | Radar view: modes, grouping, rows, quick actions           |  L   | M3-RUL-9           | Grouping order fixed per spec 04 §6.2; My Radar contains only explicit individual ownership |
-| ⬜  | M3-RUL-11 | Explanation panel                                          |  M   | M3-RUL-10          | Facts, threshold, why it matters, what changed, actions — all rendered from data            |
-| ⬜  | M3-RUL-12 | Threshold settings with live signal counts                 |  M   | M3-RUL-1           | Ranges validated; reset-to-defaults per rule and globally                                   |
-| ⬜  | M3-RUL-13 | Secret-pattern detection                                   |  S   | M2-COM-2           | Every pattern in spec 04 §4.8 detected; matched text never transmitted                      |
-| ⬜  | M3-RUL-14 | Health vs attention projections                            |  S   | M3-RUL-6           | Separate; health cannot be dismissed by a user                                              |
+| ✅  | M3-RUL-1  | Rules engine core + rule clock + declared projection reads |  M   | M1-DOM-7           | Pure; referentially transparent; golden-file test over the validation fixture               |
+| 🔵  | M3-RUL-2  | Incremental evaluation                                     |  M   | M3-RUL-1           | `evaluateIncremental` ≡ `evaluateAll` (property-tested); ≤ 150 ms after one command         |
+| ✅  | M3-RUL-3  | Capacity rules                                             |  S   | M3-RUL-1           | All seven codes; firing + non-firing fixtures each                                          |
+| ✅  | M3-RUL-4  | Dependency rules incl. cycle and hub detection             |  M   | M3-RUL-1, M2-COM-9 | All thirteen codes; cycle detection ≤ 100 ms at 600 dependencies                            |
+| ✅  | M3-RUL-5  | Timing rules                                               |  S   | M3-RUL-1           | All twelve codes; all comparisons in workspace timezone                                     |
+| ✅  | M3-RUL-6  | Readiness, ownership, health rules                         |  M   | M3-RUL-1           | `OWN_MISSING` provably does not fire on a newly captured Idea                               |
+| ✅  | M3-RUL-7  | Product change-load calculation                            |  M   | M2-COM-6           | Formula exactly as spec 04 §5; contributor breakdown rendered                               |
+| ✅  | M3-RUL-8  | Signal identity + condition fingerprints                   |  M   | M3-RUL-1           | Keys stable across restart, machine, and export/import round trip                           |
+| ✅  | M3-RUL-9  | Dispositions: review, snooze, breakthrough                 |  M   | M3-RUL-8           | Severity increase always breaks through (property-tested); no permanent dismissal exists    |
+| ✅  | M3-RUL-10 | Radar view: modes, grouping, rows, quick actions           |  L   | M3-RUL-9           | Grouping order fixed per spec 04 §6.2; My Radar contains only explicit individual ownership |
+| ✅  | M3-RUL-11 | Explanation panel                                          |  M   | M3-RUL-10          | Facts, threshold, why it matters, what changed, actions — all rendered from data            |
+| ✅  | M3-RUL-12 | Threshold settings with live signal counts                 |  M   | M3-RUL-1           | Ranges validated; reset-to-defaults per rule and globally                                   |
+| ✅  | M3-RUL-13 | Secret-pattern detection                                   |  S   | M2-COM-2           | Every pattern in spec 04 §4.8 detected; matched text never transmitted                      |
+| ✅  | M3-RUL-14 | Health vs attention projections                            |  S   | M3-RUL-6           | Separate; health cannot be dismissed by a user                                              |
 
 ---
 

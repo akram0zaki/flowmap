@@ -12,6 +12,9 @@
  * Failing here is cheap. Shipping a blank string into a QBR is not.
  */
 
+import { readFileSync, readdirSync } from 'node:fs';
+
+import { RULE_CODES } from '../packages/rules/src/index.js';
 import {
   DOMAIN_ERROR_CODES,
   GATE_ADVISORIES,
@@ -85,6 +88,43 @@ for (const locale of SUPPORTED_LOCALES) {
       if (catalogue[`${prefix}${value}`] === undefined) {
         report(`[${locale}] ${namespace}.${prefix}${value} has no message`);
       }
+    }
+  }
+}
+
+// ── 2b. Every rule renders without a line of per-rule UI ───────────────────
+//
+// Spec 04 §8.6: every RuleResult has an i18n key for title, message,
+// explanation, and each action label. A rule missing one of those renders its
+// own code at a lead, which is worse than saying nothing.
+
+for (const locale of SUPPORTED_LOCALES) {
+  const catalogue = catalogues[locale as Locale].rules;
+  for (const code of RULE_CODES) {
+    for (const part of ['title', 'message', 'explanation', 'why'] as const) {
+      if (catalogue[`${code}.${part}`] === undefined) {
+        report(`[${locale}] rules.${code}.${part} is missing — see spec 04 §8.6`);
+      }
+    }
+  }
+}
+
+// Every action label a rule can emit must resolve. Scanned from the rule
+// sources rather than kept by hand, so a new action cannot ship without its
+// words — an action button reading `action.setOwner` is a bug a lead sees.
+{
+  const dir = 'packages/rules/src/rules';
+  const labels = new Set<string>();
+  for (const file of readdirSync(dir)) {
+    for (const match of readFileSync(`${dir}/${file}`, 'utf8').matchAll(/labelKey: '([^']+)'/g)) {
+      labels.add(match[1]!);
+    }
+  }
+
+  for (const locale of SUPPORTED_LOCALES) {
+    const catalogue = catalogues[locale as Locale].rules;
+    for (const key of labels) {
+      if (catalogue[key] === undefined) report(`[${locale}] rules.${key} has no label`);
     }
   }
 }

@@ -343,3 +343,35 @@ export type ExternalLink = EntityEnvelope & {
   readonly url: string;
   readonly label?: string;
 };
+
+// ── Signals ────────────────────────────────────────────────────────────────
+
+/**
+ * Declared here rather than in `@flowmap/rules` because a disposition persists
+ * one, and the domain may not depend on the rules package (spec 12 §2). The
+ * evaluator imports this definition; nothing defines a second one.
+ */
+export type Severity = 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH';
+
+export const SEVERITIES: readonly Severity[] = ['INFO', 'LOW', 'MEDIUM', 'HIGH'];
+
+/**
+ * A user's decision about a signal.
+ *
+ * Keyed by `signalKey` **and** `actorId`, so a Planner's review never silently
+ * hides a Contributor's signal in a shared workspace. There is deliberately no
+ * `DISMISSED`: the only dispositions are "I have seen this and nothing has
+ * changed" and "not now, ask me again on this date". Both lapse when the
+ * situation changes or worsens — see docs/spec/04-rules-radar.md §3.3.
+ */
+export type SignalDisposition = EntityEnvelope & {
+  readonly signalKey: string;
+  readonly disposition: 'REVIEWED' | 'SNOOZED';
+  /** The condition fingerprint when the decision was taken. */
+  readonly atFingerprint: string;
+  readonly atSeverity: Severity;
+  /** SNOOZED only. A snooze without a return date would be a dismissal. */
+  readonly snoozeUntil?: IsoDate;
+  readonly actorId: ActorId;
+  readonly note?: string;
+};

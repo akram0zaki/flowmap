@@ -10,3 +10,4 @@ export * from './lifecycle.js';
 export * from './lifecycle-handlers.js';
 export * from './handler-kit.js';
 export * from './relations.js';
+export * from './signals.js';
