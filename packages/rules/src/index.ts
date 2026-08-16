@@ -1,12 +1,21 @@
 /**
- * @flowmap/rules — deterministic, explainable rule evaluation
+ * @flowmap/rules — deterministic, explainable rule evaluation.
  *
- * Not implemented yet. Scheduled for M3 (backlog M3-RUL-*).
+ * Same workspace state + same clock + same settings ⇒ byte-identical results,
+ * always. There is no AI, no scoring model, and no learned weighting anywhere
+ * in this package: every signal can show what happened, which threshold it
+ * crossed, why that matters, and what to do — all as data.
+ *
  * Contract: docs/spec/04-rules-radar.md
- *
- * The package exists now so the dependency graph, boundary rules, and CI matrix
- * are real from the first commit rather than retrofitted.
  */
 
-export const PACKAGE_NAME = '@flowmap/rules';
-export const IMPLEMENTED = false;
+export * from './types.js';
+export * from './identity.js';
+export * from './engine.js';
+export * from './catalogue.js';
+export * from './change-load.js';
+export * from './radar.js';
+export * from './secrets.js';
+export * from './settings.js';
+
+export { daysBetween, addDays } from './helpers.js';

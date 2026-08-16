@@ -18,6 +18,12 @@ import {
   updateMilestone,
   type RelationState,
 } from './relations.js';
+import {
+  clearSignalDisposition,
+  collectableDispositions,
+  reviewSignal,
+  snoozeSignal,
+} from './signals.js';
 import type { Command, CommandContext, CommandResult } from './command.js';
 import {
   DEFAULT_CHANGE_LOAD_SETTINGS,
@@ -31,6 +37,7 @@ import {
   type Milestone,
   type ProductImpact,
   type ProductService,
+  type SignalDisposition,
   type Team,
   type Theme,
   type Workspace,
@@ -811,5 +818,134 @@ describe('setCommitmentThemes', () => {
       ),
       'UNAUTHORISED',
     );
+  });
+});
+
+// ── Signal dispositions ────────────────────────────────────────────────────
+
+describe('signal dispositions', () => {
+  const base = { signalKey: 'SIG1', atFingerprint: 'FP1', atSeverity: 'MEDIUM' as const };
+
+  function withDisposition(over: Partial<SignalDisposition> = {}): RelationState {
+    const row: SignalDisposition = {
+      ...env('sd-1'),
+      signalKey: 'SIG1',
+      disposition: 'REVIEWED',
+      atFingerprint: 'FP1',
+      atSeverity: 'MEDIUM',
+      actorId: 'actor-1',
+      ...over,
+    };
+    return { ...state, signalDispositions: new Map([[row.id, row]]) } as RelationState;
+  }
+
+  it('records a review with the fingerprint and severity it was taken at', () => {
+    const result = reviewSignal(state, base, command('x'), ctx('VIEWER'));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const row = result.effects.changes[0]!.after as SignalDisposition;
+    expect(row.disposition).toBe('REVIEWED');
+    expect(row.atFingerprint).toBe('FP1');
+    expect(row.actorId).toBe('actor-1');
+    expect(result.effects.affectedProjections).toContain('radar');
+  });
+
+  // A Viewer disposing of a signal changes only their own view.
+  it('lets a Viewer dispose of a signal', () => {
+    expect(reviewSignal(state, base, command('x'), ctx('VIEWER')).ok).toBe(true);
+  });
+
+  it('requires a snooze to have a future return date', () => {
+    expectError(
+      snoozeSignal(state, { ...base, snoozeUntil: '2020-01-01' }, command('x'), ctx('VIEWER')),
+      'NAME_REQUIRED',
+    );
+    expectError(
+      snoozeSignal(state, { ...base, snoozeUntil: 'soon' }, command('x'), ctx('VIEWER')),
+      'NAME_REQUIRED',
+    );
+    expect(
+      snoozeSignal(state, { ...base, snoozeUntil: '2027-01-01' }, command('x'), ctx('VIEWER')).ok,
+    ).toBe(true);
+  });
+
+  it('replaces an existing decision rather than stacking a second row', () => {
+    const result = snoozeSignal(
+      withDisposition(),
+      { ...base, snoozeUntil: '2027-01-01' },
+      command('x'),
+      ctx('VIEWER'),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.changes).toHaveLength(1);
+    expect(result.effects.changes[0]!.op).toBe('UPDATE');
+    expect((result.effects.changes[0]!.after as SignalDisposition).disposition).toBe('SNOOZED');
+  });
+
+  // Dispositions are keyed by signal *and* actor: one lead's review must never
+  // hide another's signal in a shared workspace.
+  it('keeps one actor’s disposition separate from another’s', () => {
+    const theirs = withDisposition({ actorId: 'actor-2' });
+    const result = reviewSignal(theirs, base, command('x'), ctx('VIEWER'));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.changes[0]!.op).toBe('CREATE');
+  });
+
+  it('clears a disposition by archiving it', () => {
+    const result = clearSignalDisposition(
+      withDisposition(),
+      { signalKey: 'SIG1' },
+      command('x'),
+      ctx('VIEWER'),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.changes[0]!.op).toBe('ARCHIVE');
+  });
+
+  it('is a no-op when clearing something that was never disposed', () => {
+    const result = clearSignalDisposition(
+      state,
+      { signalKey: 'NOPE' },
+      command('x'),
+      ctx('VIEWER'),
+    );
+    expect(result.ok && result.effects.changes).toEqual([]);
+  });
+
+  it('carries an inverse that puts the previous decision back', () => {
+    const cleared = clearSignalDisposition(
+      withDisposition({ disposition: 'SNOOZED', snoozeUntil: '2027-01-01' }),
+      { signalKey: 'SIG1' },
+      command('x'),
+      ctx('VIEWER'),
+    );
+    expect(cleared.ok).toBe(true);
+    if (!cleared.ok) return;
+    expect(cleared.effects.inverse).toMatchObject({
+      name: 'SnoozeSignal',
+      payload: { signalKey: 'SIG1', snoozeUntil: '2027-01-01' },
+    });
+  });
+
+  it('rejects an over-long note', () => {
+    expectError(
+      reviewSignal(state, { ...base, note: 'x'.repeat(281) }, command('x'), ctx('VIEWER')),
+      'NOTE_TOO_LONG',
+    );
+  });
+
+  it('collects dispositions whose signal stopped evaluating, after the window', () => {
+    const stale = withDisposition({ updatedAt: '2026-01-01T00:00:00Z' });
+    expect(collectableDispositions(stale, new Set(), '2026-08-15').map((row) => row.id)).toEqual([
+      'sd-1',
+    ]);
+
+    // Still live, or still recent — neither is collectable.
+    expect(collectableDispositions(stale, new Set(['SIG1']), '2026-08-15')).toEqual([]);
+    expect(collectableDispositions(withDisposition(), new Set(), '2026-08-15')).toEqual([]);
   });
 });

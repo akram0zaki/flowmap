@@ -115,6 +115,9 @@ importers:
       '@flowmap/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@flowmap/rules':
+        specifier: workspace:*
+        version: link:../../packages/rules
       '@flowmap/storage':
         specifier: workspace:*
         version: link:../../packages/storage

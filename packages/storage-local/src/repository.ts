@@ -18,6 +18,7 @@ import type {
   EntityId,
   EntityRef,
   ExternalLink,
+  SignalDisposition,
   Milestone,
   Person,
   ProductImpact,
@@ -77,6 +78,7 @@ const TABLE_BY_KIND: Partial<Record<EntityRef['kind'], string>> = {
   THEME: 'theme',
   COMMITMENT_THEME: 'commitment_theme',
   EXTERNAL_LINK: 'external_link',
+  SIGNAL_DISPOSITION: 'signal_disposition',
   PERSON: 'person',
 };
 
@@ -179,6 +181,9 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
         this.#toCommitmentTheme(r),
       ),
       externalLinks: await this.#loadMap('external_link', workspaceId, (r) => this.#toLink(r)),
+      signalDispositions: await this.#loadMap('signal_disposition', workspaceId, (r) =>
+        this.#toDisposition(r),
+      ),
       people: await this.#loadMap('person', workspaceId, (r) => this.#toPerson(r)),
     };
   }
@@ -515,6 +520,17 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
           url: String(e['url']),
           label: (e['label'] as string) ?? null,
         };
+      case 'signal_disposition':
+        return {
+          ...envelope,
+          signal_key: String(e['signalKey']),
+          disposition: String(e['disposition']),
+          at_fingerprint: String(e['atFingerprint']),
+          at_severity: String(e['atSeverity']),
+          snooze_until: (e['snoozeUntil'] as string) ?? null,
+          actor_id: String(e['actorId']),
+          note: (e['note'] as string) ?? null,
+        };
       case 'capacity_footprint':
         return {
           ...envelope,
@@ -794,6 +810,19 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
       teamId: s(row['team_id']),
       linkedUserId: s(row['linked_user_id']),
     }) as Person;
+  }
+
+  #toDisposition(row: Record<string, SqlValue>): SignalDisposition {
+    return defined({
+      ...this.#envelope(row),
+      signalKey: String(row['signal_key']),
+      disposition: String(row['disposition']) as SignalDisposition['disposition'],
+      atFingerprint: String(row['at_fingerprint']),
+      atSeverity: String(row['at_severity']) as SignalDisposition['atSeverity'],
+      snoozeUntil: s(row['snooze_until']),
+      actorId: String(row['actor_id']),
+      note: s(row['note']),
+    }) as SignalDisposition;
   }
 
   #toLink(row: Record<string, SqlValue>): ExternalLink {

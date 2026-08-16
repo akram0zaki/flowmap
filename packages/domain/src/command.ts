@@ -28,6 +28,7 @@ import type {
   Person,
   ProductImpact,
   ProductService,
+  SignalDisposition,
   Team,
   TeamQuarter,
   Theme,
@@ -164,6 +165,7 @@ export type WorkspaceState = {
   readonly commitmentThemes?: ReadonlyMap<EntityId, CommitmentTheme>;
   readonly externalLinks?: ReadonlyMap<EntityId, ExternalLink>;
   readonly people?: ReadonlyMap<EntityId, Person>;
+  readonly signalDispositions?: ReadonlyMap<EntityId, SignalDisposition>;
 };
 
 export const ROLE_ORDER: readonly WorkspaceRole[] = ['VIEWER', 'CONTRIBUTOR', 'PLANNER', 'ADMIN'];

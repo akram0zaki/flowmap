@@ -20,6 +20,7 @@ import type {
   DomainEvent,
   EntityId,
   ExternalLink,
+  SignalDisposition,
   Milestone,
   Person,
   ProductImpact,
@@ -49,6 +50,7 @@ type Snapshot = {
   themes: Record<string, Theme>;
   commitmentThemes: Record<string, CommitmentTheme>;
   externalLinks: Record<string, ExternalLink>;
+  signalDispositions: Record<string, SignalDisposition>;
   people: Record<string, Person>;
   events: DomainEvent[];
   outbox: OutboxEntry[];
@@ -108,6 +110,7 @@ function emptySnapshot(): Snapshot {
     themes: {},
     commitmentThemes: {},
     externalLinks: {},
+    signalDispositions: {},
     people: {},
     events: [],
     outbox: [],
@@ -128,6 +131,7 @@ const KIND_TO_BUCKET = {
   THEME: 'themes',
   COMMITMENT_THEME: 'commitmentThemes',
   EXTERNAL_LINK: 'externalLinks',
+  SIGNAL_DISPOSITION: 'signalDispositions',
   PERSON: 'people',
 } as const;
 
@@ -145,6 +149,7 @@ const ENTITY_BUCKETS = [
   'themes',
   'commitmentThemes',
   'externalLinks',
+  'signalDispositions',
   'people',
 ] as const;
 
@@ -188,6 +193,7 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
       themes: scoped(this.#data.themes),
       commitmentThemes: scoped(this.#data.commitmentThemes),
       externalLinks: scoped(this.#data.externalLinks),
+      signalDispositions: scoped(this.#data.signalDispositions),
       people: scoped(this.#data.people),
     };
   }

@@ -31,6 +31,8 @@ import type {
   Theme,
 } from '@flowmap/domain';
 
+import type { RuleResult } from '@flowmap/rules';
+
 import { CommitGate } from './CommitGate.jsx';
 import { Field, Section, useFieldGroup, useFieldId } from './Field.jsx';
 import { QuarterStrip } from './QuarterStrip.jsx';
@@ -44,6 +46,9 @@ export type PanelFootprint = {
 
 export type DetailPanelProps = {
   readonly commitment: Commitment;
+  /** Highest severity among this commitment's HEALTH-surfacing signals. */
+  readonly health: 'OK' | 'WATCH' | 'AT_RISK';
+  readonly healthSignals: readonly RuleResult[];
   readonly teams: readonly Team[];
   readonly products: readonly ProductService[];
   readonly people: readonly Person[];
@@ -110,6 +115,8 @@ const CONFIDENCES: readonly Confidence[] = ['LOW', 'MEDIUM', 'HIGH'];
 
 export function DetailPanel({
   commitment,
+  health,
+  healthSignals,
   teams,
   people,
   products,
@@ -149,6 +156,20 @@ export function DetailPanel({
           <h2>{commitment.name}</h2>
           <p className="fm-panel__lifecycle">
             {t(`lifecycle.${commitment.lifecycle}`)} · {t(`class.${commitment.class}`)}
+          </p>
+          {/* Health, not attention: "is this in trouble", answered separately
+              and never disposable by a user. Icon + word + pattern, so it
+              survives greyscale. */}
+          <p className="fm-panel__health" data-health={health}>
+            <span aria-hidden="true">
+              {health === 'AT_RISK' ? '▲' : health === 'WATCH' ? '◆' : '○'}
+            </span>
+            {t(`health.${health}`)}
+            {healthSignals.length > 0 && (
+              <span className="fm-panel__hint">
+                {healthSignals.map((signal) => t(`rules.${signal.ruleCode}.title`)).join(' · ')}
+              </span>
+            )}
           </p>
         </div>
         <button type="button" className="fm-panel__close" onClick={onClose}>
