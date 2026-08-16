@@ -11,6 +11,7 @@ import {
   removeExternalLink,
   removeMilestone,
   removeProductImpact,
+  setCommitmentThemes,
   setProductImpact,
   updateDecision,
   updateDependency,
@@ -24,12 +25,14 @@ import {
   DEFAULT_SIZE_MAPPING,
   DEFAULT_VALUE_DRIVERS,
   type Commitment,
+  type CommitmentTheme,
   type Decision,
   type Dependency,
   type Milestone,
   type ProductImpact,
   type ProductService,
   type Team,
+  type Theme,
   type Workspace,
   type WorkspaceRole,
 } from './entities.js';
@@ -141,6 +144,7 @@ beforeEach(() => {
     decisions: new Map(),
     milestones: new Map(),
     themes: new Map(),
+    commitmentThemes: new Map(),
     links: new Map(),
   };
 });
@@ -659,5 +663,153 @@ describe('external links', () => {
     };
     const result = removeExternalLink(state, { linkId: 'l-1' }, command('x'), ctx());
     if (result.ok) expect(result.effects.changes[0]!.op).toBe('ARCHIVE');
+  });
+});
+
+// ── Commitment themes ──────────────────────────────────────────────────────
+
+describe('setCommitmentThemes', () => {
+  const resilience: Theme = { ...env('t-1'), name: 'Resilience' };
+  const compliance: Theme = { ...env('t-2'), name: 'Compliance' };
+
+  function join(id: string, themeId: string, archived = false): CommitmentTheme {
+    return {
+      ...env(id),
+      commitmentId: 'c-1',
+      themeId,
+      ...(archived ? { archivedAt: NOW, archivedBy: 'a' } : {}),
+    };
+  }
+
+  function withThemes(joins: CommitmentTheme[] = []): RelationState {
+    return {
+      ...state,
+      themes: new Map([
+        [resilience.id, resilience],
+        [compliance.id, compliance],
+      ]),
+      commitmentThemes: new Map(joins.map((j) => [j.id, j])),
+    };
+  }
+
+  it('creates a join row per theme', () => {
+    const result = setCommitmentThemes(
+      withThemes(),
+      { commitmentId: 'c-1', themeIds: ['t-1', 't-2'] },
+      command('x'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.changes).toHaveLength(2);
+    expect(result.effects.changes.every((c) => c.op === 'CREATE')).toBe(true);
+  });
+
+  it('archives the join, never the theme', () => {
+    const result = setCommitmentThemes(
+      withThemes([join('ct-1', 't-1')]),
+      { commitmentId: 'c-1', themeIds: [] },
+      command('x'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.changes).toHaveLength(1);
+    expect(result.effects.changes[0]!.ref).toEqual({ kind: 'COMMITMENT_THEME', id: 'ct-1' });
+    expect(result.effects.changes[0]!.op).toBe('ARCHIVE');
+  });
+
+  it('replaces the whole set: one added, one removed, one left alone', () => {
+    const result = setCommitmentThemes(
+      withThemes([join('ct-1', 't-1')]),
+      { commitmentId: 'c-1', themeIds: ['t-2'] },
+      command('x'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const ops = result.effects.changes.map((c) => c.op).sort();
+    expect(ops).toEqual(['ARCHIVE', 'CREATE']);
+  });
+
+  it('reuses a join this commitment used to carry, rather than minting a second', () => {
+    const result = setCommitmentThemes(
+      withThemes([join('ct-1', 't-1', true)]),
+      { commitmentId: 'c-1', themeIds: ['t-1'] },
+      command('x'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.changes).toHaveLength(1);
+    expect(result.effects.changes[0]!.op).toBe('RESTORE');
+    expect(result.effects.changes[0]!.ref).toEqual({ kind: 'COMMITMENT_THEME', id: 'ct-1' });
+  });
+
+  it('is a no-op when the set already holds', () => {
+    const result = setCommitmentThemes(
+      withThemes([join('ct-1', 't-1')]),
+      { commitmentId: 'c-1', themeIds: ['t-1'] },
+      command('x'),
+      ctx(),
+    );
+    expect(result.ok && result.effects.changes).toEqual([]);
+  });
+
+  it('carries an inverse holding the previous set', () => {
+    const result = setCommitmentThemes(
+      withThemes([join('ct-1', 't-1')]),
+      { commitmentId: 'c-1', themeIds: ['t-2'] },
+      command('x'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.inverse?.payload).toEqual({
+      commitmentId: 'c-1',
+      themeIds: ['t-1'],
+    });
+  });
+
+  it('rejects an unknown theme', () => {
+    expectError(
+      setCommitmentThemes(
+        withThemes(),
+        { commitmentId: 'c-1', themeIds: ['nope'] },
+        command('x'),
+        ctx(),
+      ),
+      'ENTITY_NOT_FOUND',
+    );
+  });
+
+  it('rejects an archived theme', () => {
+    const gone: Theme = { ...resilience, archivedAt: NOW, archivedBy: 'a' };
+    expectError(
+      setCommitmentThemes(
+        { ...state, themes: new Map([[gone.id, gone]]), commitmentThemes: new Map() },
+        { commitmentId: 'c-1', themeIds: ['t-1'] },
+        command('x'),
+        ctx(),
+      ),
+      'ENTITY_ARCHIVED',
+    );
+  });
+
+  it('refuses a Viewer', () => {
+    expectError(
+      setCommitmentThemes(
+        withThemes(),
+        { commitmentId: 'c-1', themeIds: ['t-1'] },
+        command('x'),
+        ctx('VIEWER'),
+      ),
+      'UNAUTHORISED',
+    );
   });
 });

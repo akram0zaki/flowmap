@@ -114,7 +114,14 @@ const TOOLTIP_REQUIRED: readonly string[] = [
   'importance',
   'units',
   'sizeConfidence',
+  // All three confidences, not two. `timingConfidence` shipped with a
+  // definition and no disclaimer precisely because nothing checked it.
+  'timingConfidence',
   'scopeConfidence',
+  'valueDrivers',
+  'themes',
+  'refinementLink',
+  'split',
   'carryOver',
   'productImpact',
   'dependencyType',

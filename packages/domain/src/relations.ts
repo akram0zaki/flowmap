@@ -12,6 +12,7 @@
 import {
   HARD_BY_DEFAULT,
   isActive,
+  type CommitmentTheme,
   type Decision,
   type Dependency,
   type DependencyStatus,
@@ -25,7 +26,7 @@ import {
   type ProductService,
   type Theme,
 } from './entities.js';
-import type { Command, CommandContext, CommandResult } from './command.js';
+import type { Command, CommandContext, CommandResult, EntityChange } from './command.js';
 import {
   archivedChange,
   authorise,
@@ -52,6 +53,7 @@ export type RelationState = HandlerState & {
   readonly decisions: ReadonlyMap<EntityId, Decision>;
   readonly milestones: ReadonlyMap<EntityId, Milestone>;
   readonly themes: ReadonlyMap<EntityId, Theme>;
+  readonly commitmentThemes: ReadonlyMap<EntityId, CommitmentTheme>;
   readonly links: ReadonlyMap<EntityId, ExternalLink>;
 };
 
@@ -737,6 +739,111 @@ export function createTheme(
     changes: [created(ref, theme)],
     events: [event(cmd, ctx, 0, 'THEME_CREATED', [ref], { name })],
     affectedProjections: [],
+  });
+}
+
+/**
+ * Replaces a commitment's whole theme set.
+ *
+ * A full-set replace rather than add/remove pairs because that is how the
+ * property sheet is used — you tick the labels that apply and the result is the
+ * answer — and because two half-applied commands can leave a commitment briefly
+ * carrying a theme nobody chose.
+ *
+ * A theme that was removed and put back reuses its archived join row rather than
+ * minting a second one, so undo and redo land on the same entity instead of
+ * accumulating look-alikes.
+ */
+export function setCommitmentThemes(
+  state: RelationState,
+  payload: { commitmentId: EntityId; themeIds: readonly EntityId[] },
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'CONTRIBUTOR');
+  if (unauthorised) return unauthorised;
+
+  const commitment = state.commitments.get(payload.commitmentId);
+  if (!commitment) {
+    return fail('ENTITY_NOT_FOUND', {
+      entityRef: { kind: 'COMMITMENT', id: payload.commitmentId },
+    });
+  }
+  if (!isActive(commitment)) return fail('ENTITY_ARCHIVED', { params: { name: commitment.name } });
+
+  const wanted = new Set(payload.themeIds);
+  for (const themeId of wanted) {
+    const theme = state.themes.get(themeId);
+    if (!theme) return fail('ENTITY_NOT_FOUND', { entityRef: { kind: 'THEME', id: themeId } });
+    if (!isActive(theme)) return fail('ENTITY_ARCHIVED', { params: { name: theme.name } });
+  }
+
+  const own = [...state.commitmentThemes.values()].filter(
+    (join) => join.commitmentId === commitment.id,
+  );
+  const before = own.filter(isActive).map((join) => join.themeId);
+
+  const changes: EntityChange[] = [];
+
+  // Gone: archive the join, never the theme.
+  for (const join of own) {
+    if (!isActive(join) || wanted.has(join.themeId)) continue;
+    changes.push(
+      archivedChange(
+        { kind: 'COMMITMENT_THEME', id: join.id },
+        join,
+        bumped({ ...join, archivedAt: ctx.clock.now(), archivedBy: ctx.actorId }, ctx),
+      ),
+    );
+  }
+
+  // Added: restore the row this commitment used to carry, or make one.
+  for (const themeId of wanted) {
+    const existing = own.find((join) => join.themeId === themeId);
+    if (existing && isActive(existing)) continue;
+
+    if (existing) {
+      const { archivedAt: _at, archivedBy: _by, ...live } = existing;
+      changes.push({
+        ...updated(
+          { kind: 'COMMITMENT_THEME', id: existing.id },
+          existing,
+          bumped(live as CommitmentTheme, ctx),
+        ),
+        op: 'RESTORE',
+      });
+      continue;
+    }
+
+    const join: CommitmentTheme = {
+      ...newEnvelope(ctx.ids.next(), cmd, ctx),
+      commitmentId: commitment.id,
+      themeId,
+    };
+    changes.push(created({ kind: 'COMMITMENT_THEME', id: join.id }, join));
+  }
+
+  if (changes.length === 0) {
+    return succeed({ changes: [], events: [], affectedProjections: [] });
+  }
+
+  const ref = { kind: 'COMMITMENT', id: commitment.id } as const;
+  return succeed({
+    changes,
+    events: [
+      event(cmd, ctx, 0, 'COMMITMENT_THEMES_SET', [ref], {
+        commitment: commitment.name,
+        count: wanted.size,
+        themes: [...wanted].map((themeId) => state.themes.get(themeId)?.name ?? themeId).join(', '),
+      }),
+    ],
+    affectedProjections: [commitmentKey(commitment.id)],
+    inverse: {
+      ...cmd,
+      id: ctx.ids.next(),
+      name: 'SetCommitmentThemes',
+      payload: { commitmentId: commitment.id, themeIds: before },
+    },
   });
 }
 

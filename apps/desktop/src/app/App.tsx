@@ -12,6 +12,7 @@ import {
   addExternalLink,
   addMilestone,
   assessCommitGate,
+  createTheme,
   isCounted,
   removeDependency,
   removeExternalLink,
@@ -46,7 +47,7 @@ import {
 import { useWorkspace } from '../state/workspace-store.js';
 import { usePlacement, type DropTarget } from '../state/use-placement.js';
 import { useResize, type ResizeState } from '../state/use-resize.js';
-import type { QuarterId } from '@flowmap/domain';
+import type { Milestone, QuarterId } from '@flowmap/domain';
 import { PortfolioMap } from '../components/PortfolioMap.jsx';
 import { LensStrip } from '../components/LensStrip.jsx';
 import { IdeasLane } from '../components/IdeasLane.jsx';
@@ -75,6 +76,12 @@ export function App() {
     editCommitment,
     relate,
     passGate,
+    splitFootprint,
+    moveTeamRow,
+    setThemes,
+    openLink,
+    linkIdeaToRefinement,
+    unlinkIdeaFromRefinement,
   } = useWorkspace.getState();
 
   /**
@@ -157,9 +164,23 @@ export function App() {
     [state],
   );
 
+  /**
+   * Focus reaches past the grid.
+   *
+   * The board is a capacity picture — it knows where work sits, not what that
+   * work changes or waits on. Handing focus the relations is what lets it dim
+   * an unrelated product or milestone rather than only an unrelated block.
+   */
   const focus = useMemo(
-    () => (board ? focusOn(board, focusedCommitmentId) : NO_FOCUS),
-    [board, focusedCommitmentId],
+    () =>
+      board
+        ? focusOn(board, focusedCommitmentId, {
+            impacts: state?.productImpacts?.values() ?? [],
+            milestones: state?.milestones?.values() ?? [],
+            dependencies: state?.dependencies?.values() ?? [],
+          })
+        : NO_FOCUS,
+    [board, focusedCommitmentId, state],
   );
 
   const focusedName = useMemo(() => {
@@ -578,6 +599,25 @@ export function App() {
     };
   }, [state, panelCommitment]);
 
+  /**
+   * The workspace's themes, and which of them this commitment carries.
+   *
+   * Both come from the join table rather than from the commitment, because a
+   * theme is a portfolio-wide taxonomy: the same label has to mean the same
+   * thing on every piece of work, which it cannot if each one owns its own copy.
+   */
+  const panelThemes = useMemo(() => {
+    const id = panelCommitment?.id;
+    return {
+      all: [...(state?.themes?.values() ?? [])]
+        .filter((theme) => theme.archivedAt === undefined)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      selected: [...(state?.commitmentThemes?.values() ?? [])]
+        .filter((join) => join.commitmentId === id && join.archivedAt === undefined)
+        .map((join) => join.themeId),
+    };
+  }, [state, panelCommitment]);
+
   /** A dependency can point at four different kinds of thing. */
   const nameOfTarget = useCallback(
     (target: { kind: string; id: string }): string => {
@@ -638,6 +678,59 @@ export function App() {
       });
   }, [state, board, focusedCommitmentId, nameOfTarget]);
 
+  /**
+   * Milestones by commitment, so the board can draw them without a lookup per
+   * block. Sorted the way the panel lists them, so the order a lead learns in
+   * one place is the order they see in the other.
+   */
+  const milestonesByCommitment = useMemo(() => {
+    const out = new Map<string, Milestone[]>();
+    for (const milestone of state?.milestones?.values() ?? []) {
+      if (milestone.archivedAt !== undefined) continue;
+      const list = out.get(milestone.commitmentId) ?? [];
+      list.push(milestone);
+      out.set(milestone.commitmentId, list);
+    }
+    for (const list of out.values()) list.sort((a, b) => a.displayOrder - b.displayOrder);
+    return out;
+  }, [state]);
+
+  /**
+   * Every refinement reserve on the board, as somewhere an Idea can be attached.
+   *
+   * Bounded to the horizon the board is showing: a list of every team-quarter
+   * that ever existed is a scroll, not a choice.
+   */
+  const refinementReserves = useMemo(() => {
+    if (!state || !board) return [];
+    const quarters = new Set<string>(board.quarters);
+
+    return [...state.teamQuarters.values()]
+      .filter((tq) => tq.archivedAt === undefined && quarters.has(tq.quarterId))
+      .flatMap((tq) =>
+        tq.reserves
+          .filter((reserve) => reserve.type === 'REFINEMENT')
+          .map((reserve) => ({
+            reserveId: reserve.id,
+            teamId: tq.teamId,
+            quarterId: tq.quarterId,
+            label: `${state.teams.get(tq.teamId)?.name ?? tq.teamId} · ${tq.quarterId}`,
+          })),
+      )
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [state, board]);
+
+  /** Names for the Ideas a refinement reserve supports. */
+  const ideaNames = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const commitment of state?.commitments.values() ?? []) {
+      if (commitment.lifecycle === 'IDEA' && commitment.archivedAt === undefined) {
+        out.set(commitment.id, commitment.name);
+      }
+    }
+    return out;
+  }, [state]);
+
   const vesselBlocksFor = useCallback(
     (cell: CellModel): VesselBlock[] => {
       if (!state) return [];
@@ -645,16 +738,18 @@ export function App() {
         const footprint = state.footprints.get(block.footprintId);
         const commitment = state.commitments.get(block.commitmentId);
         if (!footprint || !commitment) return [];
+        const milestones = milestonesByCommitment.get(commitment.id);
         return [
           {
             footprint,
             commitment,
             counted: isCounted(footprint, commitment, state.workspace.currentQuarterId),
+            ...(milestones ? { milestones } : {}),
           },
         ];
       });
     },
-    [state],
+    [state, milestonesByCommitment],
   );
 
   if (!state || !board) {
@@ -727,6 +822,13 @@ export function App() {
         <IdeasLane
           ideas={board.ideas}
           readiness={readiness}
+          refinementReserves={refinementReserves}
+          onLinkRefinement={(reserveId, commitmentId) =>
+            void linkIdeaToRefinement(reserveId, commitmentId)
+          }
+          onUnlinkRefinement={(reserveId, commitmentId) =>
+            void unlinkIdeaFromRefinement(reserveId, commitmentId)
+          }
           selectedCommitmentId={focusedCommitmentId}
           draggingCommitmentId={placement?.payload.commitmentId ?? null}
           dropState={
@@ -784,6 +886,8 @@ export function App() {
           onWheelZoom={onWheelZoom}
           onDropHere={drop}
           dependencyEdges={dependencyEdges}
+          onMoveRow={(teamId, direction) => void moveTeamRow(teamId, direction)}
+          ideaNames={ideaNames}
         />
 
         {/* Inside the workspace row, not floating over it: the board narrows
@@ -799,6 +903,9 @@ export function App() {
             quarters={board.quarters}
             currentQuarterId={state.workspace.currentQuarterId}
             impacts={panelRelations.impacts}
+            valueDrivers={state.workspace.settings.valueDrivers}
+            themes={panelThemes.all}
+            commitmentThemeIds={panelThemes.selected}
             milestones={panelRelations.milestones}
             links={panelRelations.links}
             dependencies={panelRelations.dependencies}
@@ -859,6 +966,14 @@ export function App() {
                 removeDependency(rs, { dependencyId }, cmd, ctx),
               )
             }
+            onSetThemes={(themeIds) => void setThemes(panelCommitment.id, themeIds)}
+            onCreateTheme={(name) =>
+              void relate('CreateTheme', (rs, cmd, ctx) => createTheme(rs, { name }, cmd, ctx))
+            }
+            onSplit={(footprintId, toQuarterId, units) =>
+              void splitFootprint(footprintId, toQuarterId, units)
+            }
+            onOpenLink={(url) => void openLink(url)}
             gate={
               panelGate
                 ? {

@@ -106,5 +106,17 @@
   "utilisation.not": "a productivity measure, and not a target to maximise.",
   "valueDrivers.def": "The reasons this work is worth doing, drawn from the workspace’s agreed list.",
   "valueDrivers.label": "Value drivers",
-  "valueDrivers.not": "a business case or a benefits calculation."
+  "valueDrivers.not": "a business case or a benefits calculation.",
+  "timingConfidence.not": "a probability, and not a commitment to the date.",
+  "refinementLink.label": "Ideas supported",
+  "refinementLink.def": "Ideas this refinement reserve is shaping this quarter.",
+  "refinementLink.not": "an allocation. The link carries no units and creates no placement.",
+  "refinementLink.eg": "Refinement 5 units, supporting 3 Ideas — the 5 units pay for the shaping, not for any one Idea.",
+  "split.label": "Split across quarters",
+  "split.def": "Divides this placement, keeping the total the same.",
+  "split.not": "a way to change how big the work is. Resize does that.",
+  "split.eg": "20 units in Q3 becomes 12 in Q3 and 8 in Q4.",
+  "rowOrder.label": "Row order",
+  "rowOrder.def": "The order teams appear down the map, set by a Planner.",
+  "rowOrder.not": "a ranking, a priority, or anything the map changes on its own."
 }

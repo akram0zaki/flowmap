@@ -7,13 +7,19 @@ import {
   createTeam,
   createWorkspace,
   ensureTeamQuarter,
+  linkIdeaToRefinementReserve,
+  mergeCapacityFootprints,
   moveCapacityFootprint,
   removeCapacityFootprint,
+  reorderTeams,
   resizeCapacityFootprint,
   restoreCapacityFootprint,
   setPrimaryTeam,
+  splitCapacityFootprint,
+  unlinkIdeaFromRefinementReserve,
   updateCommitment,
 } from './handlers.js';
+import { summariseCapacity } from './capacity.js';
 import {
   diffFields,
   roleAtLeast,
@@ -1096,5 +1102,551 @@ describe('updateCommitment', () => {
       name: 'UpdateCommitment',
       payload: { commitmentId: 'c-1', outcome: 'before' },
     });
+  });
+});
+
+// ── ReorderTeams ───────────────────────────────────────────────────────────
+
+describe('ReorderTeams', () => {
+  const second: Team = { ...env('team-2'), ...team, id: 'team-2', name: 'Ledger', displayOrder: 1 };
+  const third: Team = { ...env('team-3'), ...team, id: 'team-3', name: 'Risk', displayOrder: 2 };
+
+  function threeTeams(): WorkspaceState {
+    return {
+      ...state,
+      teams: new Map([
+        [team.id, team],
+        [second.id, second],
+        [third.id, third],
+      ]),
+    };
+  }
+
+  it('writes the given order onto displayOrder', () => {
+    const result = reorderTeams(
+      threeTeams(),
+      { orderedTeamIds: ['team-3', 'team-1', 'team-2'] },
+      command('ReorderTeams'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const orders = new Map(
+      result.effects.changes.map((change) => [
+        (change.ref as { id: string }).id,
+        (change.after as Team).displayOrder,
+      ]),
+    );
+    expect(orders.get('team-3')).toBe(0);
+    expect(orders.get('team-1')).toBe(1);
+    expect(orders.get('team-2')).toBe(2);
+  });
+
+  it('only writes the rows that actually moved', () => {
+    // team-1 is already first, so re-stating it must not produce a write.
+    const result = reorderTeams(
+      threeTeams(),
+      { orderedTeamIds: ['team-1', 'team-3', 'team-2'] },
+      command('ReorderTeams'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.changes.map((c) => (c.ref as { id: string }).id).sort()).toEqual([
+      'team-2',
+      'team-3',
+    ]);
+  });
+
+  it('keeps a team the caller did not name, after the ones it did', () => {
+    const result = reorderTeams(
+      threeTeams(),
+      { orderedTeamIds: ['team-3'] },
+      command('ReorderTeams'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const orders = new Map(
+      result.effects.changes.map((change) => [
+        (change.ref as { id: string }).id,
+        (change.after as Team).displayOrder,
+      ]),
+    );
+    expect(orders.get('team-3')).toBe(0);
+    expect(orders.get('team-1')).toBe(1);
+  });
+
+  it('is a no-op when the order already holds', () => {
+    const result = reorderTeams(
+      threeTeams(),
+      { orderedTeamIds: ['team-1', 'team-2', 'team-3'] },
+      command('ReorderTeams'),
+      ctx(),
+    );
+    expect(result.ok && result.effects.changes).toEqual([]);
+  });
+
+  it('carries an inverse restoring the previous order', () => {
+    const result = reorderTeams(
+      threeTeams(),
+      { orderedTeamIds: ['team-3', 'team-2', 'team-1'] },
+      command('ReorderTeams'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.inverse?.payload).toEqual({
+      orderedTeamIds: ['team-1', 'team-2', 'team-3'],
+    });
+  });
+
+  it('refuses a Contributor', () => {
+    expectError(
+      reorderTeams(threeTeams(), { orderedTeamIds: ['team-2'] }, command('R'), ctx('CONTRIBUTOR')),
+      'UNAUTHORISED',
+    );
+  });
+
+  it('refuses an unknown team', () => {
+    expectError(
+      reorderTeams(threeTeams(), { orderedTeamIds: ['nope'] }, command('R'), ctx()),
+      'ENTITY_NOT_FOUND',
+    );
+  });
+
+  it('refuses the same team twice', () => {
+    expectError(
+      reorderTeams(threeTeams(), { orderedTeamIds: ['team-1', 'team-1'] }, command('R'), ctx()),
+      'DUPLICATE_NAME',
+    );
+  });
+});
+
+// ── SplitCapacityFootprint ─────────────────────────────────────────────────
+
+describe('SplitCapacityFootprint', () => {
+  const NEXT: QuarterId = '2026-Q4';
+
+  function placed(units = 20): WorkspaceState {
+    const footprint = withFootprint({ units, isPrimary: true });
+    return { ...state, footprints: new Map([[footprint.id, footprint]]) };
+  }
+
+  it('divides one placement into two, conserving units', () => {
+    const result = splitCapacityFootprint(
+      placed(20),
+      {
+        footprintId: 'fp-1',
+        into: [
+          { quarterId: Q, units: 12 },
+          { quarterId: NEXT, units: 8 },
+        ],
+      },
+      command('SplitCapacityFootprint'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const after = result.effects.changes.map((c) => c.after as CapacityFootprint);
+    expect(after.map((f) => f.units).sort((a, b) => a - b)).toEqual([8, 12]);
+    expect(after.reduce((sum, f) => sum + f.units, 0)).toBe(20);
+  });
+
+  it('leaves the primary placement where the commitment already sits', () => {
+    const result = splitCapacityFootprint(
+      placed(20),
+      {
+        footprintId: 'fp-1',
+        into: [
+          { quarterId: NEXT, units: 8 },
+          { quarterId: Q, units: 12 },
+        ],
+      },
+      command('SplitCapacityFootprint'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const source = result.effects.changes
+      .map((c) => c.after as CapacityFootprint)
+      .find((f) => f.id === 'fp-1')!;
+    expect(source.quarterId).toBe(Q);
+    expect(source.units).toBe(12);
+    expect(source.isPrimary).toBe(true);
+  });
+
+  it('never gives a split-off part the primary flag', () => {
+    const result = splitCapacityFootprint(
+      placed(20),
+      {
+        footprintId: 'fp-1',
+        into: [
+          { quarterId: Q, units: 12 },
+          { quarterId: NEXT, units: 8 },
+        ],
+      },
+      command('SplitCapacityFootprint'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const parts = result.effects.changes
+      .map((c) => c.after as CapacityFootprint)
+      .filter((f) => f.id !== 'fp-1');
+    expect(parts.every((f) => !f.isPrimary)).toBe(true);
+  });
+
+  it('refuses a split whose parts do not sum to the original', () => {
+    expectError(
+      splitCapacityFootprint(
+        placed(20),
+        {
+          footprintId: 'fp-1',
+          into: [
+            { quarterId: Q, units: 12 },
+            { quarterId: NEXT, units: 9 },
+          ],
+        },
+        command('S'),
+        ctx(),
+      ),
+      'SPLIT_UNITS_MISMATCH',
+    );
+  });
+
+  it('refuses a zero-unit part', () => {
+    expectError(
+      splitCapacityFootprint(
+        placed(20),
+        {
+          footprintId: 'fp-1',
+          into: [
+            { quarterId: Q, units: 20 },
+            { quarterId: NEXT, units: 0 },
+          ],
+        },
+        command('S'),
+        ctx(),
+      ),
+      'FOOTPRINT_UNITS_MUST_BE_POSITIVE',
+    );
+  });
+
+  it('refuses two parts landing in the same quarter', () => {
+    expectError(
+      splitCapacityFootprint(
+        placed(20),
+        {
+          footprintId: 'fp-1',
+          into: [
+            { quarterId: Q, units: 12 },
+            { quarterId: Q, units: 8 },
+          ],
+        },
+        command('S'),
+        ctx(),
+      ),
+      'DUPLICATE_FOOTPRINT',
+    );
+  });
+
+  it('refuses a part landing where this commitment is already placed', () => {
+    const source = withFootprint({ units: 20, isPrimary: true });
+    const existing = withFootprint({ ...env('fp-2'), quarterId: NEXT, units: 5 });
+    const withBoth: WorkspaceState = {
+      ...state,
+      footprints: new Map([
+        [source.id, source],
+        [existing.id, existing],
+      ]),
+    };
+
+    expectError(
+      splitCapacityFootprint(
+        withBoth,
+        {
+          footprintId: 'fp-1',
+          into: [
+            { quarterId: Q, units: 12 },
+            { quarterId: NEXT, units: 8 },
+          ],
+        },
+        command('S'),
+        ctx(),
+      ),
+      'DUPLICATE_FOOTPRINT',
+    );
+  });
+
+  it('refuses a Contributor', () => {
+    expectError(
+      splitCapacityFootprint(
+        placed(20),
+        {
+          footprintId: 'fp-1',
+          into: [
+            { quarterId: Q, units: 12 },
+            { quarterId: NEXT, units: 8 },
+          ],
+        },
+        command('S'),
+        ctx('CONTRIBUTOR'),
+      ),
+      'UNAUTHORISED',
+    );
+  });
+
+  it('carries a merge as its inverse, naming the parts it created', () => {
+    const result = splitCapacityFootprint(
+      placed(20),
+      {
+        footprintId: 'fp-1',
+        into: [
+          { quarterId: Q, units: 12 },
+          { quarterId: NEXT, units: 8 },
+        ],
+      },
+      command('SplitCapacityFootprint'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const inverse = result.effects.inverse!;
+    expect(inverse.name).toBe('MergeCapacityFootprints');
+    expect((inverse.payload as { fromFootprintIds: string[] }).fromFootprintIds).toHaveLength(1);
+  });
+
+  it('round-trips: split then merge restores the original units in one quarter', () => {
+    const start = placed(20);
+    const split = splitCapacityFootprint(
+      start,
+      {
+        footprintId: 'fp-1',
+        into: [
+          { quarterId: Q, units: 12 },
+          { quarterId: NEXT, units: 8 },
+        ],
+      },
+      command('SplitCapacityFootprint'),
+      ctx(),
+    );
+    expect(split.ok).toBe(true);
+    if (!split.ok) return;
+
+    // Apply the effects, as the repository would.
+    const footprints = new Map(start.footprints);
+    for (const change of split.effects.changes) {
+      const entity = change.after as CapacityFootprint;
+      footprints.set(entity.id, entity);
+    }
+    const afterSplit: WorkspaceState = { ...start, footprints };
+
+    const merge = mergeCapacityFootprints(
+      afterSplit,
+      split.effects.inverse!.payload as { intoFootprintId: string; fromFootprintIds: string[] },
+      command('MergeCapacityFootprints'),
+      ctx(),
+    );
+
+    expect(merge.ok).toBe(true);
+    if (!merge.ok) return;
+    const target = merge.effects.changes
+      .map((c) => c.after as CapacityFootprint)
+      .find((f) => f.id === 'fp-1')!;
+    expect(target.units).toBe(20);
+    expect(target.quarterId).toBe(Q);
+    expect(
+      merge.effects.changes
+        .filter((c) => c.op === 'ARCHIVE')
+        .map((c) => (c.ref as { id: string }).id),
+    ).toEqual((split.effects.inverse!.payload as { fromFootprintIds: string[] }).fromFootprintIds);
+  });
+
+  it("re-splitting through the merge's inverse restores the same entity, not a look-alike", () => {
+    const start = placed(20);
+    const split = splitCapacityFootprint(
+      start,
+      {
+        footprintId: 'fp-1',
+        into: [
+          { quarterId: Q, units: 12 },
+          { quarterId: NEXT, units: 8 },
+        ],
+      },
+      command('SplitCapacityFootprint'),
+      ctx(),
+    );
+    expect(split.ok).toBe(true);
+    if (!split.ok) return;
+    const partId = (split.effects.inverse!.payload as { fromFootprintIds: string[] })
+      .fromFootprintIds[0]!;
+
+    const footprints = new Map(start.footprints);
+    for (const change of split.effects.changes) {
+      footprints.set((change.after as CapacityFootprint).id, change.after as CapacityFootprint);
+    }
+    const merge = mergeCapacityFootprints(
+      { ...start, footprints },
+      split.effects.inverse!.payload as never,
+      command('MergeCapacityFootprints'),
+      ctx(),
+    );
+    expect(merge.ok).toBe(true);
+    if (!merge.ok) return;
+
+    const merged = new Map(footprints);
+    for (const change of merge.effects.changes) {
+      merged.set((change.after as CapacityFootprint).id, change.after as CapacityFootprint);
+    }
+
+    const redo = splitCapacityFootprint(
+      { ...start, footprints: merged },
+      merge.effects.inverse!.payload as never,
+      command('SplitCapacityFootprint'),
+      ctx(),
+    );
+
+    expect(redo.ok).toBe(true);
+    if (!redo.ok) return;
+    const restored = redo.effects.changes.find((c) => c.op === 'RESTORE');
+    expect(restored).toBeDefined();
+    expect((restored!.ref as { id: string }).id).toBe(partId);
+  });
+});
+
+// ── Refinement reserve links ───────────────────────────────────────────────
+
+describe('LinkIdeaToRefinementReserve', () => {
+  const refinement: TeamQuarter = {
+    ...teamQuarter,
+    reserves: [
+      { id: 'r1', type: 'BAU_SUPPORT', label: 'BAU', amount: 20 },
+      { id: 'r2', type: 'REFINEMENT', label: 'Refinement', amount: 5 },
+    ],
+  };
+
+  function withRefinement(): WorkspaceState {
+    return { ...state, teamQuarters: new Map([[refinement.id, refinement]]) };
+  }
+
+  it('records the link on the reserve', () => {
+    const result = linkIdeaToRefinementReserve(
+      withRefinement(),
+      { reserveId: 'r2', ideaId: 'c-1' },
+      command('LinkIdeaToRefinementReserve'),
+      ctx('CONTRIBUTOR'),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const after = result.effects.changes[0]!.after as TeamQuarter;
+    expect(after.reserves.find((r) => r.id === 'r2')?.linkedIdeaIds).toEqual(['c-1']);
+  });
+
+  it('allocates no units — the totals are identical before and after', () => {
+    const before = summariseCapacity({
+      teamQuarter: refinement,
+      footprints: [],
+      commitmentsById: state.commitments,
+      currentQuarterId: Q,
+    });
+
+    const result = linkIdeaToRefinementReserve(
+      withRefinement(),
+      { reserveId: 'r2', ideaId: 'c-1' },
+      command('LinkIdeaToRefinementReserve'),
+      ctx('CONTRIBUTOR'),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const after = summariseCapacity({
+      teamQuarter: result.effects.changes[0]!.after as TeamQuarter,
+      footprints: [],
+      commitmentsById: state.commitments,
+      currentQuarterId: Q,
+    });
+
+    expect(after).toEqual(before);
+  });
+
+  it('refuses a reserve that is not for refinement', () => {
+    expectError(
+      linkIdeaToRefinementReserve(
+        withRefinement(),
+        { reserveId: 'r1', ideaId: 'c-1' },
+        command('L'),
+        ctx('CONTRIBUTOR'),
+      ),
+      'REFINEMENT_LINK_NOT_PERMITTED',
+    );
+  });
+
+  it('refuses work that has passed the Commit Gate', () => {
+    const committed = { ...idea, lifecycle: 'COMMITTED' as const };
+    expectError(
+      linkIdeaToRefinementReserve(
+        { ...withRefinement(), commitments: new Map([[committed.id, committed]]) },
+        { reserveId: 'r2', ideaId: 'c-1' },
+        command('L'),
+        ctx('CONTRIBUTOR'),
+      ),
+      'REFINEMENT_LINK_NOT_PERMITTED',
+    );
+  });
+
+  it('is idempotent', () => {
+    const linked: TeamQuarter = {
+      ...refinement,
+      reserves: refinement.reserves.map((r) =>
+        r.id === 'r2' ? { ...r, linkedIdeaIds: ['c-1'] } : r,
+      ),
+    };
+    const result = linkIdeaToRefinementReserve(
+      { ...state, teamQuarters: new Map([[linked.id, linked]]) },
+      { reserveId: 'r2', ideaId: 'c-1' },
+      command('L'),
+      ctx('CONTRIBUTOR'),
+    );
+    expect(result.ok && result.effects.changes).toEqual([]);
+  });
+
+  it('unlinking the last idea leaves the reserve as it started', () => {
+    const linked: TeamQuarter = {
+      ...refinement,
+      reserves: refinement.reserves.map((r) =>
+        r.id === 'r2' ? { ...r, linkedIdeaIds: ['c-1'] } : r,
+      ),
+    };
+    const result = unlinkIdeaFromRefinementReserve(
+      { ...state, teamQuarters: new Map([[linked.id, linked]]) },
+      { reserveId: 'r2', ideaId: 'c-1' },
+      command('U'),
+      ctx('CONTRIBUTOR'),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const after = result.effects.changes[0]!.after as TeamQuarter;
+    expect(after.reserves.find((r) => r.id === 'r2')).toEqual(refinement.reserves[1]);
+  });
+
+  it('carries an unlink as its inverse', () => {
+    const result = linkIdeaToRefinementReserve(
+      withRefinement(),
+      { reserveId: 'r2', ideaId: 'c-1' },
+      command('LinkIdeaToRefinementReserve'),
+      ctx('CONTRIBUTOR'),
+    );
+    expect(result.ok && result.effects.inverse?.name).toBe('UnlinkIdeaFromRefinementReserve');
   });
 });

@@ -149,7 +149,8 @@ test('headers filter, chips show what is filtered, and clearing works', async ({
   await seed(page);
 
   // A header is the obvious place to narrow to one team or one quarter.
-  await page.getByRole('grid').getByRole('button', { name: 'Payments' }).click();
+  // Exact, because the header also carries "Move Payments up/down".
+  await page.getByRole('grid').getByRole('button', { name: 'Payments', exact: true }).click();
   await expect(page.getByRole('button', { name: /Team:/ })).toBeVisible();
 
   await page
@@ -1190,4 +1191,157 @@ test('work cannot be made to depend on itself', async ({ page }) => {
   // the very work the link was refused for.
   await expect(page.getByRole('complementary')).toBeVisible();
   expect(await rows.count(), 'a self-dependency was created').toBe(before);
+});
+
+// ── M2 completion: reorder, split, milestones, refinement links ────────────
+
+test('a Planner reorders rows, and the order survives a restart', async ({ page }) => {
+  await freshApp(page);
+  await seed(page);
+
+  const rowNames = () => page.locator('.fm-grid__team .fm-grid__team-name').allTextContents();
+  expect(await rowNames()).toEqual(['Payments', 'Platform']);
+
+  // The first row cannot go up, and says so rather than failing silently.
+  await expect(page.getByRole('button', { name: 'Move Payments up' })).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Move Payments down' }).click();
+  await expect(page.locator('.fm-grid__team .fm-grid__team-name').first()).toHaveText('Platform');
+
+  // Undoable, like every other decision. Checked before the reload: the undo
+  // stack is deliberately in-memory, so a restart starts a fresh history.
+  await page.getByRole('button', { name: 'Undo' }).click();
+  expect(await rowNames()).toEqual(['Payments', 'Platform']);
+
+  // Persisted, not just re-rendered.
+  await page.getByRole('button', { name: 'Redo' }).click();
+  await page.reload();
+  expect(await rowNames()).toEqual(['Platform', 'Payments']);
+});
+
+test('reordering rows is reachable and clean by keyboard alone', async ({ page }) => {
+  await freshApp(page);
+  await seed(page);
+
+  const down = page.getByRole('button', { name: 'Move Payments down' });
+  await down.focus();
+  await expect(down).toBeFocused();
+  await down.press('Enter');
+
+  await expect(page.locator('.fm-grid__team .fm-grid__team-name').first()).toHaveText('Platform');
+  await expectNoAxeViolations(page, 'row reorder controls');
+});
+
+test('splitting a placement divides it across quarters and conserves the total', async ({
+  page,
+}) => {
+  await freshApp(page);
+  await seed(page);
+  await page.getByRole('button', { name: 'Place', exact: true }).click();
+  await page.getByRole('gridcell', { name: /SEPA instant/ }).click();
+
+  const placements = page.locator('.fm-panel__list--placements li');
+  const figures = page.locator('.fm-panel__list--placements .fm-panel__figure');
+  await expect(placements).toHaveCount(1);
+  const unitsIn = (text: string) => Number(text.match(/(\d+) units/)?.[1] ?? '0');
+  const originalUnits = unitsIn((await figures.first().textContent()) ?? '');
+  expect(originalUnits).toBeGreaterThan(1);
+
+  const moving = Math.floor(originalUnits / 2);
+  await page.locator('.fm-panel__splitunits input').fill(String(moving));
+  await page.locator('.fm-panel__split .fm-strip__quarter').first().click();
+  await page.getByRole('button', { name: 'Split', exact: true }).click();
+
+  await expect(placements).toHaveCount(2);
+  const totals = await figures.allTextContents();
+  const sum = totals.reduce((acc, row) => acc + unitsIn(row), 0);
+  // A split redistributes work; it never quietly changes how much there is.
+  expect(sum).toBe(originalUnits);
+
+  await expectNoAxeViolations(page, 'split control');
+
+  // One gesture, one undo — the whole split comes back together.
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(placements).toHaveCount(1);
+  await expect(figures.first()).toContainText(`${originalUnits} units`);
+});
+
+test('milestones are drawn on blocks and announced with them', async ({ page }) => {
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  // Drawn: shape carries the state, so there is a marker per milestone.
+  await expect(page.locator('.fm-milestone').first()).toBeVisible();
+  await expect(page.locator(".fm-milestone[data-status='PLANNED']").first()).toBeVisible();
+
+  // Announced: a marker a sighted user can see and a screen-reader user cannot
+  // is exactly the failure the label exists to prevent.
+  const labelled = page.getByRole('gridcell', { name: /milestone/i }).first();
+  await expect(labelled).toBeVisible();
+
+  await expectNoAxeViolations(page, 'milestones on blocks');
+  await expectNoUnresolvedKeys(page);
+});
+
+test('a refinement link names its Ideas in the reserve, and moves no capacity', async ({
+  page,
+}) => {
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+
+  const figuresBefore = await page.locator('.fm-vessel__percent').allTextContents();
+
+  const lane = page.getByRole('region', { name: /ideas and demand/i });
+  const picker = lane.getByRole('combobox', { name: 'Link an Idea…' }).first();
+  const ideaName = await lane.locator('.fm-idea__name').first().textContent();
+  // The current quarter, not whichever reserve sorts first: a past quarter can
+  // be closed, and a closed container refuses the link.
+  const current = await picker
+    .locator('option')
+    .filter({ hasText: '2026-Q3' })
+    .first()
+    .getAttribute('value');
+  await picker.selectOption(current!);
+
+  // The reserve now names what it supports. Read out rather than matched by a
+  // text filter: an SVG <title> is not rendered text and locators cannot see it.
+  const reserveTitles = () =>
+    page.locator('.fm-vessel title').evaluateAll((els) => els.map((e) => e.textContent ?? ''));
+  await expect
+    .poll(async () => (await reserveTitles()).filter((text) => text.includes('Supports 1 Idea')))
+    .toEqual([expect.stringContaining(ideaName!.replace('🔒 ', '').trim())]);
+
+  // R: refinement links change no capacity total anywhere.
+  expect(await page.locator('.fm-vessel__percent').allTextContents()).toEqual(figuresBefore);
+
+  // Reversible, and the tag says what it would remove.
+  await lane.locator('.fm-idea__refinetag').first().click();
+  await expect
+    .poll(async () => (await reserveTitles()).filter((text) => text.includes('Supports 1 Idea')))
+    .toEqual([]);
+});
+
+test('the panel carries all three confidences, value drivers, and themes', async ({ page }) => {
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+  await page
+    .getByRole('gridcell', { name: /SEPA instant payments/ })
+    .first()
+    .click();
+
+  const panel = page.getByRole('complementary', { name: /Details for/ });
+  // Size alone is how "confidence" stops meaning anything.
+  for (const field of ['Size confidence', 'Timing confidence', 'Scope confidence']) {
+    await expect(panel.getByText(field, { exact: true })).toBeVisible();
+  }
+
+  // Value drivers come from the workspace's agreed list, never typed.
+  const driver = panel.getByRole('button', { name: /Regulatory \/ Compliance/ });
+  await driver.click();
+  await expect(driver).toHaveAttribute('aria-pressed', 'true');
+
+  await expectNoAxeViolations(page, 'detail panel outcome section');
+  await expectNoUnresolvedKeys(page);
 });

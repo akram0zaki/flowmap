@@ -9,7 +9,8 @@
  * precise pointer.
  */
 
-import type { EntityId, QuarterId } from '@flowmap/domain';
+import type { Dependency, EntityId, Milestone, ProductImpact, QuarterId } from '@flowmap/domain';
+import { isActive } from '@flowmap/domain';
 
 import type { BlockModel, BoardModel, CellModel } from './layout.js';
 
@@ -71,6 +72,11 @@ export type FocusModel = {
   readonly relatedCellKeys: ReadonlySet<string>;
   readonly relatedTeamIds: ReadonlySet<EntityId>;
   readonly relatedQuarterIds: ReadonlySet<QuarterId>;
+  /** Products this work changes. Emphasised wherever products are drawn. */
+  readonly relatedProductIds: ReadonlySet<EntityId>;
+  readonly relatedMilestoneIds: ReadonlySet<EntityId>;
+  /** Edges with this commitment at either end — what it waits on, and what waits on it. */
+  readonly relatedDependencyIds: ReadonlySet<EntityId>;
 };
 
 export const NO_FOCUS: FocusModel = {
@@ -79,9 +85,30 @@ export const NO_FOCUS: FocusModel = {
   relatedCellKeys: new Set(),
   relatedTeamIds: new Set(),
   relatedQuarterIds: new Set(),
+  relatedProductIds: new Set(),
+  relatedMilestoneIds: new Set(),
+  relatedDependencyIds: new Set(),
 };
 
-export function focusOn(board: BoardModel, commitmentId: EntityId | null): FocusModel {
+/**
+ * Everything focus reaches beyond the grid.
+ *
+ * Passed in rather than read from the board because the board is a capacity
+ * picture: it knows where work sits, not what that work changes or waits on.
+ * Optional, so a caller that has not loaded the relations still gets footprint
+ * focus rather than an error.
+ */
+export type FocusRelations = {
+  readonly impacts?: Iterable<ProductImpact>;
+  readonly milestones?: Iterable<Milestone>;
+  readonly dependencies?: Iterable<Dependency>;
+};
+
+export function focusOn(
+  board: BoardModel,
+  commitmentId: EntityId | null,
+  relations: FocusRelations = {},
+): FocusModel {
   if (commitmentId === null) return NO_FOCUS;
 
   const footprintIds = new Set<EntityId>();
@@ -101,12 +128,40 @@ export function focusOn(board: BoardModel, commitmentId: EntityId | null): Focus
     }
   }
 
+  const productIds = new Set<EntityId>();
+  for (const impact of relations.impacts ?? []) {
+    if (isActive(impact) && impact.commitmentId === commitmentId) {
+      productIds.add(impact.productServiceId);
+    }
+  }
+
+  const milestoneIds = new Set<EntityId>();
+  for (const milestone of relations.milestones ?? []) {
+    if (isActive(milestone) && milestone.commitmentId === commitmentId) {
+      milestoneIds.add(milestone.id);
+    }
+  }
+
+  // Both directions: what this waits on, and what waits on it. Focus is asked
+  // "what does this touch", and an edge pointing inward touches just as much.
+  const dependencyIds = new Set<EntityId>();
+  for (const dependency of relations.dependencies ?? []) {
+    if (!isActive(dependency)) continue;
+    const points =
+      dependency.sourceCommitmentId === commitmentId ||
+      (dependency.target.kind === 'COMMITMENT' && dependency.target.id === commitmentId);
+    if (points) dependencyIds.add(dependency.id);
+  }
+
   return {
     commitmentId,
     relatedFootprintIds: footprintIds,
     relatedCellKeys: cellKeys,
     relatedTeamIds: teamIds,
     relatedQuarterIds: quarterIds,
+    relatedProductIds: productIds,
+    relatedMilestoneIds: milestoneIds,
+    relatedDependencyIds: dependencyIds,
   };
 }
 
@@ -116,6 +171,18 @@ export function isBlockFocused(focus: FocusModel, block: BlockModel): boolean {
 
 export function isCellFocused(focus: FocusModel, cell: CellModel): boolean {
   return focus.commitmentId === null || focus.relatedCellKeys.has(cell.key);
+}
+
+export function isProductFocused(focus: FocusModel, productServiceId: EntityId): boolean {
+  return focus.commitmentId === null || focus.relatedProductIds.has(productServiceId);
+}
+
+export function isMilestoneFocused(focus: FocusModel, milestoneId: EntityId): boolean {
+  return focus.commitmentId === null || focus.relatedMilestoneIds.has(milestoneId);
+}
+
+export function isDependencyFocused(focus: FocusModel, dependencyId: EntityId): boolean {
+  return focus.commitmentId === null || focus.relatedDependencyIds.has(dependencyId);
 }
 
 /**
@@ -136,6 +203,9 @@ export function describeFocus(board: BoardModel, focus: FocusModel): string | nu
     footprints: blocks.length,
     teams: focus.relatedTeamIds.size,
     quarters: focus.relatedQuarterIds.size,
+    products: focus.relatedProductIds.size,
+    milestones: focus.relatedMilestoneIds.size,
+    dependencies: focus.relatedDependencyIds.size,
   });
 }
 

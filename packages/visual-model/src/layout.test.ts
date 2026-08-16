@@ -14,9 +14,13 @@ import {
 
 import { allBlocks, buildBoard, findCell, type BoardInput } from './layout.js';
 import {
+  describeFocus,
   focusOn,
   isBlockFocused,
   isCellFocused,
+  isDependencyFocused,
+  isMilestoneFocused,
+  isProductFocused,
   levelForScale,
   matchesFilter,
   NO_FILTER,
@@ -472,6 +476,104 @@ describe('focus mode', () => {
     for (const block of allBlocks(board)) {
       expect(isBlockFocused(focusOn(board, null), block)).toBe(true);
     }
+  });
+
+  // Focus answers "what does this touch", and the answer is not only capacity.
+  describe('reaches past the grid', () => {
+    const relations = {
+      impacts: [
+        { ...env('i-1'), commitmentId: 'c-1', productServiceId: 'p-1', type: 'PRIMARY' as const },
+        { ...env('i-2'), commitmentId: 'c-2', productServiceId: 'p-2', type: 'MAJOR' as const },
+      ],
+      milestones: [
+        {
+          ...env('m-1'),
+          commitmentId: 'c-1',
+          name: 'Pilot live',
+          status: 'PLANNED' as const,
+          displayOrder: 0,
+        },
+        {
+          ...env('m-2'),
+          commitmentId: 'c-2',
+          name: 'Cutover',
+          status: 'PLANNED' as const,
+          displayOrder: 0,
+        },
+      ],
+      dependencies: [
+        {
+          ...env('d-1'),
+          sourceCommitmentId: 'c-1',
+          target: { kind: 'COMMITMENT' as const, id: 'c-2' },
+          type: 'REQUIRES' as const,
+          status: 'OPEN' as const,
+          isHard: false,
+        },
+        {
+          ...env('d-2'),
+          sourceCommitmentId: 'c-2',
+          target: { kind: 'COMMITMENT' as const, id: 'c-1' },
+          type: 'BLOCKED_BY' as const,
+          status: 'OPEN' as const,
+          isHard: true,
+        },
+      ],
+    };
+
+    it('relates the products this work changes', () => {
+      const focus = focusOn(buildBoard(multiTeam), 'c-1', relations);
+      expect([...focus.relatedProductIds]).toEqual(['p-1']);
+      expect(isProductFocused(focus, 'p-1')).toBe(true);
+      expect(isProductFocused(focus, 'p-2')).toBe(false);
+    });
+
+    it('relates its milestones and no one else’s', () => {
+      const focus = focusOn(buildBoard(multiTeam), 'c-1', relations);
+      expect([...focus.relatedMilestoneIds]).toEqual(['m-1']);
+      expect(isMilestoneFocused(focus, 'm-2')).toBe(false);
+    });
+
+    // An edge pointing inward touches this work just as much as one pointing out.
+    it('relates dependencies in both directions', () => {
+      const focus = focusOn(buildBoard(multiTeam), 'c-1', relations);
+      expect([...focus.relatedDependencyIds].sort()).toEqual(['d-1', 'd-2']);
+      expect(isDependencyFocused(focus, 'd-1')).toBe(true);
+      expect(isDependencyFocused(focus, 'd-other')).toBe(false);
+    });
+
+    it('ignores archived relations', () => {
+      const focus = focusOn(buildBoard(multiTeam), 'c-1', {
+        impacts: relations.impacts.map((i) => ({ ...i, archivedAt: NOW, archivedBy: 'a' })),
+        milestones: relations.milestones.map((m) => ({ ...m, archivedAt: NOW, archivedBy: 'a' })),
+        dependencies: relations.dependencies.map((d) => ({
+          ...d,
+          archivedAt: NOW,
+          archivedBy: 'a',
+        })),
+      });
+      expect(focus.relatedProductIds.size).toBe(0);
+      expect(focus.relatedMilestoneIds.size).toBe(0);
+      expect(focus.relatedDependencyIds.size).toBe(0);
+    });
+
+    // Callers that have not loaded the relations still get footprint focus.
+    it('works with no relations supplied', () => {
+      const focus = focusOn(buildBoard(multiTeam), 'c-1');
+      expect(focus.relatedFootprintIds.size).toBe(2);
+      expect(focus.relatedProductIds.size).toBe(0);
+    });
+
+    it('announces what focus revealed, including the relations', () => {
+      const board = buildBoard(multiTeam);
+      const described = describeFocus(board, focusOn(board, 'c-1', relations));
+      expect(JSON.parse(described!)).toMatchObject({
+        footprints: 2,
+        products: 1,
+        milestones: 1,
+        dependencies: 2,
+      });
+    });
   });
 });
 

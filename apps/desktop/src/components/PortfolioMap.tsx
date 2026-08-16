@@ -93,6 +93,10 @@ export type PortfolioMapProps = {
   /** Dependencies of the focused commitment, drawn over the grid. */
   readonly dependencyEdges: readonly DependencyEdge[];
   readonly onDropHere: () => void;
+  /** Planner-only: move a team row up or down. Absent for anyone else. */
+  readonly onMoveRow?: (teamId: string, direction: -1 | 1) => void;
+  /** Names for the Ideas a refinement reserve supports, by id. */
+  readonly ideaNames?: ReadonlyMap<string, string>;
 };
 
 export function PortfolioMap({
@@ -120,6 +124,8 @@ export function PortfolioMap({
   onWheelZoom,
   dependencyEdges,
   onDropHere,
+  onMoveRow,
+  ideaNames,
 }: PortfolioMapProps) {
   // Roving focus: the grid is one tab stop, arrows move within it.
   const [cursor, setCursor] = useState<{ row: number; col: number }>({ row: 0, col: 0 });
@@ -146,6 +152,17 @@ export function PortfolioMap({
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // Only the grid's own keys. The grid is a single tab stop, so navigation
+      // events target it directly; anything bubbling up from a descendant
+      // belongs to that descendant.
+      //
+      // Without this the grid ate Enter and Space for every control inside it:
+      // `preventDefault` on a bubbled keydown cancels the button's activation,
+      // so the row-reorder and header-filter buttons could be tabbed to and not
+      // used. Arrow keys had the mirror problem — resizing a block also walked
+      // the cursor off it.
+      if (e.target !== e.currentTarget) return;
+
       switch (e.key) {
         case 'ArrowRight':
           e.preventDefault();
@@ -352,6 +369,31 @@ export function PortfolioMap({
                 >
                   {row.teamName}
                 </button>
+
+                {/* The Planner's order, changed where the order is visible.
+                    Two buttons rather than a drag: a drag needs a keyboard
+                    equivalent anyway, and for a handful of rows the buttons
+                    *are* the better interaction, not the fallback. */}
+                {onMoveRow && (
+                  <span className="fm-grid__reorder" role="group" aria-label={t('map.rowOrder')}>
+                    <button
+                      type="button"
+                      disabled={rowIndex === 0}
+                      aria-label={t('map.moveRowUp', { team: row.teamName })}
+                      onClick={() => onMoveRow(row.teamId, -1)}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      disabled={rowIndex === board.rows.length - 1}
+                      aria-label={t('map.moveRowDown', { team: row.teamName })}
+                      onClick={() => onMoveRow(row.teamId, 1)}
+                    >
+                      ↓
+                    </button>
+                  </span>
+                )}
                 <span className="fm-grid__team-meta" data-figure="">
                   {row.capacity === 0
                     ? '—'
@@ -418,6 +460,10 @@ export function PortfolioMap({
                         compact={level === 2}
                         zoom={scale}
                         dimmedFootprintIds={dimmedIds(cell, focus, filter)}
+                        {...(ideaNames ? { ideaNames } : {})}
+                        {...(focus.commitmentId !== null
+                          ? { focusedMilestoneIds: focus.relatedMilestoneIds }
+                          : {})}
                         {...(selectedFootprintId !== null ? { selectedFootprintId } : {})}
                         {...(aimedHere && preview
                           ? {

@@ -32,6 +32,22 @@ export type IdeasLaneProps = {
   readonly dropNote: string | null;
   readonly collapsed: boolean;
   readonly onToggleCollapsed: () => void;
+  /**
+   * Refinement reserves an Idea can be attached to, as `{ reserveId, label }`.
+   *
+   * The link says a team is shaping this Idea this quarter. It allocates
+   * nothing — that is the whole distinction between refining an Idea and
+   * committing to it, and it is the only way an uncommitted Idea reaches the
+   * grid at all (spec 02 §5.1).
+   */
+  readonly refinementReserves: ReadonlyArray<{
+    readonly reserveId: string;
+    readonly teamId: string;
+    readonly quarterId: string;
+    readonly label: string;
+  }>;
+  readonly onLinkRefinement: (reserveId: string, commitmentId: string) => void;
+  readonly onUnlinkRefinement: (reserveId: string, commitmentId: string) => void;
 };
 
 /** Ideas that need a decision to be made rank above ones that need a name. */
@@ -48,6 +64,9 @@ export function IdeasLane({
   dropNote,
   collapsed,
   onToggleCollapsed,
+  refinementReserves,
+  onLinkRefinement,
+  onUnlinkRefinement,
 }: IdeasLaneProps) {
   const ready = ideas.filter((idea) => readiness.get(idea.commitmentId)?.readyToPlace).length;
 
@@ -150,6 +169,59 @@ export function IdeasLane({
                       {idea.refinementLinks.length > 0 && ` · ${t('map.refinementLinked')}`}
                     </span>
                   </button>
+
+                  {/* Outside the button, not inside it: nesting a select in a
+                      button gives a keyboard user something they can reach but
+                      cannot operate, and the markup is invalid besides. */}
+                  {refinementReserves.length > 0 && (
+                    <div className="fm-idea__refine">
+                      {idea.refinementLinks.map((link) => {
+                        const reserve = refinementReserves.find(
+                          (candidate) =>
+                            candidate.teamId === link.teamId &&
+                            candidate.quarterId === link.quarterId,
+                        );
+                        if (!reserve) return null;
+                        return (
+                          <button
+                            key={reserve.reserveId}
+                            type="button"
+                            className="fm-idea__refinetag"
+                            aria-label={t('panel.unlinkIdea', { name: reserve.label })}
+                            onClick={() => onUnlinkRefinement(reserve.reserveId, idea.commitmentId)}
+                          >
+                            {reserve.label} ✕
+                          </button>
+                        );
+                      })}
+
+                      <select
+                        value=""
+                        aria-label={t('panel.linkIdea')}
+                        onChange={(event) => {
+                          if (event.target.value) {
+                            onLinkRefinement(event.target.value, idea.commitmentId);
+                          }
+                        }}
+                      >
+                        <option value="">{t('panel.linkIdea')}</option>
+                        {refinementReserves
+                          .filter(
+                            (reserve) =>
+                              !idea.refinementLinks.some(
+                                (link) =>
+                                  link.teamId === reserve.teamId &&
+                                  link.quarterId === reserve.quarterId,
+                              ),
+                          )
+                          .map((reserve) => (
+                            <option key={reserve.reserveId} value={reserve.reserveId}>
+                              {reserve.label}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
                 </li>
               );
             })}

@@ -106,5 +106,23 @@ export async function createTauriRuntime(base: {
   const repository = new SqliteWorkspaceRepository(driver);
   await repository.migrate();
 
-  return { repository, dataDir: info.dataDir, portable: info.portable, ...base };
+  return {
+    repository,
+    dataDir: info.dataDir,
+    portable: info.portable,
+    /**
+     * The only outward action the app performs.
+     *
+     * Called through the plugin's IPC command rather than the
+     * `@tauri-apps/plugin-opener` wrapper so the JS side gains no dependency
+     * for one call; the Rust side registers the plugin and the capability
+     * allows exactly `opener:allow-open-url`, which is what actually
+     * constrains this. A `webview` window would embed the enterprise system —
+     * `open_url` hands it to the OS instead, which is the whole point.
+     */
+    openExternal: async (url: string) => {
+      await invoke('plugin:opener|open_url', { url });
+    },
+    ...base,
+  };
 }
