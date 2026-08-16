@@ -12,6 +12,7 @@ import {
   resizeCapacityFootprint,
   restoreCapacityFootprint,
   setPrimaryTeam,
+  updateCommitment,
 } from './handlers.js';
 import {
   diffFields,
@@ -986,6 +987,114 @@ describe('setPrimaryTeam', () => {
     expect(result.effects.inverse).toMatchObject({
       name: 'SetPrimaryTeam',
       payload: { commitmentId: 'c-1', teamId: 'team-1' },
+    });
+  });
+});
+
+// ── UpdateCommitment ───────────────────────────────────────────────────────
+
+describe('updateCommitment', () => {
+  const run = (payload: Parameters<typeof updateCommitment>[1], role: WorkspaceRole = 'PLANNER') =>
+    updateCommitment(state, payload, command('UpdateCommitment'), ctx(role));
+
+  it('changes only the fields it was given', () => {
+    const result = run({ commitmentId: 'c-1', outcome: 'Instant payments live' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const after = result.effects.changes[0]?.after as Commitment;
+    expect(after.outcome).toBe('Instant payments live');
+    expect(after.name).toBe(idea.name);
+    expect(after.lifecycle).toBe('IDEA');
+  });
+
+  // Clearing and leaving alone are different things, and a property sheet has
+  // to be able to say both.
+  it('treats null as clear and undefined as leave alone', () => {
+    const withOwner = {
+      ...state,
+      commitments: new Map([
+        ['c-1', { ...idea, ownerRef: { kind: 'PERSON', personId: 'p-1' }, outcome: 'keep me' }],
+      ]),
+    } as unknown as WorkspaceState;
+
+    const result = updateCommitment(
+      withOwner,
+      { commitmentId: 'c-1', ownerRef: null },
+      command('UpdateCommitment'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const after = result.effects.changes[0]?.after as Commitment;
+    expect(after.ownerRef).toBeUndefined();
+    expect(after.outcome).toBe('keep me');
+  });
+
+  it('is a no-op when nothing actually differs', () => {
+    const result = run({ commitmentId: 'c-1', name: idea.name });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.effects.changes).toEqual([]);
+  });
+
+  it('derives the target quarter from a target date, so the two cannot disagree', () => {
+    const result = run({ commitmentId: 'c-1', targetDate: '2026-11-30' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const after = result.effects.changes[0]?.after as Commitment;
+    expect(after.targetQuarterId).toBe('2026-Q4');
+  });
+
+  /**
+   * Staleness rules read `lastMeaningfulUpdateAt`. If tidying a label refreshed
+   * it, a forgotten commitment would look freshly reviewed.
+   */
+  it('refreshes the meaningful-update stamp only for meaningful fields', () => {
+    const renamed = run({ commitmentId: 'c-1', name: 'A better name' });
+    const retargeted = run({ commitmentId: 'c-1', targetQuarterId: '2027-Q1' });
+
+    expect(renamed.ok && retargeted.ok).toBe(true);
+    if (!renamed.ok || !retargeted.ok) return;
+    expect(
+      (renamed.effects.changes[0]?.after as Commitment).lastMeaningfulUpdateAt,
+    ).toBeUndefined();
+    expect(
+      (retargeted.effects.changes[0]?.after as Commitment).lastMeaningfulUpdateAt,
+    ).toBeDefined();
+  });
+
+  it('caps the management note, because the domain owns that limit', () => {
+    expectError(run({ commitmentId: 'c-1', managementNote: 'x'.repeat(2001) }), 'NOTE_TOO_LONG');
+  });
+
+  it('refuses an empty name', () => {
+    expectError(run({ commitmentId: 'c-1', name: '   ' }), 'NAME_REQUIRED');
+  });
+
+  it('lets a Contributor edit, since this is not a planning decision', () => {
+    expect(run({ commitmentId: 'c-1', outcome: 'x' }, 'CONTRIBUTOR').ok).toBe(true);
+  });
+
+  it('carries an inverse holding the previous values', () => {
+    const withOutcome = {
+      ...state,
+      commitments: new Map([['c-1', { ...idea, outcome: 'before' }]]),
+    } as unknown as WorkspaceState;
+
+    const result = updateCommitment(
+      withOutcome,
+      { commitmentId: 'c-1', outcome: 'after' },
+      command('UpdateCommitment'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.inverse).toMatchObject({
+      name: 'UpdateCommitment',
+      payload: { commitmentId: 'c-1', outcome: 'before' },
     });
   });
 });

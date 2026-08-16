@@ -84,8 +84,7 @@ describe('migrations', () => {
     const applied = await driver.all<{ version: number; checksum: string }>(
       'SELECT version, checksum FROM migration_log',
     );
-    expect(applied).toHaveLength(1);
-    expect(applied[0]!.version).toBe(1);
+    expect(applied.map((row) => row.version)).toEqual(MIGRATIONS.map((m) => m.version));
   });
 
   it('is a no-op on a second run', async () => {
@@ -93,7 +92,7 @@ describe('migrations', () => {
     const report = await repo.migrate({ now: () => NOW });
 
     expect(report.applied).toHaveLength(0);
-    expect(report.skipped).toEqual([1]);
+    expect(report.skipped).toEqual(MIGRATIONS.map((m) => m.version));
     expect(await driver.schemaSnapshot()).toBe(before);
   });
 
@@ -291,8 +290,9 @@ describe('apply is one transaction', () => {
         changes: [
           ...effects.changes,
           // An unmappable entity kind throws part-way through the transaction.
+          // Scenarios have no table until M4; THEME gained one in schema v2.
           {
-            ref: { kind: 'THEME', id: 'x' },
+            ref: { kind: 'SCENARIO', id: 'x' },
             op: 'CREATE',
             toVersion: 1,
             after: {},
@@ -551,5 +551,113 @@ describe('local profile', () => {
     expect(first.id).toBe('profile-1');
     expect(second.id, 'the existing profile wins').toBe('profile-1');
     expect(second.displayName).toBe('Ada');
+  });
+});
+
+// ── Relations (schema v2) ──────────────────────────────────────────────────
+
+/**
+ * Before v2 there were no tables for any of this, so the fixture's impacts,
+ * dependencies, milestones and links were silently dropped on seed — which is
+ * why nothing rendered them and the detail panel had nothing to read.
+ */
+describe('relations round-trip', () => {
+  const envelope = (id: string) => ({
+    id,
+    workspaceId: WS,
+    schemaVersion: 2,
+    entityVersion: 1,
+    createdAt: NOW,
+    createdBy: 'a',
+    updatedAt: NOW,
+    updatedBy: 'a',
+  });
+
+  async function seed(rows: ReadonlyArray<readonly [string, object]>) {
+    const c1 = command('CreateWorkspace');
+    await persist(
+      repo,
+      createWorkspace({ name: 'W', timezone: 'UTC', currentQuarterId: Q }, c1, ctx()),
+      c1,
+    );
+    const cmd = command('Seed');
+    await repo.apply({
+      workspaceId: WS,
+      changes: rows.map(([kind, after]) => ({
+        ref: { kind, id: (after as { id: string }).id } as never,
+        op: 'CREATE' as const,
+        toVersion: 1,
+        after,
+        changedFields: Object.keys(after).sort(),
+      })),
+      events: [],
+      command: cmd,
+    });
+    return (await repo.load(WS))!;
+  }
+
+  it('stores and reloads a product and a typed impact', async () => {
+    const state = await seed([
+      ['PRODUCT_SERVICE', { ...envelope('p-1'), name: 'Payments Hub', active: true }],
+      [
+        'PRODUCT_IMPACT',
+        { ...envelope('pi-1'), commitmentId: 'c-1', productServiceId: 'p-1', type: 'PRIMARY' },
+      ],
+    ]);
+
+    expect(state.products?.get('p-1')?.name).toBe('Payments Hub');
+    expect(state.productImpacts?.get('pi-1')?.type).toBe('PRIMARY');
+  });
+
+  // The target is a tagged union stored as two columns so it can be indexed.
+  it('rebuilds a dependency target from its two columns', async () => {
+    const state = await seed([
+      [
+        'DEPENDENCY',
+        {
+          ...envelope('d-1'),
+          sourceCommitmentId: 'c-1',
+          target: { kind: 'TEAM', id: 't-9' },
+          type: 'NEEDS_CAPACITY_FROM',
+          status: 'OPEN',
+          isHard: true,
+        },
+      ],
+    ]);
+
+    const dependency = state.dependencies?.get('d-1');
+    expect(dependency?.target).toEqual({ kind: 'TEAM', id: 't-9' });
+    expect(dependency?.isHard).toBe(true);
+  });
+
+  it('stores milestones, themes, links and decisions', async () => {
+    const state = await seed([
+      [
+        'MILESTONE',
+        {
+          ...envelope('m-1'),
+          commitmentId: 'c-1',
+          name: 'Pilot',
+          status: 'PLANNED',
+          displayOrder: 0,
+        },
+      ],
+      ['THEME', { ...envelope('th-1'), name: 'Regulatory' }],
+      ['COMMITMENT_THEME', { ...envelope('ct-1'), commitmentId: 'c-1', themeId: 'th-1' }],
+      [
+        'EXTERNAL_LINK',
+        { ...envelope('l-1'), commitmentId: 'c-1', type: 'TICKET', url: 'https://example.test/1' },
+      ],
+      [
+        'DECISION',
+        { ...envelope('dc-1'), kind: 'APPROVAL', name: 'Board sign-off', status: 'OPEN' },
+      ],
+    ]);
+
+    expect(state.milestones?.get('m-1')?.name).toBe('Pilot');
+    expect(state.themes?.get('th-1')?.name).toBe('Regulatory');
+    expect(state.commitmentThemes?.get('ct-1')?.themeId).toBe('th-1');
+    expect(state.externalLinks?.get('l-1')?.url).toBe('https://example.test/1');
+    expect(state.decisions?.get('dc-1')?.kind).toBe('APPROVAL');
   });
 });

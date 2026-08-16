@@ -37,14 +37,15 @@ import {
   event,
   newEnvelope,
   requireName,
+  requireText,
   succeed,
   updated,
 } from './handler-kit.js';
 import { domainError } from './errors.js';
 import { capacityKey, commitmentKey, type ProjectionKey } from './refs.js';
 import { deliverableCapacity, reservedTotal, resolveUnits, summariseCapacity } from './capacity.js';
-import type { CapacityUnits, EntityId, RelativeSize } from './primitives.js';
-import { isQuarterId, type QuarterId } from './quarter.js';
+import type { CapacityUnits, Confidence, EntityId, OwnerRef, RelativeSize } from './primitives.js';
+import { isQuarterId, quarterOfDate, type QuarterId } from './quarter.js';
 
 // ── CreateWorkspace ────────────────────────────────────────────────────────
 
@@ -654,6 +655,166 @@ function overflowConsequence(
   return {
     consequences: [{ kind: 'CAPACITY', teamId, quarterId, loadDelta, newOverflow }],
   };
+}
+
+/** Spec 02 §9: management notes are capped, and the cap is a domain rule. */
+const MANAGEMENT_NOTE_MAX = 2000;
+
+// ── UpdateCommitment ───────────────────────────────────────────────────────
+
+/**
+ * The editable fields of a commitment.
+ *
+ * A closed set, listed explicitly rather than a `Partial<Commitment>`, because
+ * lifecycle, placement and the audit envelope are all changed by their own
+ * commands and must not be reachable through a generic patch. `null` clears a
+ * field; omitting it leaves the field alone — the two are different, and a
+ * property sheet needs to say both.
+ */
+export type UpdateCommitmentPayload = {
+  readonly commitmentId: EntityId;
+  readonly name?: string;
+  readonly class?: Commitment['class'];
+  readonly importance?: Commitment['importance'];
+  readonly ownerRef?: OwnerRef | null;
+  readonly targetQuarterId?: QuarterId | null;
+  readonly targetDate?: string | null;
+  readonly sizeConfidence?: Confidence | null;
+  readonly timingConfidence?: Confidence | null;
+  readonly scopeConfidence?: Confidence | null;
+  readonly outcome?: string | null;
+  readonly valueDrivers?: readonly string[];
+  readonly attentionDate?: string | null;
+  readonly latestSafeStart?: string | null;
+  readonly nextAction?: string | null;
+  readonly nextActionOwnerRef?: OwnerRef | null;
+  readonly nextActionDueDate?: string | null;
+  readonly managementNote?: string | null;
+};
+
+const EDITABLE_FIELDS = [
+  'name',
+  'class',
+  'importance',
+  'ownerRef',
+  'targetQuarterId',
+  'targetDate',
+  'sizeConfidence',
+  'timingConfidence',
+  'scopeConfidence',
+  'outcome',
+  'valueDrivers',
+  'attentionDate',
+  'latestSafeStart',
+  'nextAction',
+  'nextActionOwnerRef',
+  'nextActionDueDate',
+  'managementNote',
+] as const;
+
+/**
+ * Fields whose change means the work itself moved on, rather than someone
+ * tidying a label. Only these refresh `lastMeaningfulUpdateAt`, which the
+ * staleness rules read — otherwise fixing a typo would make a forgotten
+ * commitment look freshly reviewed.
+ */
+const MEANINGFUL_FIELDS: ReadonlySet<string> = new Set([
+  'targetQuarterId',
+  'targetDate',
+  'outcome',
+  'nextAction',
+  'nextActionDueDate',
+  'latestSafeStart',
+  'class',
+  'importance',
+]);
+
+export function updateCommitment(
+  state: WorkspaceState,
+  payload: UpdateCommitmentPayload,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'CONTRIBUTOR');
+  if (unauthorised) return unauthorised;
+
+  const commitment = state.commitments.get(payload.commitmentId);
+  if (!commitment) {
+    return fail('ENTITY_NOT_FOUND', {
+      entityRef: { kind: 'COMMITMENT', id: payload.commitmentId },
+    });
+  }
+  if (!isActive(commitment)) return fail('ENTITY_ARCHIVED', { params: { name: commitment.name } });
+
+  if (payload.name !== undefined) {
+    const invalid = requireName(payload.name, 200);
+    if (invalid) return invalid;
+  }
+  if (payload.outcome != null) {
+    const invalid = requireText(payload.outcome, 500);
+    if (invalid) return invalid;
+  }
+  if (payload.managementNote != null) {
+    const invalid = requireText(payload.managementNote, MANAGEMENT_NOTE_MAX);
+    if (invalid) return invalid;
+  }
+  if (payload.targetQuarterId != null && !isQuarterId(payload.targetQuarterId)) {
+    return fail('IMPORT_INVALID_ENUM_VALUE', {
+      params: { field: 'targetQuarterId', value: payload.targetQuarterId },
+    });
+  }
+
+  // Build the patch from what was actually supplied. `null` clears.
+  const patch: Record<string, unknown> = {};
+  for (const field of EDITABLE_FIELDS) {
+    const value = payload[field];
+    if (value === undefined) continue;
+    patch[field] = value === null ? undefined : value;
+  }
+
+  const changed = Object.keys(patch).filter(
+    (field) =>
+      JSON.stringify(patch[field]) !==
+      JSON.stringify((commitment as unknown as Record<string, unknown>)[field]),
+  );
+  if (changed.length === 0) {
+    return succeed({ changes: [], events: [], affectedProjections: [] });
+  }
+
+  const meaningful = changed.some((field) => MEANINGFUL_FIELDS.has(field));
+  const after = bumped(
+    {
+      ...commitment,
+      ...patch,
+      ...(meaningful ? { lastMeaningfulUpdateAt: ctx.clock.now() } : {}),
+    } as Commitment,
+    ctx,
+  );
+
+  // Setting a date derives the quarter, per spec 02 §4 — the two must not be
+  // allowed to disagree, and the date is the more precise statement.
+  const withDerived =
+    payload.targetDate != null && payload.targetQuarterId === undefined
+      ? { ...after, targetQuarterId: quarterOfDate(payload.targetDate).id }
+      : after;
+
+  const ref = { kind: 'COMMITMENT', id: commitment.id } as const;
+  const before: Record<string, unknown> = { commitmentId: commitment.id };
+  for (const field of changed) {
+    before[field] = (commitment as unknown as Record<string, unknown>)[field] ?? null;
+  }
+
+  return succeed({
+    changes: [updated(ref, commitment, withDerived)],
+    events: [
+      event(cmd, ctx, 0, 'COMMITMENT_UPDATED', [ref], {
+        commitment: commitment.name,
+        fields: changed.join(', '),
+      }),
+    ],
+    affectedProjections: [commitmentKey(commitment.id)],
+    inverse: { ...cmd, id: ctx.ids.next(), name: 'UpdateCommitment', payload: before },
+  });
 }
 
 // ── SetPrimaryTeam ─────────────────────────────────────────────────────────

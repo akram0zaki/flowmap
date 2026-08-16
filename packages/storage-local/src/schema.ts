@@ -200,6 +200,174 @@ CREATE INDEX IF NOT EXISTS ix_outbox_state       ON outbox(workspace_id, state, 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_command ON outbox(command_id, entity_ref_json);
 `;
 
+const V2_SQL = `
+CREATE TABLE IF NOT EXISTS product_service (
+  id             TEXT PRIMARY KEY,
+  workspace_id   TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  description    TEXT,
+  owner_json     TEXT,
+  active         INTEGER NOT NULL DEFAULT 1,
+  schema_version INTEGER NOT NULL,
+  entity_version INTEGER NOT NULL,
+  created_at     TEXT NOT NULL,
+  created_by     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  updated_by     TEXT NOT NULL,
+  archived_at    TEXT,
+  archived_by    TEXT,
+  deleted_at     TEXT,
+  remote_version TEXT
+);
+
+CREATE TABLE IF NOT EXISTS product_impact (
+  id                 TEXT PRIMARY KEY,
+  workspace_id       TEXT NOT NULL,
+  commitment_id      TEXT NOT NULL,
+  product_service_id TEXT NOT NULL,
+  type               TEXT NOT NULL,
+  note               TEXT,
+  schema_version     INTEGER NOT NULL,
+  entity_version     INTEGER NOT NULL,
+  created_at         TEXT NOT NULL,
+  created_by         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL,
+  updated_by         TEXT NOT NULL,
+  archived_at        TEXT,
+  archived_by        TEXT,
+  deleted_at         TEXT,
+  remote_version     TEXT
+);
+
+CREATE TABLE IF NOT EXISTS decision (
+  id              TEXT PRIMARY KEY,
+  workspace_id    TEXT NOT NULL,
+  kind            TEXT NOT NULL,
+  name            TEXT NOT NULL,
+  owner_json      TEXT,
+  needed_by       TEXT,
+  status          TEXT NOT NULL,
+  resolution_note TEXT,
+  resolved_at     TEXT,
+  schema_version  INTEGER NOT NULL,
+  entity_version  INTEGER NOT NULL,
+  created_at      TEXT NOT NULL,
+  created_by      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+  updated_by      TEXT NOT NULL,
+  archived_at     TEXT,
+  archived_by     TEXT,
+  deleted_at      TEXT,
+  remote_version  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS dependency (
+  id                   TEXT PRIMARY KEY,
+  workspace_id         TEXT NOT NULL,
+  source_commitment_id TEXT NOT NULL,
+  target_kind          TEXT NOT NULL,
+  target_id            TEXT NOT NULL,
+  type                 TEXT NOT NULL,
+  owner_json           TEXT,
+  needed_by            TEXT,
+  status               TEXT NOT NULL,
+  is_hard              INTEGER NOT NULL DEFAULT 0,
+  note                 TEXT,
+  schema_version       INTEGER NOT NULL,
+  entity_version       INTEGER NOT NULL,
+  created_at           TEXT NOT NULL,
+  created_by           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL,
+  updated_by           TEXT NOT NULL,
+  archived_at          TEXT,
+  archived_by          TEXT,
+  deleted_at           TEXT,
+  remote_version       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS milestone (
+  id             TEXT PRIMARY KEY,
+  workspace_id   TEXT NOT NULL,
+  commitment_id  TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  target_date    TEXT,
+  status         TEXT NOT NULL,
+  note           TEXT,
+  display_order  INTEGER NOT NULL,
+  schema_version INTEGER NOT NULL,
+  entity_version INTEGER NOT NULL,
+  created_at     TEXT NOT NULL,
+  created_by     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  updated_by     TEXT NOT NULL,
+  archived_at    TEXT,
+  archived_by    TEXT,
+  deleted_at     TEXT,
+  remote_version TEXT
+);
+
+CREATE TABLE IF NOT EXISTS theme (
+  id             TEXT PRIMARY KEY,
+  workspace_id   TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  color_token    TEXT,
+  schema_version INTEGER NOT NULL,
+  entity_version INTEGER NOT NULL,
+  created_at     TEXT NOT NULL,
+  created_by     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  updated_by     TEXT NOT NULL,
+  archived_at    TEXT,
+  archived_by    TEXT,
+  deleted_at     TEXT,
+  remote_version TEXT
+);
+
+CREATE TABLE IF NOT EXISTS commitment_theme (
+  id             TEXT PRIMARY KEY,
+  workspace_id   TEXT NOT NULL,
+  commitment_id  TEXT NOT NULL,
+  theme_id       TEXT NOT NULL,
+  schema_version INTEGER NOT NULL,
+  entity_version INTEGER NOT NULL,
+  created_at     TEXT NOT NULL,
+  created_by     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  updated_by     TEXT NOT NULL,
+  archived_at    TEXT,
+  archived_by    TEXT,
+  deleted_at     TEXT,
+  remote_version TEXT
+);
+
+CREATE TABLE IF NOT EXISTS external_link (
+  id             TEXT PRIMARY KEY,
+  workspace_id   TEXT NOT NULL,
+  commitment_id  TEXT NOT NULL,
+  type           TEXT NOT NULL,
+  url            TEXT NOT NULL,
+  label          TEXT,
+  schema_version INTEGER NOT NULL,
+  entity_version INTEGER NOT NULL,
+  created_at     TEXT NOT NULL,
+  created_by     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  updated_by     TEXT NOT NULL,
+  archived_at    TEXT,
+  archived_by    TEXT,
+  deleted_at     TEXT,
+  remote_version TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_impact_commitment ON product_impact(workspace_id, commitment_id);
+CREATE INDEX IF NOT EXISTS ix_impact_product    ON product_impact(workspace_id, product_service_id);
+CREATE INDEX IF NOT EXISTS ix_dep_source        ON dependency(workspace_id, source_commitment_id);
+CREATE INDEX IF NOT EXISTS ix_dep_target        ON dependency(workspace_id, target_kind, target_id);
+CREATE INDEX IF NOT EXISTS ix_milestone_commit  ON milestone(workspace_id, commitment_id);
+CREATE INDEX IF NOT EXISTS ix_ctheme_commit     ON commitment_theme(workspace_id, commitment_id);
+CREATE INDEX IF NOT EXISTS ix_link_commit       ON external_link(workspace_id, commitment_id);
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
@@ -208,6 +376,21 @@ export const MIGRATIONS: readonly Migration[] = [
     up: async (ctx) => {
       // Every statement is `IF NOT EXISTS`, so a second run is a no-op.
       for (const statement of V1_SQL.split(';')) {
+        const trimmed = statement.trim();
+        if (trimmed.length > 0) await ctx.exec(trimmed);
+      }
+    },
+  },
+  {
+    version: 2,
+    // Everything a commitment relates to. M1 stored only the capacity
+    // skeleton — teams, quarters, commitments, footprints — so the detail
+    // panel had nothing to read and the fixture's impacts, dependencies,
+    // milestones and links could not be seeded at all.
+    name: 'relations',
+    checksumSource: V2_SQL,
+    up: async (ctx) => {
+      for (const statement of V2_SQL.split(';')) {
         const trimmed = statement.trim();
         if (trimmed.length > 0) await ctx.exec(trimmed);
       }
