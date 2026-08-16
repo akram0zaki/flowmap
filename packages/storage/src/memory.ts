@@ -21,6 +21,7 @@ import type {
   EntityId,
   ExternalLink,
   Milestone,
+  Person,
   ProductImpact,
   ProductService,
   Team,
@@ -48,6 +49,7 @@ type Snapshot = {
   themes: Record<string, Theme>;
   commitmentThemes: Record<string, CommitmentTheme>;
   externalLinks: Record<string, ExternalLink>;
+  people: Record<string, Person>;
   events: DomainEvent[];
   outbox: OutboxEntry[];
   profile?: { id: string; displayName: string };
@@ -83,6 +85,7 @@ function emptySnapshot(): Snapshot {
     themes: {},
     commitmentThemes: {},
     externalLinks: {},
+    people: {},
     events: [],
     outbox: [],
   };
@@ -102,6 +105,7 @@ const KIND_TO_BUCKET = {
   THEME: 'themes',
   COMMITMENT_THEME: 'commitmentThemes',
   EXTERNAL_LINK: 'externalLinks',
+  PERSON: 'people',
 } as const;
 
 /** Every bucket that holds workspace-scoped entities, for load and clear. */
@@ -118,6 +122,7 @@ const ENTITY_BUCKETS = [
   'themes',
   'commitmentThemes',
   'externalLinks',
+  'people',
 ] as const;
 
 export class MemoryWorkspaceRepository implements WorkspaceRepository {
@@ -161,6 +166,7 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
       themes: scoped(this.#data.themes),
       commitmentThemes: scoped(this.#data.commitmentThemes),
       externalLinks: scoped(this.#data.externalLinks),
+      people: scoped(this.#data.people),
     };
   }
 

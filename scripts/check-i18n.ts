@@ -93,6 +93,50 @@ if (RELATIVE_SIZES.length === 0) report('RELATIVE_SIZES is empty');
 
 const PLACEHOLDER = /\{(\w+)\}/g;
 
+/**
+ * Spec 06 §8 makes the tooltip format a hard requirement: a definition, what
+ * the thing is *not*, and an example where one helps. Two of those are easy to
+ * forget, and a field whose tooltip only defines it is exactly how teams invent
+ * local meanings for "size" and "importance". So it is checked, not trusted.
+ *
+ * The example is optional; the definition and the disclaimer are not, for any
+ * field in the categories the spec names.
+ */
+const TOOLTIP_REQUIRED: readonly string[] = [
+  'lifecycle',
+  'class',
+  'importance',
+  'units',
+  'sizeConfidence',
+  'scopeConfidence',
+  'carryOver',
+  'productImpact',
+  'dependencyType',
+  'dependencyStatus',
+  'isHard',
+  'attentionDate',
+  'latestSafeStart',
+  'capacityBaseline',
+  'capacityAdjustment',
+  'reserves',
+  'deliverable',
+  'utilisation',
+  'overflow',
+  'externalLink',
+  'managementNote',
+];
+
+for (const locale of SUPPORTED_LOCALES) {
+  const fields = catalogues[locale as Locale].fields;
+  for (const field of TOOLTIP_REQUIRED) {
+    for (const part of ['label', 'def', 'not'] as const) {
+      if (!fields[`${field}.${part}`]) {
+        report(`[${locale}] fields.${field} is missing its "${part}" — see spec 06 §8`);
+      }
+    }
+  }
+}
+
 function placeholdersOf(template: string): Set<string> {
   return new Set([...template.matchAll(PLACEHOLDER)].map((match) => match[1]!));
 }

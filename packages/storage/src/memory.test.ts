@@ -33,6 +33,7 @@ const STORED_KINDS: readonly EntityKind[] = [
   'THEME',
   'COMMITMENT_THEME',
   'EXTERNAL_LINK',
+  'PERSON',
 ];
 
 function command(name: string): Command {

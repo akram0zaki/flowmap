@@ -22,6 +22,7 @@ import {
   resizeCapacityFootprint,
   restoreCapacityFootprint,
   setPrimaryTeam,
+  updateCommitment,
   type Command,
   type CommandContext,
   type CommandResult,
@@ -155,6 +156,8 @@ type StoreState = {
   }): Promise<boolean>;
   undo(): Promise<void>;
   redo(): Promise<void>;
+  /** Edit a commitment's own fields. The property sheet's only write path. */
+  editCommitment(commitmentId: EntityId, patch: Record<string, unknown>): Promise<boolean>;
   select(footprintId: string | null): void;
   clearStatus(): void;
   clearLocalData(): Promise<void>;
@@ -477,6 +480,14 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     });
   },
 
+  async editCommitment(commitmentId, patch) {
+    return (
+      (await get().dispatch('UpdateCommitment', (state, cmd, ctx) =>
+        updateCommitment(state, { commitmentId, ...patch } as never, cmd, ctx),
+      )) !== false
+    );
+  },
+
   select(footprintId) {
     set({ selectedFootprintId: footprintId });
   },
@@ -561,6 +572,8 @@ function runNamed(
       return restoreCapacityFootprint(state, payload as never, cmd, ctx);
     case 'SetPrimaryTeam':
       return setPrimaryTeam(state, payload as never, cmd, ctx);
+    case 'UpdateCommitment':
+      return updateCommitment(state, payload as never, cmd, ctx);
     // Every lifecycle transition is its own inverse's handler. Without these,
     // committing an Idea produced a RevertCommitGate inverse that undo could
     // not run, so the action looked undoable and silently was not.

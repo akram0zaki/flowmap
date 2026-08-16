@@ -16,6 +16,7 @@
 
 import commonEn from './locales/en/common.json' with { type: 'json' };
 import errorsEn from './locales/en/errors.json' with { type: 'json' };
+import fieldsEn from './locales/en/fields.json' with { type: 'json' };
 import patternsEn from './locales/en/patterns.json' with { type: 'json' };
 import severityEn from './locales/en/severity.json' with { type: 'json' };
 
@@ -23,7 +24,13 @@ export const SUPPORTED_LOCALES = ['en'] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = 'en';
 
-export const NAMESPACES = ['common', 'errors', 'patterns', 'severity'] as const;
+/**
+ * `fields` is its own namespace because every entry there is part of a contract:
+ * spec 06 §8 requires a definition, what the thing is not, and an example where
+ * one helps, on every capacity, lifecycle, impact, dependency, attention and
+ * confidence field. Keeping them apart is what lets the checker enforce it.
+ */
+export const NAMESPACES = ['common', 'errors', 'fields', 'patterns', 'severity'] as const;
 export type Namespace = (typeof NAMESPACES)[number];
 
 export type Catalogue = Readonly<Record<string, string>>;
@@ -32,6 +39,7 @@ export const catalogues: Readonly<Record<Locale, Readonly<Record<Namespace, Cata
   en: {
     common: commonEn,
     errors: errorsEn,
+    fields: fieldsEn,
     patterns: patternsEn,
     severity: severityEn,
   },

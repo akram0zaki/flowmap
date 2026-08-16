@@ -19,6 +19,7 @@ import type {
   EntityRef,
   ExternalLink,
   Milestone,
+  Person,
   ProductImpact,
   ProductService,
   Team,
@@ -76,6 +77,7 @@ const TABLE_BY_KIND: Partial<Record<EntityRef['kind'], string>> = {
   THEME: 'theme',
   COMMITMENT_THEME: 'commitment_theme',
   EXTERNAL_LINK: 'external_link',
+  PERSON: 'person',
 };
 
 export class SqliteWorkspaceRepository implements WorkspaceRepository {
@@ -177,6 +179,7 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
         this.#toCommitmentTheme(r),
       ),
       externalLinks: await this.#loadMap('external_link', workspaceId, (r) => this.#toLink(r)),
+      people: await this.#loadMap('person', workspaceId, (r) => this.#toPerson(r)),
     };
   }
 
@@ -495,6 +498,15 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
           commitment_id: String(e['commitmentId']),
           theme_id: String(e['themeId']),
         };
+      case 'person':
+        return {
+          ...envelope,
+          display_name: String(e['displayName']),
+          email: (e['email'] as string) ?? null,
+          role_label: (e['roleLabel'] as string) ?? null,
+          team_id: (e['teamId'] as string) ?? null,
+          linked_user_id: (e['linkedUserId'] as string) ?? null,
+        };
       case 'external_link':
         return {
           ...envelope,
@@ -771,6 +783,17 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
       commitmentId: String(row['commitment_id']),
       themeId: String(row['theme_id']),
     }) as CommitmentTheme;
+  }
+
+  #toPerson(row: Record<string, SqlValue>): Person {
+    return defined({
+      ...this.#envelope(row),
+      displayName: String(row['display_name']),
+      email: s(row['email']),
+      roleLabel: s(row['role_label']),
+      teamId: s(row['team_id']),
+      linkedUserId: s(row['linked_user_id']),
+    }) as Person;
   }
 
   #toLink(row: Record<string, SqlValue>): ExternalLink {

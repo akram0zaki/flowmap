@@ -1177,3 +1177,265 @@ label {
   fill: var(--accent);
   fill-opacity: 1;
 }
+
+/* ── Detail panel ──────────────────────────────────────────────────────── */
+
+.fm-panel {
+  flex: 0 0 clamp(320px, 28vw, 420px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ground);
+  border-left: 1px solid var(--rule);
+}
+
+.fm-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  border-bottom: 1px solid var(--rule);
+}
+
+.fm-panel__head h2 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.fm-panel__lifecycle {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
+.fm-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-6) var(--space-7);
+}
+
+.fm-panel__section {
+  padding-block: var(--space-5);
+  border-bottom: 1px solid var(--rule);
+}
+
+.fm-panel__section h3 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--ink-subtle);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+
+.fm-panel__count {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.fm-panel__add {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  color: var(--ink-muted);
+  width: 100%;
+  text-align: left;
+}
+
+.fm-panel__readonly {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--ink);
+}
+
+.fm-panel__hint {
+  display: block;
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
+.fm-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.fm-panel__list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.fm-panel__figure {
+  font-family: var(--font-mono);
+  color: var(--ink-muted);
+}
+
+.fm-panel__tag {
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
+/* ── Fields ────────────────────────────────────────────────────────────── */
+
+.fm-field + .fm-field {
+  margin-top: var(--space-5);
+}
+
+.fm-field__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.fm-field__label {
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
+/* Small, quiet, and always present — a definition you have to hunt for is not
+   available, and the spec makes it a hard requirement on these fields. */
+.fm-field__what {
+  min-height: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 1;
+  color: var(--ink-subtle);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+.fm-field__what[aria-expanded='true'] {
+  color: var(--accent-on);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.fm-field__tip {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  color: var(--ink);
+  background: var(--surface);
+  border-left: 2px solid var(--accent);
+}
+
+.fm-field__tip p {
+  margin: 0;
+}
+
+.fm-field__tip p + p {
+  margin-top: var(--space-2);
+}
+
+.fm-field__not,
+.fm-field__eg {
+  color: var(--ink-muted);
+}
+
+.fm-field__control input,
+.fm-field__control textarea {
+  width: 100%;
+  max-width: none;
+  font-family: inherit;
+}
+
+.fm-field__control textarea {
+  padding: var(--space-3);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+}
+
+/* A closed enum drawn as buttons: the whole range is visible without opening
+   anything, which is the point of a small closed set. */
+.fm-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.fm-choice button {
+  font-size: var(--text-2xs);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.fm-choice button[aria-checked='true'] {
+  color: var(--accent-on);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Quarter strip ─────────────────────────────────────────────────────── */
+
+.fm-strip {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.fm-strip__quarter {
+  flex: 1;
+  min-height: var(--hit-target-min);
+  padding: var(--space-2) var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.fm-strip__quarter + .fm-strip__quarter {
+  border-left: 1px solid var(--border);
+}
+
+.fm-strip__quarter[data-past] {
+  color: var(--ink-subtle);
+}
+
+.fm-strip__quarter[data-current] {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.fm-strip__quarter[aria-checked='true'] {
+  color: var(--accent-on);
+  background: var(--accent);
+}
+
+.fm-strip__label {
+  display: block;
+}
+
+.fm-strip__now {
+  display: block;
+  font-size: 9px;
+  color: var(--accent);
+}
+
+.fm-strip__quarter[aria-checked='true'] .fm-strip__now {
+  color: var(--accent-on);
+}

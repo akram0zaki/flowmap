@@ -125,6 +125,7 @@ function relationChanges(
   type Row = { workspaceId: string; id: string };
   const groups: ReadonlyArray<readonly [EntityChange['ref']['kind'], ReadonlyArray<Row>]> = [
     ['PRODUCT_SERVICE', fixture.products],
+    ['PERSON', fixture.people],
     ['THEME', fixture.themes],
     ['DECISION', fixture.decisions],
     ['PRODUCT_IMPACT', fixture.productImpacts],

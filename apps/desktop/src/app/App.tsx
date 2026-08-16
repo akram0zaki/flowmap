@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isCounted } from '@flowmap/domain';
+import { isCounted, utilisationPercent } from '@flowmap/domain';
 import {
   buildBoard,
   focusOn,
@@ -35,6 +35,7 @@ import { PortfolioMap } from '../components/PortfolioMap.jsx';
 import { LensStrip } from '../components/LensStrip.jsx';
 import { IdeasLane } from '../components/IdeasLane.jsx';
 import { ListCompanion } from '../components/ListCompanion.jsx';
+import { DetailPanel, type PanelFootprint } from '../components/DetailPanel.jsx';
 import { CaptureBar } from '../components/CaptureBar.jsx';
 import type { VesselBlock } from '../components/CapacityVessel.jsx';
 import { t } from '../i18n/t.js';
@@ -54,6 +55,7 @@ export function App() {
     moveFootprint,
     unplaceFootprint,
     resizeFootprint,
+    editCommitment,
   } = useWorkspace.getState();
 
   const [level, setLevelState] = useState<ZoomLevel>(2);
@@ -397,6 +399,29 @@ export function App() {
       commitResize(state.footprintId, state.teamId, state.quarterId, state.units),
   });
 
+  /**
+   * What the panel shows. Driven by the focused commitment rather than a
+   * separate selection: the thing you are looking at on the board and the thing
+   * the panel describes must not be able to differ.
+   */
+  const panelCommitment = focusedCommitmentId
+    ? (state?.commitments.get(focusedCommitmentId) ?? null)
+    : null;
+
+  const panelFootprints = useMemo((): PanelFootprint[] => {
+    if (!state || !board || !panelCommitment) return [];
+    return [...state.footprints.values()]
+      .filter((f) => f.commitmentId === panelCommitment.id && f.archivedAt === undefined)
+      .map((footprint) => {
+        const cell = findCell(board, footprint.teamId, footprint.quarterId);
+        return {
+          footprint,
+          teamName: cell?.teamName ?? footprint.teamId,
+          percentAfter: cell?.summary ? utilisationPercent(cell.summary) : null,
+        };
+      });
+  }, [state, board, panelCommitment]);
+
   const vesselBlocksFor = useCallback(
     (cell: CellModel): VesselBlock[] => {
       if (!state) return [];
@@ -536,6 +561,23 @@ export function App() {
           onAimDrag={(teamId, quarterId) => aim({ kind: 'CELL', teamId, quarterId })}
           onDropHere={drop}
         />
+
+        {/* Inside the workspace row, not floating over it: the board narrows
+            rather than being hidden. Editing a field and watching the figure
+            move is the point, and a panel covering the board defeats it. */}
+        {panelCommitment && state && (
+          <DetailPanel
+            commitment={panelCommitment}
+            teams={teams}
+            products={[...(state.products?.values() ?? [])]}
+            people={[...(state.people?.values() ?? [])]}
+            footprints={panelFootprints}
+            quarters={board.quarters}
+            currentQuarterId={state.workspace.currentQuarterId}
+            onChange={(patch) => void editCommitment(panelCommitment.id, patch)}
+            onClose={() => setFocusedCommitmentId(null)}
+          />
+        )}
       </div>
 
       {/* The piece that follows the cursor. Small and quiet — the answer is on

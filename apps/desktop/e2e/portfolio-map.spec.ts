@@ -842,3 +842,97 @@ test('a resize is never allowed to reach zero units', async ({ page }) => {
 
   await expect(block).toHaveAttribute('aria-label', /\b1 units?\b/);
 });
+
+/**
+ * The detail panel (M2-COM-2). Before this there was nowhere at all to see or
+ * edit an entity: owner, outcome, target, confidence, notes — all unreachable,
+ * though the sample workspace held them.
+ */
+test('selecting work opens a panel that can edit it', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  await page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^SEPA instant payments/ })
+    .click();
+
+  const panel = page.getByRole('complementary', { name: /SEPA instant payments/ });
+  await expect(panel).toBeVisible();
+
+  // The sections the spec names, in the order it names them.
+  for (const section of ['Identity', 'Planning', 'Outcome', 'Attention', 'Management context']) {
+    await expect(panel.getByRole('heading', { name: section })).toBeVisible();
+  }
+
+  // An edit is a command: it survives a reload.
+  const outcome = panel.getByPlaceholder('What will be true once this is done?');
+  await outcome.fill('Instant payments live for retail clients');
+  await outcome.blur();
+
+  await page.reload();
+  await page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^SEPA instant payments/ })
+    .click();
+  await expect(page.getByRole('complementary')).toContainText(
+    'Instant payments live for retail clients',
+  );
+});
+
+/**
+ * Spec 06 §8 makes the tooltip format a hard requirement: a definition, what
+ * the thing is *not*, and an example where one helps. The second part is what
+ * stops five teams inventing five meanings for "size".
+ */
+test('every explained field says what it is not, as well as what it is', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  await page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^SEPA instant payments/ })
+    .click();
+
+  const panel = page.getByRole('complementary');
+  await panel.getByRole('button', { name: /What does Units mean/ }).click();
+
+  const tip = panel.locator('.fm-field__tip').filter({ hasText: 'share of one team' });
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText('It is not');
+  await expect(tip).toContainText('story-point');
+  await expect(tip).toContainText('For example');
+});
+
+test('the target quarter is chosen on a strip, not typed', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  await page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^SEPA instant payments/ })
+    .click();
+
+  const strip = page.getByRole('radiogroup', { name: 'Target quarter' });
+  await expect(strip.getByRole('radio')).toHaveCount(6);
+
+  await strip.getByRole('radio', { name: /2027-Q1/ }).click();
+  await expect(strip.getByRole('radio', { name: /2027-Q1/ })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+
+  // Clicking the chosen quarter again clears it: a target is a statement, and
+  // there has to be a way to stop making one.
+  await strip.getByRole('radio', { name: /2027-Q1/ }).click();
+  await expect(strip.getByRole('radio', { name: /2027-Q1/ })).toHaveAttribute(
+    'aria-checked',
+    'false',
+  );
+});

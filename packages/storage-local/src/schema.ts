@@ -359,6 +359,26 @@ CREATE TABLE IF NOT EXISTS external_link (
   remote_version TEXT
 );
 
+CREATE TABLE IF NOT EXISTS person (
+  id             TEXT PRIMARY KEY,
+  workspace_id   TEXT NOT NULL,
+  display_name   TEXT NOT NULL,
+  email          TEXT,
+  role_label     TEXT,
+  team_id        TEXT,
+  linked_user_id TEXT,
+  schema_version INTEGER NOT NULL,
+  entity_version INTEGER NOT NULL,
+  created_at     TEXT NOT NULL,
+  created_by     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  updated_by     TEXT NOT NULL,
+  archived_at    TEXT,
+  archived_by    TEXT,
+  deleted_at     TEXT,
+  remote_version TEXT
+);
+
 CREATE INDEX IF NOT EXISTS ix_impact_commitment ON product_impact(workspace_id, commitment_id);
 CREATE INDEX IF NOT EXISTS ix_impact_product    ON product_impact(workspace_id, product_service_id);
 CREATE INDEX IF NOT EXISTS ix_dep_source        ON dependency(workspace_id, source_commitment_id);
