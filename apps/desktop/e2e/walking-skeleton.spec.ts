@@ -24,7 +24,7 @@ async function openEditor(page: Page) {
   const summary = page.getByText('Add and place work');
   if (await summary.isVisible()) {
     const open = await page
-      .locator('details.fm-controls')
+      .locator('details.fm-editor')
       .evaluate((d) => (d as HTMLDetailsElement).open);
     if (!open) await summary.click();
   }
@@ -32,7 +32,7 @@ async function openEditor(page: Page) {
 
 async function addTeam(page: Page, name: string) {
   await openEditor(page);
-  await page.getByLabel('Team', { exact: true }).fill(name);
+  await page.locator('#team-name').fill(name);
   await page.getByRole('button', { name: 'Add team' }).click();
 }
 
@@ -156,7 +156,7 @@ test('the whole flow works keyboard-only', async ({ page }) => {
   await openEditor(page);
 
   // Team
-  await page.getByLabel('Team', { exact: true }).focus();
+  await page.locator('#team-name').focus();
   await page.keyboard.type('Platform');
   await page.keyboard.press('Enter');
 

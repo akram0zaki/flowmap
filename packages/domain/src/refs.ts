@@ -21,6 +21,9 @@ export type EntityKind =
   | 'DECISION'
   | 'MILESTONE'
   | 'THEME'
+  // The join between a commitment and a theme is its own entity because it
+  // carries an envelope, and sync needs to reference it like any other row.
+  | 'COMMITMENT_THEME'
   | 'PERSON'
   | 'WORKSPACE_USER'
   | 'EXTERNAL_LINK'

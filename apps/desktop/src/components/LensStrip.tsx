@@ -15,6 +15,9 @@ import { t } from '../i18n/t.js';
 
 export type LensStripProps = {
   readonly level: ZoomLevel;
+  /** Continuous scale, so the figure can be shown and stepped. */
+  readonly scale: number;
+  readonly onZoomBy: (factor: number) => void;
   readonly filter: FilterState;
   readonly focusedName: string | null;
   readonly onLevel: (level: ZoomLevel) => void;
@@ -28,6 +31,8 @@ const LEVELS: readonly ZoomLevel[] = [1, 2, 3];
 
 export function LensStrip({
   level,
+  scale,
+  onZoomBy,
   filter,
   focusedName,
   onLevel,
@@ -53,6 +58,20 @@ export function LensStrip({
         ))}
       </div>
 
+      {/* The spec asks for `+`/`−` as well as the Level control, so zoom is
+          reachable without a wheel, a trackpad, or a precise pointer at all. */}
+      <div className="fm-zoom" role="group" aria-label={t('map.zoom')}>
+        <button type="button" aria-label={t('map.zoomOut')} onClick={() => onZoomBy(1 / 1.25)}>
+          −
+        </button>
+        <span className="fm-zoom__figure" aria-live="polite">
+          {t('map.zoomLevel', { percent: Math.round(scale * 100) })}
+        </span>
+        <button type="button" aria-label={t('map.zoomIn')} onClick={() => onZoomBy(1.25)}>
+          +
+        </button>
+      </div>
+
       {chips.length > 0 ? (
         <>
           {chips.map((chip) => (
@@ -66,13 +85,13 @@ export function LensStrip({
               {t(chip.labelKey)}: {chip.value} ✕
             </button>
           ))}
-          <button type="button" className="fm-chip" onClick={onClearFilters}>
+          <button type="button" className="fm-chip fm-chip--plain" onClick={onClearFilters}>
             {t('filter.clear')}
           </button>
           {/* Fade preserves spatial context; hiding is opt-in for density. */}
           <button
             type="button"
-            className="fm-chip"
+            className="fm-chip fm-chip--plain"
             aria-pressed={filter.hideFiltered}
             onClick={onToggleHide}
           >

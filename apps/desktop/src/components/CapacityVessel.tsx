@@ -17,7 +17,15 @@
  * a list companion that must show identical totals.
  */
 
-import { useId } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import type { CapacitySummary, CapacityFootprint, Commitment, TeamQuarter } from '@flowmap/domain';
 import { utilisationPercent } from '@flowmap/domain';
 import {
@@ -29,6 +37,7 @@ import {
   patternPitch,
 } from '@flowmap/ui';
 
+import { observeResize } from '../state/observe-resize.js';
 import { t } from '../i18n/t.js';
 
 export type VesselBlock = {
@@ -48,12 +57,48 @@ export type CapacityVesselProps = {
   readonly compact?: boolean;
   /** Out of focus or filtered out — faded, never removed. */
   readonly dimmedFootprintIds?: ReadonlySet<string>;
+  /**
+   * Work being held over this container. Drawn as an outline landing on top of
+   * the stack, so the answer to "will it fit" is the picture rather than a
+   * number you have to compare against another number.
+   */
+  readonly incoming?: {
+    readonly units: number;
+    readonly allowed: boolean;
+    /** Utilisation the container would show after the drop. */
+    readonly percent: number | null;
+    readonly overflow: number;
+  };
   readonly onSelect?: (footprintId: string) => void;
+  /** Start moving this block — pointer press, or Space on the keyboard. */
+  readonly onPickUp?: (footprintId: string, event?: ReactPointerEvent) => void;
+  /** Take this block off the board. The keyboard route to the Ideas rail. */
+  readonly onRemove?: (footprintId: string) => void;
+  /**
+   * Change how many units this block occupies. `via: 'pointer'` starts a drag
+   * on the top edge; the keyboard sends an absolute value straight through.
+   */
+  readonly onResize?: (footprintId: string, units: number, via: 'pointer' | 'keyboard') => void;
+  /** Start drawing a dependency from this block. Shift-drag, or `d`. */
+  readonly onLink?: (commitmentId: string, event?: ReactPointerEvent) => void;
+  /** Units per pixel, so the caller can turn pointer movement into units. */
+  readonly onResizeStart?: (footprintId: string, event: ReactPointerEvent, unitPx: number) => void;
+  /** While a resize is in flight, draw this block at that size instead. */
+  readonly resizing?: { readonly footprintId: string; readonly units: number };
 };
+
+/** Grab area on a block's top edge. Generous, per the 24px hit-target rule. */
+const RESIZE_GRIP = 10;
 
 const AXIS_WIDTH = 34;
 const COMPACT_AXIS_WIDTH = 20;
-const BODY_WIDTH = 260;
+
+/**
+ * Width the drawing assumes before it has measured itself, and the narrowest it
+ * will draw into. Below this the labels have nowhere to go.
+ */
+const FALLBACK_WIDTH = 294;
+const MIN_BODY_WIDTH = 120;
 const TOP_PAD = 28;
 const BOTTOM_PAD = 24;
 
@@ -66,33 +111,90 @@ export function CapacityVessel({
   selectedFootprintId,
   compact = false,
   dimmedFootprintIds,
+  incoming,
   onSelect,
+  onPickUp,
+  onRemove,
+  onResize,
+  onResizeStart,
+  onLink,
+  resizing,
 }: CapacityVesselProps) {
   const patternPrefix = useId().replace(/:/g, '');
   const unitPx = UNIT_PX * zoom;
   // The axis is the first thing to go when space is tight; the vessel shape and
   // the caption still carry the meaning.
   const axisWidth = compact ? COMPACT_AXIS_WIDTH : AXIS_WIDTH;
+  const overCapacity = summary.overflow > 0;
+
+  /**
+   * One viewBox unit is one CSS pixel.
+   *
+   * The drawing used to be laid out in a fixed 294-unit box and left to
+   * `preserveAspectRatio` to fit the cell — which meant that on a narrow column
+   * *everything* was scaled down, including the text. At six quarters on a 13"
+   * screen that put 11px labels on screen at about 7px, and zooming did not
+   * help: zoom grows the viewBox height, so blocks got taller while the type,
+   * measured in the same shrinking units, stayed exactly as small.
+   *
+   * Measuring the element and matching the viewBox to it means the scale is
+   * always 1: type is the size it says it is, and zoom buys vertical room
+   * rather than a magnifying glass over a shrunken picture.
+   */
+  const frameRef = useRef<HTMLElement | null>(null);
+  const [measuredWidth, setMeasuredWidth] = useState(FALLBACK_WIDTH);
+
+  const measure = useCallback(() => {
+    const node = frameRef.current;
+    if (!node) return;
+    const next = Math.max(node.clientWidth, axisWidth + MIN_BODY_WIDTH);
+    // Guarded, because this runs after every render and an unguarded set would
+    // be a loop.
+    setMeasuredWidth((current) => (current === next ? current : next));
+  }, [axisWidth]);
+
+  /**
+   * Measured after every render, not only when a `ResizeObserver` says so.
+   *
+   * The observer is the right tool for a window resize and the wrong one for
+   * everything else: it does not deliver at all in a hidden tab, and it reports
+   * *after* the frame in which the layout changed. Zooming widens the columns,
+   * so relying on it alone left the drawing laid out for the old width and
+   * scaled up to fill the new one — the exact stretching this measurement
+   * exists to prevent, arriving by a different route.
+   */
+  useLayoutEffect(measure);
+  useEffect(() => observeResize(frameRef.current, measure), [measure]);
+
+  // Room on the right for the overflow bracket, when one is drawn.
+  const rightPad = overCapacity && !compact ? 34 : 4;
+  const BODY_WIDTH = Math.max(MIN_BODY_WIDTH, measuredWidth - axisWidth - rightPad);
 
   // The axis spans the effective capacity, or the load when work overflows past
   // it — otherwise the spill would be drawn outside the viewBox.
+  const incomingUnits = incoming?.allowed ? incoming.units : 0;
   const axisMax = Math.max(
     summary.effectiveCapacity,
-    summary.reservedTotal + summary.committedLoad,
+    summary.reservedTotal + summary.committedLoad + incomingUnits,
   );
   const bodyHeight = axisMax * unitPx;
   const height = bodyHeight + TOP_PAD + BOTTOM_PAD;
   const y = (units: number) => TOP_PAD + bodyHeight - units * unitPx;
 
   const percent = utilisationPercent(summary);
-  const overCapacity = summary.overflow > 0;
 
-  // Stack from the top of the reserve plinth upward.
+  // Stack from the top of the reserve plinth upward. A block being resized is
+  // laid out at its provisional size, so everything above it moves with the
+  // edge rather than jumping when the pointer is released.
+  const sizeOf = (block: VesselBlock) =>
+    resizing?.footprintId === block.footprint.id ? resizing.units : block.footprint.units;
+
   let cursor = summary.reservedTotal;
   const laidOut = blocks.map((block) => {
     const bottom = cursor;
-    cursor += block.counted ? block.footprint.units : 0;
-    return { ...block, bottom, top: bottom + block.footprint.units };
+    const units = sizeOf(block);
+    cursor += block.counted ? units : 0;
+    return { ...block, units, bottom, top: bottom + units };
   });
 
   let reserveCursor = 0;
@@ -101,6 +203,8 @@ export function CapacityVessel({
     reserveCursor += reserve.amount;
     return { reserve, bottom, top: reserveCursor };
   });
+
+  const ceilingUnits = summary.reservedTotal + summary.deliverableCapacity;
 
   const ticks: number[] = [];
   for (let u = 0; u <= axisMax; u += UNIT_TICK_MINOR) ticks.push(u);
@@ -112,10 +216,12 @@ export function CapacityVessel({
   const legend = [
     ...teamQuarter.reserves.map((reserve) => ({
       key: reserve.id,
-      label: `${reserve.type === 'HOLD' ? '⁘' : '╱'} ${reserve.label} ${reserve.amount}`,
+      label: `${reserve.label} · ${reserve.amount}`,
     })),
+    // No glyph here: ↻ (U+21BB) is not in Atkinson Hyperlegible and rendered as
+    // a broken box. The cross-hatch on the block and these words carry it.
     ...(carriedUnits > 0
-      ? [{ key: 'carried', label: `↻ ${t('carryover.units', { units: carriedUnits })}` }]
+      ? [{ key: 'carried', label: t('carryover.units', { units: carriedUnits }) }]
       : []),
   ];
 
@@ -130,7 +236,12 @@ export function CapacityVessel({
   ].join('. ');
 
   return (
-    <figure className="fm-vessel" data-over-capacity={overCapacity || undefined}>
+    <figure
+      ref={frameRef}
+      className="fm-vessel"
+      data-over-capacity={overCapacity || undefined}
+      data-closed={teamQuarter.closedAt !== undefined || undefined}
+    >
       <svg
         // A grid must contain at least one row. An empty container is genuinely
         // a labelled picture of a container, not a grid with nothing in it.
@@ -140,7 +251,7 @@ export function CapacityVessel({
         // of white — the block heights stay proportional either way.
         width="100%"
         height={height}
-        viewBox={`0 0 ${axisWidth + BODY_WIDTH} ${height}`}
+        viewBox={`0 0 ${measuredWidth} ${height}`}
         preserveAspectRatio="xMidYMax meet"
       >
         <defs>
@@ -236,21 +347,35 @@ export function CapacityVessel({
             );
           })}
 
-          {/* The deliverable-capacity rule: the line work must fit under. */}
-          <line
-            x1={0}
-            x2={BODY_WIDTH}
-            y1={y(summary.reservedTotal + summary.deliverableCapacity)}
-            y2={y(summary.reservedTotal + summary.deliverableCapacity)}
-            className="fm-vessel__rule"
-          />
-
           {laidOut.map((block) => {
-            const isOverflow = block.top > summary.reservedTotal + summary.deliverableCapacity;
             const carried = block.footprint.carryOverFromQuarterId !== undefined;
-            const blockHeight = Math.max(6, block.footprint.units * unitPx);
+            const blockHeight = Math.max(6, block.units * unitPx);
             const selected = block.footprint.id === selectedFootprintId;
             const dimmed = dimmedFootprintIds?.has(block.footprint.id) ?? false;
+
+            // Only the part of the block that is genuinely past the rule gets
+            // the overflow texture. Hatching the whole block would claim more
+            // units are over than the bracket measures, and the two would
+            // contradict each other in the same picture.
+            const overUnits = Math.max(0, block.top - Math.max(block.bottom, ceilingUnits));
+            const isOverflow = overUnits > 0;
+
+            // The rule is drawn over the stack, so a label sitting at the same
+            // height gets struck through. A block that straddles the limit puts
+            // its label in whichever half is taller — which is also where the
+            // block's weight is, so it reads better as well as more legibly.
+            const straddles = overUnits > 0 && overUnits < block.units;
+            const underUnits = block.units - overUnits;
+            const labelCentre = straddles
+              ? overUnits > underUnits
+                ? block.top - overUnits / 2
+                : block.bottom + underUnits / 2
+              : block.top - block.units / 2;
+            const labelY = Math.max(y(block.top) + 8, y(labelCentre) + 4);
+
+            // The grip must never own most of a block, or a small block cannot
+            // be picked up and moved at all — only resized.
+            const gripHeight = Math.max(4, Math.min(RESIZE_GRIP, blockHeight * 0.4));
 
             return (
               // `gridcell` must be inside a `row` — axe flags the shortcut, and
@@ -263,92 +388,271 @@ export function CapacityVessel({
                   aria-label={blockLabel(block, isOverflow, carried)}
                   aria-selected={selected}
                   className="fm-block"
+                  data-commitment={block.commitment.id}
+                  data-mandatory={block.commitment.class === 'MANDATORY' || undefined}
                   data-selected={selected || undefined}
                   data-counted={block.counted || undefined}
                   data-dimmed={dimmed || undefined}
+                  onPointerDown={(e) => {
+                    // Shift turns the move gesture into a link gesture: same
+                    // pick-up, pass-over, release, different statement.
+                    if (e.shiftKey) onLink?.(block.commitment.id, e);
+                    else onPickUp?.(block.footprint.id, e);
+                  }}
                   onClick={() => onSelect?.(block.footprint.id)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+                    // Enter inspects, Space picks up — the WAI-ARIA drag idiom,
+                    // and the same split the pointer makes between a click and
+                    // a press that travels.
+                    if (e.key === 'Enter') {
                       e.preventDefault();
                       onSelect?.(block.footprint.id);
+                    } else if (e.key === ' ') {
+                      e.preventDefault();
+                      onPickUp?.(block.footprint.id);
+                    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                      // The keyboard equivalent of dragging it back to the lane.
+                      e.preventDefault();
+                      onRemove?.(block.footprint.id);
+                    } else if (e.key === '+' || e.key === '=' || e.key === 'ArrowUp') {
+                      // The keyboard equivalent of dragging the top edge. Shift
+                      // moves by the coarse step, matching how the pointer feels
+                      // when you drag a long way rather than a little.
+                      e.preventDefault();
+                      onResize?.(
+                        block.footprint.id,
+                        block.units + (e.shiftKey ? 5 : 1),
+                        'keyboard',
+                      );
+                    } else if (e.key === '-' || e.key === '_' || e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      onResize?.(
+                        block.footprint.id,
+                        block.units - (e.shiftKey ? 5 : 1),
+                        'keyboard',
+                      );
                     }
                   }}
                 >
+                  <title>
+                    {block.commitment.name} · {block.units}
+                  </title>
                   <rect
                     x={6}
-                    y={y(block.top)}
+                    y={y(block.top) + 0.5}
                     width={BODY_WIDTH - 12}
-                    height={blockHeight}
+                    height={Math.max(2, blockHeight - 1)}
                     rx={2}
                     className="fm-block__fill"
                   />
-                  {carried && (
+                  {/* Carry-over stops at the rule. Laying its cross-hatch under
+                      the overflow hatch makes plaid, and a region that carries
+                      two textures at once reads as neither. Above the rule the
+                      overflow marker has priority; the caption still names the
+                      carried units in full. */}
+                  {carried && underUnits > 0 && (
                     <rect
                       x={6}
-                      y={y(block.top)}
+                      y={y(Math.min(block.top, ceilingUnits)) + 0.5}
                       width={BODY_WIDTH - 12}
-                      height={blockHeight}
+                      height={Math.max(2, underUnits * unitPx)}
                       rx={2}
                       fill={`url(#${patternPrefix}-carryover)`}
                     />
                   )}
+                  {/* Colour, not texture. "Never colour alone" asks for a second
+                      channel, not for stripes printed through the label — the
+                      bracket, the ▲, and "+13 over" in the caption are that
+                      channel, and they survive greyscale and screen readers
+                      alike. Striping the fill only made the words unreadable. */}
                   {isOverflow && (
                     <rect
                       x={6}
-                      y={y(block.top)}
+                      y={y(block.top) + 0.5}
                       width={BODY_WIDTH - 12}
-                      height={blockHeight}
+                      height={Math.max(2, overUnits * unitPx)}
                       rx={2}
-                      fill={`url(#${patternPrefix}-overflow)`}
+                      className="fm-block__over"
                     />
                   )}
-                  {blockHeight >= 14 && (
-                    <text x={14} y={y(block.top) + blockHeight / 2 + 4} className="fm-block__label">
-                      {block.commitment.class === 'MANDATORY' ? '🔒 ' : ''}
-                      {carried ? '↻ ' : ''}
-                      {truncate(block.commitment.name, 30)}
+                  {/* The top edge is the size. Grabbing it is how you change
+                      how much of the quarter this work takes, in the one place
+                      where the consequence is already drawn. */}
+                  {onResizeStart && !compact && (
+                    <rect
+                      x={6}
+                      y={y(block.top) - gripHeight / 2}
+                      width={BODY_WIDTH - 12}
+                      height={gripHeight}
+                      className="fm-block__grip"
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        // A viewBox unit is a CSS pixel now, so the conversion
+                        // is the identity — but it is still measured rather
+                        // than assumed, because the day that stops being true
+                        // the edge would silently lag the cursor again.
+                        const svg = e.currentTarget.ownerSVGElement;
+                        const scale = svg ? svg.getBoundingClientRect().height / height : 1;
+                        onResizeStart(block.footprint.id, e, unitPx * scale);
+                      }}
+                    >
+                      <title>{t('resize.grip', { name: block.commitment.name })}</title>
+                    </rect>
+                  )}
+
+                  {/* Three tiers of degradation. A block too thin for both keeps
+                      the number, because the number is the part that measures. */}
+                  {/* The lock is a state, not a label, so it survives the drop
+                      to Level 2 on its own. Mandatory work that stopped being
+                      marked would be colour-alone by omission. */}
+                  {compact && block.commitment.class === 'MANDATORY' && blockHeight >= 9 && (
+                    <text
+                      x={14}
+                      y={y(block.top) + blockHeight / 2 + 4}
+                      className="fm-block__lock"
+                      aria-hidden="true"
+                    >
+                      🔒
                     </text>
                   )}
-                  {blockHeight >= 14 && (
+
+                  {/* Names are a Level 3 thing (spec 06 §3.3): L2 shows blocks,
+                      reserves and figures, L3 adds the labels. Drawing them at
+                      L2 anyway meant a 162px column rendering "Payment refe…",
+                      which is worse than no label — it takes the room and says
+                      nothing. The `<title>` still names it on hover. */}
+                  {!compact && blockHeight >= 15 && (
+                    <text
+                      x={14}
+                      y={labelY}
+                      className="fm-block__label"
+                      data-over={isOverflow || undefined}
+                    >
+                      {block.commitment.class === 'MANDATORY' ? '🔒 ' : ''}
+                      {truncate(block.commitment.name, labelBudget(BODY_WIDTH))}
+                    </text>
+                  )}
+                  {blockHeight >= 9 && (
                     <text
                       x={BODY_WIDTH - 18}
-                      y={y(block.top) + blockHeight / 2 + 4}
+                      y={blockHeight >= 15 ? labelY : y(block.top) + blockHeight / 2 + 3}
                       className="fm-block__units"
+                      data-thin={blockHeight < 15 || undefined}
                       textAnchor="end"
                     >
-                      {block.footprint.units}
+                      {block.units}
                     </text>
                   )}
                 </g>
               </g>
             );
           })}
+
+          {/* Drawn last, over the stack. It is the one line the work has to fit
+              under, so nothing is allowed to bury it — and it extends past both
+              walls so the spill above reads as breaching a limit rather than as
+              more stacking. */}
+          <line
+            x1={-6}
+            x2={BODY_WIDTH + (overCapacity && !compact ? 8 : 4)}
+            y1={y(ceilingUnits)}
+            y2={y(ceilingUnits)}
+            className="fm-vessel__rule"
+          />
+
+          {/* Work being held over this container: an outline sitting where it
+              would land, so "will it fit" is answered by the drawing rather
+              than by comparing two numbers. Above the rule it is already
+              breaching; the caption states the projected figure either way. */}
+          {incoming?.allowed && (
+            <g className="fm-incoming" aria-hidden="true">
+              <rect
+                x={6}
+                y={y(summary.reservedTotal + summary.committedLoad + incomingUnits)}
+                width={BODY_WIDTH - 12}
+                height={Math.max(3, incomingUnits * unitPx)}
+                rx={2}
+                className="fm-incoming__band"
+              />
+              {incomingUnits * unitPx >= 15 && (
+                <text
+                  x={BODY_WIDTH / 2}
+                  y={y(summary.reservedTotal + summary.committedLoad + incomingUnits / 2) + 4}
+                  className="fm-incoming__label"
+                  textAnchor="middle"
+                >
+                  +{incoming.units}
+                </text>
+              )}
+            </g>
+          )}
+
+          {/* The excess, measured. A bracket from the rule to the top of the
+              stack turns overflow into a drawn quantity rather than a texture. */}
+          {overCapacity && !compact && (
+            <g className="fm-overflow" aria-hidden="true">
+              <path
+                d={`M ${BODY_WIDTH + 4} ${y(ceilingUnits)}
+                    h 5 V ${y(ceilingUnits + summary.overflow)} h -5`}
+                className="fm-overflow__bracket"
+              />
+              <text
+                x={BODY_WIDTH + 12}
+                y={y(ceilingUnits + summary.overflow / 2) + 4}
+                className="fm-overflow__label"
+              >
+                +{summary.overflow}
+              </text>
+            </g>
+          )}
         </g>
       </svg>
 
       {/* Never colour alone: units AND percent AND a glyph AND words. */}
       <figcaption className="fm-vessel__caption">
-        <span className="fm-vessel__team">
-          {teamName} · {teamQuarter.quarterId}
+        {/* The headline is the figure. Its label, and the team name already in
+            the row header, do not need repeating at the same weight. */}
+        {/* While work is held over this container the figure shows what it
+            would become, with the current value kept alongside — the whole
+            argument for dragging is that you see the consequence before you
+            commit to it, not in a toast afterwards. */}
+        <span
+          className="fm-vessel__figure"
+          data-projected={incoming?.allowed || undefined}
+          data-over={(incoming?.allowed ? incoming.overflow > 0 : overCapacity) || undefined}
+        >
+          <span className="fm-vessel__percent">
+            {incoming?.allowed
+              ? incoming.percent === null
+                ? '—'
+                : `${incoming.percent}%`
+              : percent === null
+                ? '—'
+                : `${percent}%`}
+          </span>
+          <span className="fm-vessel__delta">
+            {incoming?.allowed
+              ? incoming.overflow > 0
+                ? t('capacity.overBy', { units: incoming.overflow })
+                : t('drop.wouldBe', { percent: percent ?? 0 })
+              : percent === null
+                ? t('capacity.noDeliverable')
+                : overCapacity
+                  ? t('capacity.overBy', { units: summary.overflow })
+                  : t('capacity.headroom', { units: summary.headroom })}
+          </span>
         </span>
-        {percent === null ? (
-          <span className="fm-vessel__status">{t('capacity.noDeliverable')}</span>
-        ) : overCapacity ? (
-          <span className="fm-vessel__status fm-vessel__status--over">
-            {t('capacity.overCapacity', { units: summary.overflow, percent })}
-          </span>
-        ) : (
-          <span className="fm-vessel__status">
-            {t('capacity.utilisation', { percent })} ·{' '}
-            {t('capacity.headroom', { units: summary.headroom })}
-          </span>
-        )}
 
         {/* Why the container is smaller than a normal quarter. Without this the
             overload has a visible symptom and no visible cause. */}
         {teamQuarter.capacityAdjustment !== 0 && (
           <span className="fm-vessel__reason">
-            {t('capacity.adjusted', { units: teamQuarter.capacityAdjustment })}
+            {/* Direction in the word, magnitude in the figure. "-10 units this
+                quarter" opened on a hyphen, which reads as a list bullet. */}
+            {t(
+              teamQuarter.capacityAdjustment < 0 ? 'capacity.adjustedDown' : 'capacity.adjustedUp',
+              { units: Math.abs(teamQuarter.capacityAdjustment) },
+            )}
             {teamQuarter.adjustmentNote ? ` — ${teamQuarter.adjustmentNote}` : ''}
           </span>
         )}
@@ -382,6 +686,22 @@ function blockLabel(
   ]
     .filter(Boolean)
     .join('. ');
+}
+
+/**
+ * How many characters fit on a block, in the width left beside the units.
+ *
+ * A heuristic rather than a measurement: SVG text has no ellipsis, so the
+ * string has to be cut before it is drawn, and measuring every label with
+ * `getComputedTextLength` would mean a layout pass per block on every render.
+ * 5.8px is Atkinson Hyperlegible's rough average advance at 12px. The reserve
+ * is the left inset (14) plus the units figure right-aligned at bodyWidth-18,
+ * plus a gap wide enough that a long name and a two-digit number do not read as
+ * one word — "Legacy gateway decommiss10" is what a too-small reserve looks
+ * like, and it reads as a rendering fault rather than as truncation.
+ */
+function labelBudget(bodyWidth: number): number {
+  return Math.max(8, Math.floor((bodyWidth - 62) / 5.8));
 }
 
 function truncate(value: string, max: number): string {

@@ -10,12 +10,21 @@
 import type {
   CapacityFootprint,
   Commitment,
+  CommitmentTheme,
+  Decision,
+  Dependency,
   DomainEvent,
   EntityChange,
   EntityId,
   EntityRef,
+  ExternalLink,
+  Milestone,
+  Person,
+  ProductImpact,
+  ProductService,
   Team,
   TeamQuarter,
+  Theme,
   Workspace,
   WorkspaceId,
   WorkspaceState,
@@ -60,6 +69,15 @@ const TABLE_BY_KIND: Partial<Record<EntityRef['kind'], string>> = {
   TEAM_QUARTER: 'team_quarter',
   COMMITMENT: 'commitment',
   CAPACITY_FOOTPRINT: 'capacity_footprint',
+  PRODUCT_SERVICE: 'product_service',
+  PRODUCT_IMPACT: 'product_impact',
+  DEPENDENCY: 'dependency',
+  DECISION: 'decision',
+  MILESTONE: 'milestone',
+  THEME: 'theme',
+  COMMITMENT_THEME: 'commitment_theme',
+  EXTERNAL_LINK: 'external_link',
+  PERSON: 'person',
 };
 
 export class SqliteWorkspaceRepository implements WorkspaceRepository {
@@ -151,6 +169,17 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
       footprints: await this.#loadMap('capacity_footprint', workspaceId, (r) =>
         this.#toFootprint(r),
       ),
+      products: await this.#loadMap('product_service', workspaceId, (r) => this.#toProduct(r)),
+      productImpacts: await this.#loadMap('product_impact', workspaceId, (r) => this.#toImpact(r)),
+      dependencies: await this.#loadMap('dependency', workspaceId, (r) => this.#toDependency(r)),
+      decisions: await this.#loadMap('decision', workspaceId, (r) => this.#toDecision(r)),
+      milestones: await this.#loadMap('milestone', workspaceId, (r) => this.#toMilestone(r)),
+      themes: await this.#loadMap('theme', workspaceId, (r) => this.#toTheme(r)),
+      commitmentThemes: await this.#loadMap('commitment_theme', workspaceId, (r) =>
+        this.#toCommitmentTheme(r),
+      ),
+      externalLinks: await this.#loadMap('external_link', workspaceId, (r) => this.#toLink(r)),
+      people: await this.#loadMap('person', workspaceId, (r) => this.#toPerson(r)),
     };
   }
 
@@ -403,6 +432,89 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
           last_meaningful_update_at: (e['lastMeaningfulUpdateAt'] as string) ?? null,
           last_reviewed_at: (e['lastReviewedAt'] as string) ?? null,
         };
+      case 'product_service':
+        return {
+          ...envelope,
+          name: String(e['name']),
+          description: (e['description'] as string) ?? null,
+          owner_json: j(e['ownerRef']),
+          active: e['active'] ? 1 : 0,
+        };
+      case 'product_impact':
+        return {
+          ...envelope,
+          commitment_id: String(e['commitmentId']),
+          product_service_id: String(e['productServiceId']),
+          type: String(e['type']),
+          note: (e['note'] as string) ?? null,
+        };
+      case 'decision':
+        return {
+          ...envelope,
+          kind: String(e['kind']),
+          name: String(e['name']),
+          owner_json: j(e['ownerRef']),
+          needed_by: (e['neededBy'] as string) ?? null,
+          status: String(e['status']),
+          resolution_note: (e['resolutionNote'] as string) ?? null,
+          resolved_at: (e['resolvedAt'] as string) ?? null,
+        };
+      case 'dependency': {
+        // The target is a tagged union; stored as two columns so it can be
+        // indexed, which a JSON blob could not be.
+        const target = (e['target'] ?? {}) as { kind?: string; id?: string };
+        return {
+          ...envelope,
+          source_commitment_id: String(e['sourceCommitmentId']),
+          target_kind: String(target.kind),
+          target_id: String(target.id),
+          type: String(e['type']),
+          owner_json: j(e['ownerRef']),
+          needed_by: (e['neededBy'] as string) ?? null,
+          status: String(e['status']),
+          is_hard: e['isHard'] ? 1 : 0,
+          note: (e['note'] as string) ?? null,
+        };
+      }
+      case 'milestone':
+        return {
+          ...envelope,
+          commitment_id: String(e['commitmentId']),
+          name: String(e['name']),
+          target_date: (e['targetDate'] as string) ?? null,
+          status: String(e['status']),
+          note: (e['note'] as string) ?? null,
+          display_order: Number(e['displayOrder'] ?? 0),
+        };
+      case 'theme':
+        return {
+          ...envelope,
+          name: String(e['name']),
+          color_token: (e['colorToken'] as string) ?? null,
+        };
+      case 'commitment_theme':
+        return {
+          ...envelope,
+          commitment_id: String(e['commitmentId']),
+          theme_id: String(e['themeId']),
+        };
+      case 'person':
+        return {
+          ...envelope,
+          display_name: String(e['displayName']),
+          email: (e['email'] as string) ?? null,
+          role_label: (e['roleLabel'] as string) ?? null,
+          team_id: (e['teamId'] as string) ?? null,
+          linked_user_id: (e['linkedUserId'] as string) ?? null,
+        };
+      case 'external_link':
+        return {
+          ...envelope,
+          commitment_id: String(e['commitmentId']),
+          type: String(e['type']),
+          url: String(e['url']),
+          label: (e['label'] as string) ?? null,
+        };
       case 'capacity_footprint':
         return {
           ...envelope,
@@ -591,5 +703,106 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
           ? undefined
           : Number(row['closed_as_unfinished']) === 1,
     }) as CapacityFootprint;
+  }
+
+  // ── Relations ────────────────────────────────────────────────────────────
+
+  #toProduct(row: Record<string, SqlValue>): ProductService {
+    return defined({
+      ...this.#envelope(row),
+      name: String(row['name']),
+      description: s(row['description']),
+      ownerRef: p(row['owner_json']) as ProductService['ownerRef'],
+      active: Number(row['active']) === 1,
+    }) as ProductService;
+  }
+
+  #toImpact(row: Record<string, SqlValue>): ProductImpact {
+    return defined({
+      ...this.#envelope(row),
+      commitmentId: String(row['commitment_id']),
+      productServiceId: String(row['product_service_id']),
+      type: String(row['type']) as ProductImpact['type'],
+      note: s(row['note']),
+    }) as ProductImpact;
+  }
+
+  #toDecision(row: Record<string, SqlValue>): Decision {
+    return defined({
+      ...this.#envelope(row),
+      kind: String(row['kind']) as Decision['kind'],
+      name: String(row['name']),
+      ownerRef: p(row['owner_json']) as Decision['ownerRef'],
+      neededBy: s(row['needed_by']),
+      status: String(row['status']) as Decision['status'],
+      resolutionNote: s(row['resolution_note']),
+      resolvedAt: s(row['resolved_at']),
+    }) as Decision;
+  }
+
+  #toDependency(row: Record<string, SqlValue>): Dependency {
+    return defined({
+      ...this.#envelope(row),
+      sourceCommitmentId: String(row['source_commitment_id']),
+      target: {
+        kind: String(row['target_kind']),
+        id: String(row['target_id']),
+      } as Dependency['target'],
+      type: String(row['type']) as Dependency['type'],
+      ownerRef: p(row['owner_json']) as Dependency['ownerRef'],
+      neededBy: s(row['needed_by']),
+      status: String(row['status']) as Dependency['status'],
+      isHard: Number(row['is_hard']) === 1,
+      note: s(row['note']),
+    }) as Dependency;
+  }
+
+  #toMilestone(row: Record<string, SqlValue>): Milestone {
+    return defined({
+      ...this.#envelope(row),
+      commitmentId: String(row['commitment_id']),
+      name: String(row['name']),
+      targetDate: s(row['target_date']),
+      status: String(row['status']) as Milestone['status'],
+      note: s(row['note']),
+      displayOrder: Number(row['display_order']),
+    }) as Milestone;
+  }
+
+  #toTheme(row: Record<string, SqlValue>): Theme {
+    return defined({
+      ...this.#envelope(row),
+      name: String(row['name']),
+      colorToken: s(row['color_token']),
+    }) as Theme;
+  }
+
+  #toCommitmentTheme(row: Record<string, SqlValue>): CommitmentTheme {
+    return defined({
+      ...this.#envelope(row),
+      commitmentId: String(row['commitment_id']),
+      themeId: String(row['theme_id']),
+    }) as CommitmentTheme;
+  }
+
+  #toPerson(row: Record<string, SqlValue>): Person {
+    return defined({
+      ...this.#envelope(row),
+      displayName: String(row['display_name']),
+      email: s(row['email']),
+      roleLabel: s(row['role_label']),
+      teamId: s(row['team_id']),
+      linkedUserId: s(row['linked_user_id']),
+    }) as Person;
+  }
+
+  #toLink(row: Record<string, SqlValue>): ExternalLink {
+    return defined({
+      ...this.#envelope(row),
+      commitmentId: String(row['commitment_id']),
+      type: String(row['type']) as ExternalLink['type'],
+      url: String(row['url']),
+      label: s(row['label']),
+    }) as ExternalLink;
   }
 }

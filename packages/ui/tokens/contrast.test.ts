@@ -103,6 +103,17 @@ const TEXT_PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ['--info-fg', '--surface', 4.5],
   ['--info-fg', '--info-surface', 4.5],
   ['--accent-on', '--accent', 4.5],
+
+  // Block labels sit on the fill ramp, not on the surface. Missing these let a
+  // fill be darkened for legibility without anyone checking what it did to the
+  // text printed on it.
+  // Full-strength ink only: --ink-muted lands at 3.31:1 on a mandatory block,
+  // and those blocks carry the numbers that matter most.
+  ['--ink', '--graphite-2', 4.5],
+  ['--ink', '--graphite-3', 4.5],
+  // The over-capacity portion of a block is a tint the block's own name is
+  // printed on, so it is a text background like any other.
+  ['--ink', '--critical-surface', 4.5],
 ];
 
 /** Graphical objects and interactive boundaries need 3:1, not 4.5:1. */

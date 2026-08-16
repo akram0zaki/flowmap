@@ -7,23 +7,52 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isCounted } from '@flowmap/domain';
+import {
+  addDependency,
+  addExternalLink,
+  addMilestone,
+  assessCommitGate,
+  isCounted,
+  removeDependency,
+  removeExternalLink,
+  removeMilestone,
+  removeProductImpact,
+  setProductImpact,
+  updateDependency,
+  utilisationPercent,
+} from '@flowmap/domain';
 import {
   buildBoard,
   focusOn,
   NO_FILTER,
   NO_FOCUS,
+  clampUnits,
+  defaultDropUnits,
+  findCell,
+  previewDrop,
+  previewRemoval,
+  previewResize,
+  readinessForIdeas,
+  clampScale,
+  levelForScale,
+  scaleForLevel,
   toggleFilterValue,
   type CellModel,
+  type DragPayload,
   type FilterState,
   type ZoomLevel,
 } from '@flowmap/visual-model';
 
 import { useWorkspace } from '../state/workspace-store.js';
+import { usePlacement, type DropTarget } from '../state/use-placement.js';
+import { useResize, type ResizeState } from '../state/use-resize.js';
+import type { QuarterId } from '@flowmap/domain';
 import { PortfolioMap } from '../components/PortfolioMap.jsx';
 import { LensStrip } from '../components/LensStrip.jsx';
 import { IdeasLane } from '../components/IdeasLane.jsx';
 import { ListCompanion } from '../components/ListCompanion.jsx';
+import { DetailPanel, type PanelFootprint } from '../components/DetailPanel.jsx';
+import type { DependencyEdge } from '../components/DependencyLayer.jsx';
 import { CaptureBar } from '../components/CaptureBar.jsx';
 import type { VesselBlock } from '../components/CapacityVessel.jsx';
 import { t } from '../i18n/t.js';
@@ -33,12 +62,34 @@ export function App() {
   const status = useWorkspace((s) => s.status);
   const profileName = useWorkspace((s) => s.profileName);
   const selectedFootprintId = useWorkspace((s) => s.selectedFootprintId);
-  const { undo, redo, select, clearStatus, clearLocalData } = useWorkspace.getState();
+  const {
+    undo,
+    redo,
+    select,
+    clearStatus,
+    clearLocalData,
+    commitIdeaInto,
+    moveFootprint,
+    unplaceFootprint,
+    resizeFootprint,
+    editCommitment,
+    relate,
+    passGate,
+  } = useWorkspace.getState();
 
-  const [level, setLevelState] = useState<ZoomLevel>(2);
+  /**
+   * Zoom is a continuous scale; the level is read off it (spec 06 §3.3). Held
+   * this way round because Ctrl/Cmd+scroll and pinch move the scale smoothly
+   * and the level has to follow, not the other way about — a level that owned
+   * the scale would snap the board back the moment you nudged the wheel.
+   */
+  const [scale, setScale] = useState(() => scaleForLevel(2));
+  const level = levelForScale(scale);
+  const setLevelState = useCallback((next: ZoomLevel) => setScale(scaleForLevel(next)), []);
   const [filter, setFilter] = useState<FilterState>(NO_FILTER);
   const [focusedCommitmentId, setFocusedCommitmentId] = useState<string | null>(null);
   const [showList, setShowList] = useState(true);
+  const [railCollapsed, setRailCollapsed] = useState(false);
   const [announcement, setAnnouncement] = useState('');
 
   // Announcements are debounced through a ref so rapid arrow-key movement does
@@ -72,6 +123,21 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo, select]);
 
+  /**
+   * Ctrl/Cmd + wheel, and pinch — which the browser also reports as a wheel
+   * event with `ctrlKey` set. Plain scrolling stays scrolling: the board is
+   * wider than the window and taking the wheel away from panning would cost
+   * more than the zoom is worth.
+   */
+  const onWheelZoom = useCallback((deltaY: number) => {
+    // Multiplicative, so a step feels the same at every scale.
+    setScale((current) => clampScale(current * Math.exp(-deltaY / 400)));
+  }, []);
+
+  const nudgeZoom = useCallback((factor: number) => {
+    setScale((current) => clampScale(current * factor));
+  }, []);
+
   const board = useMemo(
     () =>
       state
@@ -83,6 +149,11 @@ export function App() {
             footprints: state.footprints,
           })
         : null,
+    [state],
+  );
+
+  const readiness = useMemo(
+    () => (state ? readinessForIdeas(state.commitments, state.footprints) : new Map()),
     [state],
   );
 
@@ -102,6 +173,470 @@ export function App() {
       null
     );
   }, [board, focusedCommitmentId]);
+
+  // ── Placing work ───────────────────────────────────────────────────────
+  //
+  // Dragging is not a shortcut for the form; it is the product's argument. You
+  // pick work up, every container tells you what it would become, and the drop
+  // is the decision. For an Idea the drop is also the Commit Gate — the gesture
+  // supplies a team, a footprint, and a primary footprint, which is three of
+  // the four hard blockers, so there is nothing left to fill in.
+
+  const describeDrag = useCallback(
+    (payload: DragPayload, target: DropTarget | null): string => {
+      if (!board || !target) return t('drop.carrying', { name: payload.name });
+
+      // The rail is the way back off the board.
+      if (target.kind === 'RAIL') {
+        const removal = previewRemoval(payload);
+        if (!removal.allowed) {
+          return t('remove.refused', {
+            reason: removal.refusal ? t(`remove.no.${removal.refusal}`) : '',
+          });
+        }
+        return removal.returnsToRail
+          ? t('remove.wouldReturn', { name: payload.name })
+          : t('remove.wouldUnplace', { name: payload.name, units: removal.units });
+      }
+
+      const cell = findCell(board, target.teamId, target.quarterId as QuarterId);
+      if (!cell) return t('drop.carrying', { name: payload.name });
+
+      const preview = previewDrop(cell, payload);
+      if (!preview.allowed) {
+        return t('drop.refusedAt', {
+          team: cell.teamName,
+          quarter: cell.quarterId,
+          reason: preview.refusal ? t(`drop.no.${preview.refusal}`) : '',
+        });
+      }
+      if (payload.kind === 'LINK') {
+        const targetId =
+          target.commitmentId ??
+          cell.blocks.find((block) => block.commitmentId !== payload.commitmentId)?.commitmentId;
+        return targetId
+          ? t('link.would', {
+              from: payload.name,
+              to: state?.commitments.get(targetId)?.name ?? '',
+            })
+          : t('link.needsWork');
+      }
+
+      const landing = t('drop.wouldLand', {
+        name: payload.name,
+        team: cell.teamName,
+        quarter: cell.quarterId,
+        percent: preview.percent ?? 0,
+      });
+      return preview.reassignsOwner
+        ? `${landing} ${t('drop.reassigns', { team: cell.teamName })}`
+        : landing;
+    },
+    [board, state],
+  );
+
+  const applyDrop = useCallback(
+    (payload: DragPayload, target: DropTarget) => {
+      if (!board) return;
+
+      if (target.kind === 'RAIL') {
+        const removal = previewRemoval(payload);
+        if (!removal.allowed || payload.kind !== 'BLOCK') return;
+        void unplaceFootprint({
+          footprintId: payload.footprintId,
+          commitmentId: payload.commitmentId,
+          returnToRail: removal.returnsToRail,
+        }).then((ok) => {
+          if (!ok) return;
+          announce(
+            removal.returnsToRail
+              ? t('remove.returned', { name: payload.name })
+              : t('remove.unplaced', { name: payload.name }),
+          );
+        });
+        return;
+      }
+
+      const cell = findCell(board, target.teamId, target.quarterId as QuarterId);
+      // Re-check on release. The board can change under a slow drag, and the
+      // preview that allowed it may no longer be the truth.
+      if (!cell || !previewDrop(cell, payload).allowed) return;
+
+      // A dependency lands on work, not on a container.
+      if (payload.kind === 'LINK') {
+        const targetId =
+          target.commitmentId ??
+          cell.blocks.find((block) => block.commitmentId !== payload.commitmentId)?.commitmentId;
+        if (!targetId || targetId === payload.commitmentId) return;
+
+        void relate('AddDependency', (rs, cmd, ctx) =>
+          addDependency(
+            rs,
+            {
+              sourceCommitmentId: payload.commitmentId,
+              target: { kind: 'COMMITMENT', id: targetId },
+            },
+            cmd,
+            ctx,
+          ),
+        ).then((ok) => {
+          if (ok) {
+            announce(
+              t('link.made', {
+                from: payload.name,
+                to: state?.commitments.get(targetId)?.name ?? '',
+              }),
+            );
+          }
+        });
+        return;
+      }
+
+      if (payload.kind === 'BLOCK') {
+        void moveFootprint(payload.footprintId, {
+          teamId: target.teamId,
+          quarterId: target.quarterId,
+        });
+      } else {
+        void commitIdeaInto({
+          commitmentId: payload.commitmentId,
+          teamId: target.teamId,
+          quarterId: target.quarterId,
+          units: payload.units,
+        });
+      }
+      announce(
+        t('drop.placed', { name: payload.name, team: cell.teamName, quarter: cell.quarterId }),
+      );
+    },
+    [board, state, moveFootprint, commitIdeaInto, unplaceFootprint, relate, announce],
+  );
+
+  const { placement, carryRef, beginPointer, beginKeyboard, aim, drop, cancel } = usePlacement({
+    onDrop: applyDrop,
+    onCancel: (payload) => announce(t('drop.cancelled', { name: payload.name })),
+    announce,
+    describe: describeDrag,
+  });
+
+  const pickUpIdea = useCallback(
+    (commitmentId: string, event?: React.PointerEvent) => {
+      const idea = board?.ideas.find((i) => i.commitmentId === commitmentId);
+      if (!idea || !state) return;
+      const payload: DragPayload = {
+        kind: 'IDEA',
+        commitmentId,
+        name: idea.name,
+        units: defaultDropUnits(state.workspace.settings.capacity.sizeMapping),
+        commitmentClass: idea.commitmentClass,
+        hasTargetDate: state.commitments.get(commitmentId)?.targetDate !== undefined,
+        ...(state.commitments.get(commitmentId)?.primaryTeamId !== undefined
+          ? { primaryTeamId: state.commitments.get(commitmentId)!.primaryTeamId! }
+          : {}),
+      };
+      if (event) beginPointer(payload, event);
+      else beginKeyboard(payload);
+    },
+    [board, state, beginPointer, beginKeyboard],
+  );
+
+  /**
+   * Drawing a dependency. Shift-drag from a block, or `d` then the arrows —
+   * the same gesture as moving work, because it is the same question asked of
+   * two pieces of work instead of one. Visual creation defaults to REQUIRES;
+   * the type is refined in the panel, and the direction never flips.
+   */
+  const linkFrom = useCallback(
+    (commitmentId: string, event?: React.PointerEvent) => {
+      const commitment = state?.commitments.get(commitmentId);
+      if (!commitment) return;
+      const payload: DragPayload = {
+        kind: 'LINK',
+        commitmentId,
+        name: commitment.name,
+        units: 0,
+      };
+      if (event) beginPointer(payload, event);
+      else beginKeyboard(payload);
+    },
+    [state, beginPointer, beginKeyboard],
+  );
+
+  const pickUpBlock = useCallback(
+    (footprintId: string, teamId: string, quarterId: string, event?: React.PointerEvent) => {
+      const block = board?.rows
+        .flatMap((row) => row.cells)
+        .flatMap((cell) => cell.blocks)
+        .find((b) => b.footprintId === footprintId);
+      if (!block || !state) return;
+
+      // How many placements this work has decides whether taking one off the
+      // board unplaces it or sends the whole commitment back to the lane.
+      const footprintCount = [...state.footprints.values()].filter(
+        (f) => f.commitmentId === block.commitmentId && f.archivedAt === undefined,
+      ).length;
+
+      const payload: DragPayload = {
+        kind: 'BLOCK',
+        footprintId,
+        commitmentId: block.commitmentId,
+        name: block.name,
+        units: block.units,
+        fromTeamId: teamId,
+        fromQuarterId: quarterId as never,
+        lifecycle: block.lifecycle,
+        footprintCount,
+        fromClosed: board
+          ? (findCell(board, teamId, quarterId as QuarterId)?.closed ?? false)
+          : false,
+      };
+      if (event) beginPointer(payload, event);
+      else beginKeyboard(payload);
+    },
+    [board, state, beginPointer, beginKeyboard],
+  );
+
+  /** Delete on a focused block: the same action as dragging it to the lane. */
+  const removeBlock = useCallback(
+    (footprintId: string, teamId: string, quarterId: string) => {
+      const block = board?.rows
+        .flatMap((row) => row.cells)
+        .flatMap((cell) => cell.blocks)
+        .find((b) => b.footprintId === footprintId);
+      if (!block || !state) return;
+
+      const footprintCount = [...state.footprints.values()].filter(
+        (f) => f.commitmentId === block.commitmentId && f.archivedAt === undefined,
+      ).length;
+      const removal = previewRemoval({
+        kind: 'BLOCK',
+        footprintId,
+        commitmentId: block.commitmentId,
+        name: block.name,
+        units: block.units,
+        fromTeamId: teamId,
+        fromQuarterId: quarterId as QuarterId,
+        lifecycle: block.lifecycle,
+        footprintCount,
+        fromClosed: board
+          ? (findCell(board, teamId, quarterId as QuarterId)?.closed ?? false)
+          : false,
+      });
+
+      if (!removal.allowed) {
+        announce(
+          t('remove.refused', {
+            reason: removal.refusal ? t(`remove.no.${removal.refusal}`) : '',
+          }),
+        );
+        return;
+      }
+
+      // Announce the outcome, not the intent. Saying "returned to the lane"
+      // before the command has run is how a refusal turns into a dead gesture.
+      void unplaceFootprint({
+        footprintId,
+        commitmentId: block.commitmentId,
+        returnToRail: removal.returnsToRail,
+      }).then((ok) => {
+        if (!ok) return;
+        announce(
+          removal.returnsToRail
+            ? t('remove.returned', { name: block.name })
+            : t('remove.unplaced', { name: block.name }),
+        );
+      });
+    },
+    [board, state, unplaceFootprint, announce],
+  );
+
+  /**
+   * Resizing. The consequence is announced while the edge is still moving, and
+   * the command is sent once, on release — a command per pixel would fill the
+   * undo stack with the journey instead of the destination.
+   */
+  const describeResize = useCallback(
+    (state: ResizeState): string | null => {
+      if (!board) return null;
+      const cell = findCell(board, state.teamId, state.quarterId as QuarterId);
+      if (!cell) return null;
+      const preview = previewResize(cell, state.footprintId, state.units);
+      if (!preview.allowed) return t('resize.refused');
+
+      const block = cell.blocks.find((b) => b.footprintId === state.footprintId);
+      return t('resize.would', {
+        name: block?.name ?? '',
+        units: preview.units,
+        team: cell.teamName,
+        quarter: cell.quarterId,
+        percent: preview.percent ?? 0,
+      });
+    },
+    [board],
+  );
+
+  const commitResize = useCallback(
+    (footprintId: string, teamId: string, quarterId: string, units: number) => {
+      if (!board) return;
+      const cell = findCell(board, teamId, quarterId as QuarterId);
+      if (!cell) return;
+
+      const preview = previewResize(cell, footprintId, units);
+      if (!preview.allowed) {
+        announce(t('resize.refused'));
+        return;
+      }
+
+      const block = cell.blocks.find((b) => b.footprintId === footprintId);
+      if (!block || preview.units === block.units) return;
+
+      void resizeFootprint(footprintId, preview.units).then((ok) => {
+        if (ok) announce(t('resize.to', { name: block.name, units: preview.units }));
+      });
+    },
+    [board, resizeFootprint, announce],
+  );
+
+  const { resizing, begin: beginResize } = useResize({
+    onPreview: (state) => {
+      const message = describeResize(state);
+      if (message) announce(message);
+    },
+    onCommit: (state) =>
+      commitResize(state.footprintId, state.teamId, state.quarterId, state.units),
+  });
+
+  /**
+   * What the panel shows. Driven by the focused commitment rather than a
+   * separate selection: the thing you are looking at on the board and the thing
+   * the panel describes must not be able to differ.
+   */
+  const panelCommitment = focusedCommitmentId
+    ? (state?.commitments.get(focusedCommitmentId) ?? null)
+    : null;
+
+  const panelFootprints = useMemo((): PanelFootprint[] => {
+    if (!state || !board || !panelCommitment) return [];
+    return [...state.footprints.values()]
+      .filter((f) => f.commitmentId === panelCommitment.id && f.archivedAt === undefined)
+      .map((footprint) => {
+        const cell = findCell(board, footprint.teamId, footprint.quarterId);
+        return {
+          footprint,
+          teamName: cell?.teamName ?? footprint.teamId,
+          percentAfter: cell?.summary ? utilisationPercent(cell.summary) : null,
+        };
+      });
+  }, [state, board, panelCommitment]);
+
+  /**
+   * The gate, for work that has not passed it. Uses the same pure assessment
+   * the handler runs, so the checklist and the refusal cannot disagree.
+   */
+  const panelGate = useMemo(() => {
+    if (!state || !board || !panelCommitment || panelCommitment.lifecycle !== 'IDEA') return null;
+
+    const footprints = [...state.footprints.values()];
+    const readiness = assessCommitGate({
+      commitment: panelCommitment,
+      footprints,
+      hasProductImpact: [...(state.productImpacts?.values() ?? [])].some(
+        (impact) => impact.commitmentId === panelCommitment.id && impact.archivedAt === undefined,
+      ),
+      dependenciesReviewed: false,
+      largeThreshold: state.workspace.settings.capacity.sizeMapping.L,
+    });
+
+    // What committing would do to capacity. Stated, never used to block.
+    const own = footprints.filter(
+      (f) => f.commitmentId === panelCommitment.id && f.archivedAt === undefined,
+    );
+    const overflow = own.reduce((worst, footprint) => {
+      const cell = findCell(board, footprint.teamId, footprint.quarterId);
+      return Math.max(worst, cell?.summary?.overflow ?? 0);
+    }, 0);
+
+    return { readiness, overflow };
+  }, [state, board, panelCommitment]);
+
+  /** The relations that belong to whatever the panel is showing. */
+  const panelRelations = useMemo(() => {
+    const id = panelCommitment?.id;
+    const of = <T extends { commitmentId?: string }>(map: ReadonlyMap<string, T> | undefined) =>
+      [...(map?.values() ?? [])].filter(
+        (row) =>
+          row.commitmentId === id && (row as { archivedAt?: string }).archivedAt === undefined,
+      );
+
+    return {
+      impacts: of(state?.productImpacts),
+      milestones: of(state?.milestones).sort((a, b) => a.displayOrder - b.displayOrder),
+      links: of(state?.externalLinks),
+      dependencies: [...(state?.dependencies?.values() ?? [])].filter(
+        (d) => d.sourceCommitmentId === id && d.archivedAt === undefined,
+      ),
+    };
+  }, [state, panelCommitment]);
+
+  /** A dependency can point at four different kinds of thing. */
+  const nameOfTarget = useCallback(
+    (target: { kind: string; id: string }): string => {
+      switch (target.kind) {
+        case 'COMMITMENT':
+          return state?.commitments.get(target.id)?.name ?? target.id;
+        case 'TEAM':
+          return state?.teams.get(target.id)?.name ?? target.id;
+        case 'MILESTONE':
+          return state?.milestones?.get(target.id)?.name ?? target.id;
+        case 'DECISION':
+          return state?.decisions?.get(target.id)?.name ?? target.id;
+        default:
+          return target.id;
+      }
+    },
+    [state],
+  );
+
+  /**
+   * Dependencies of the focused commitment, resolved to places on the board.
+   *
+   * A dependency on a decision or a milestone has no cell to point at; it is
+   * listed in the panel and simply not drawn, rather than being aimed at
+   * something arbitrary.
+   */
+  const dependencyEdges = useMemo((): DependencyEdge[] => {
+    if (!state || !board || !focusedCommitmentId) return [];
+
+    const cellsOf = (commitmentId: string) =>
+      [...state.footprints.values()]
+        .filter((f) => f.commitmentId === commitmentId && f.archivedAt === undefined)
+        .map((f) => `${f.teamId}|${f.quarterId}`);
+
+    const from = cellsOf(focusedCommitmentId)[0];
+    if (!from) return [];
+
+    return [...(state.dependencies?.values() ?? [])]
+      .filter((d) => d.sourceCommitmentId === focusedCommitmentId && d.archivedAt === undefined)
+      .map((dependency) => {
+        const target = dependency.target;
+        const to =
+          target.kind === 'COMMITMENT'
+            ? (cellsOf(target.id)[0] ?? null)
+            : target.kind === 'TEAM'
+              ? `${target.id}|${from.split('|')[1]}`
+              : null;
+
+        return {
+          id: dependency.id,
+          type: dependency.type,
+          status: dependency.status,
+          isHard: dependency.isHard,
+          fromCellKey: from,
+          toCellKey: to,
+          targetName: nameOfTarget(target),
+        };
+      });
+  }, [state, board, focusedCommitmentId, nameOfTarget]);
 
   const vesselBlocksFor = useCallback(
     (cell: CellModel): VesselBlock[] => {
@@ -137,17 +672,16 @@ export function App() {
 
   return (
     <div className="fm-shell">
-      <header className="fm-topbar">
-        <h1 className="fm-brand">
-          {t('app.name')} <span className="fm-brand__tagline">{t('app.tagline')}</span>
-        </h1>
-        <div className="fm-topbar__status" role="status">
-          <span>{t('status.local')}</span>
+      <header className="fm-header">
+        <h1 className="fm-header__brand">{t('app.name')}</h1>
+        <span className="fm-header__workspace">{state.workspace.name}</span>
+        <span className="fm-header__spacer" />
+        <div className="fm-header__status" role="status">
           {/* Pending count is sync plumbing. With no shared provider there is
               nothing for it to be pending *to*, so it is noise rather than
               status — it returns in M8 when it means something. */}
           <span aria-live="polite">{t('status.saved')}</span>
-          <span>{t('status.profile', { name: profileName })}</span>
+          <span>{profileName}</span>
         </div>
       </header>
 
@@ -163,6 +697,21 @@ export function App() {
         </div>
       )}
 
+      <div className="fm-controlbar">
+        <LensStrip
+          level={level}
+          filter={filter}
+          focusedName={focusedName}
+          scale={scale}
+          onZoomBy={nudgeZoom}
+          onLevel={setLevelState}
+          onRemoveChip={(key) => setFilter((f) => removeChip(f, key))}
+          onClearFilters={() => setFilter(NO_FILTER)}
+          onToggleHide={() => setFilter((f) => ({ ...f, hideFiltered: !f.hideFiltered }))}
+          onClearFocus={() => setFocusedCommitmentId(null)}
+        />
+      </div>
+
       <CaptureBar
         teams={teams.map((team) => ({ id: team.id, name: team.name }))}
         ideas={ideas.map((c) => ({ id: c.id, name: c.name }))}
@@ -174,24 +723,30 @@ export function App() {
         onClearLocalData={() => void clearLocalData()}
       />
 
-      <LensStrip
-        level={level}
-        filter={filter}
-        focusedName={focusedName}
-        onLevel={setLevelState}
-        onRemoveChip={(key) => setFilter((f) => removeChip(f, key))}
-        onClearFilters={() => setFilter(NO_FILTER)}
-        onToggleHide={() => setFilter((f) => ({ ...f, hideFiltered: !f.hideFiltered }))}
-        onClearFocus={() => setFocusedCommitmentId(null)}
-      />
-
       <div className="fm-workspace">
         <IdeasLane
           ideas={board.ideas}
+          readiness={readiness}
           selectedCommitmentId={focusedCommitmentId}
+          draggingCommitmentId={placement?.payload.commitmentId ?? null}
+          dropState={
+            placement?.target?.kind === 'RAIL'
+              ? previewRemoval(placement.payload).allowed
+                ? 'ok'
+                : 'no'
+              : null
+          }
+          dropNote={
+            placement?.target?.kind === 'RAIL'
+              ? describeDrag(placement.payload, placement.target)
+              : null
+          }
           onSelect={(commitmentId) =>
             setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId))
           }
+          onPickUp={pickUpIdea}
+          collapsed={railCollapsed}
+          onToggleCollapsed={() => setRailCollapsed((was) => !was)}
         />
 
         <PortfolioMap
@@ -214,8 +769,126 @@ export function App() {
             setFilter((f) => toggleFilterValue(f, 'quarters', quarterId))
           }
           onAnnounce={announce}
+          dragging={placement?.payload ?? null}
+          dragTarget={placement?.target ?? null}
+          onPickUpBlock={pickUpBlock}
+          onRemoveBlock={removeBlock}
+          onResizeBlock={(footprintId, teamId, quarterId, units) =>
+            commitResize(footprintId, teamId, quarterId, clampUnits(units))
+          }
+          onResizeStart={(input, event) => beginResize(input, event)}
+          resizing={resizing ? { footprintId: resizing.footprintId, units: resizing.units } : null}
+          onAimDrag={(teamId, quarterId) => aim({ kind: 'CELL', teamId, quarterId })}
+          onLinkFrom={linkFrom}
+          scale={scale}
+          onWheelZoom={onWheelZoom}
+          onDropHere={drop}
+          dependencyEdges={dependencyEdges}
         />
+
+        {/* Inside the workspace row, not floating over it: the board narrows
+            rather than being hidden. Editing a field and watching the figure
+            move is the point, and a panel covering the board defeats it. */}
+        {panelCommitment && state && (
+          <DetailPanel
+            commitment={panelCommitment}
+            teams={teams}
+            products={[...(state.products?.values() ?? [])]}
+            people={[...(state.people?.values() ?? [])]}
+            footprints={panelFootprints}
+            quarters={board.quarters}
+            currentQuarterId={state.workspace.currentQuarterId}
+            impacts={panelRelations.impacts}
+            milestones={panelRelations.milestones}
+            links={panelRelations.links}
+            dependencies={panelRelations.dependencies}
+            nameOfTarget={nameOfTarget}
+            onChange={(patch) => void editCommitment(panelCommitment.id, patch)}
+            onSetImpact={(productServiceId, type) =>
+              void relate('SetProductImpact', (rs, cmd, ctx) =>
+                setProductImpact(
+                  rs,
+                  { commitmentId: panelCommitment.id, productServiceId, type },
+                  cmd,
+                  ctx,
+                ),
+              )
+            }
+            onRemoveImpact={(impactId) =>
+              void relate('RemoveProductImpact', (rs, cmd, ctx) =>
+                removeProductImpact(rs, { impactId }, cmd, ctx),
+              )
+            }
+            onAddMilestone={(name) =>
+              void relate('AddMilestone', (rs, cmd, ctx) =>
+                addMilestone(rs, { commitmentId: panelCommitment.id, name }, cmd, ctx),
+              )
+            }
+            onRemoveMilestone={(milestoneId) =>
+              void relate('RemoveMilestone', (rs, cmd, ctx) =>
+                removeMilestone(rs, { milestoneId }, cmd, ctx),
+              )
+            }
+            onAddLink={(type, url, label) =>
+              void relate('AddExternalLink', (rs, cmd, ctx) =>
+                addExternalLink(
+                  rs,
+                  {
+                    commitmentId: panelCommitment.id,
+                    type,
+                    url,
+                    ...(label ? { label } : {}),
+                  },
+                  cmd,
+                  ctx,
+                ),
+              )
+            }
+            onRemoveLink={(linkId) =>
+              void relate('RemoveExternalLink', (rs, cmd, ctx) =>
+                removeExternalLink(rs, { linkId }, cmd, ctx),
+              )
+            }
+            onSetDependencyType={(dependencyId, type) =>
+              void relate('UpdateDependency', (rs, cmd, ctx) =>
+                updateDependency(rs, { dependencyId, type }, cmd, ctx),
+              )
+            }
+            onRemoveDependency={(dependencyId) =>
+              void relate('RemoveDependency', (rs, cmd, ctx) =>
+                removeDependency(rs, { dependencyId }, cmd, ctx),
+              )
+            }
+            gate={
+              panelGate
+                ? {
+                    ...panelGate,
+                    onCommit: () => void passGate(panelCommitment.id),
+                  }
+                : null
+            }
+            onClose={() => setFocusedCommitmentId(null)}
+          />
+        )}
       </div>
+
+      {/* The piece that follows the cursor. Small and quiet — the answer is on
+          the board, not under the pointer. Positioned by `usePlacement` writing
+          to this node's style, never through a render. */}
+      {placement?.via === 'pointer' && (
+        <div className="fm-carry" ref={carryRef} aria-hidden="true">
+          {placement.payload.name} · {placement.payload.units}
+        </div>
+      )}
+
+      {placement?.via === 'keyboard' && (
+        <div className="fm-carry fm-carry--keyboard" aria-hidden="true">
+          {t('drop.keyboardHint', { name: placement.payload.name })}
+          <button type="button" onClick={cancel}>
+            {t('drop.cancel')}
+          </button>
+        </div>
+      )}
 
       {/* Capacity consequences reach a non-sighted user the moment they happen. */}
       <div className="fm-visually-hidden" role="status" aria-live="polite">

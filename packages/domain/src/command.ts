@@ -20,8 +20,17 @@ import type { DomainError, SuggestedAction } from './errors.js';
 import type {
   CapacityFootprint,
   Commitment,
+  CommitmentTheme,
+  Decision,
+  Dependency,
+  ExternalLink,
+  Milestone,
+  Person,
+  ProductImpact,
+  ProductService,
   Team,
   TeamQuarter,
+  Theme,
   Workspace,
   WorkspaceRole,
 } from './entities.js';
@@ -142,6 +151,19 @@ export type WorkspaceState = {
   readonly teamQuarters: ReadonlyMap<EntityId, TeamQuarter>;
   readonly commitments: ReadonlyMap<EntityId, Commitment>;
   readonly footprints: ReadonlyMap<EntityId, CapacityFootprint>;
+
+  // Everything a commitment relates to. Optional on the type because M1 code
+  // paths and older tests build state without them, and a handler that needs a
+  // relation should say so rather than assume the map is there.
+  readonly products?: ReadonlyMap<EntityId, ProductService>;
+  readonly productImpacts?: ReadonlyMap<EntityId, ProductImpact>;
+  readonly dependencies?: ReadonlyMap<EntityId, Dependency>;
+  readonly decisions?: ReadonlyMap<EntityId, Decision>;
+  readonly milestones?: ReadonlyMap<EntityId, Milestone>;
+  readonly themes?: ReadonlyMap<EntityId, Theme>;
+  readonly commitmentThemes?: ReadonlyMap<EntityId, CommitmentTheme>;
+  readonly externalLinks?: ReadonlyMap<EntityId, ExternalLink>;
+  readonly people?: ReadonlyMap<EntityId, Person>;
 };
 
 export const ROLE_ORDER: readonly WorkspaceRole[] = ['VIEWER', 'CONTRIBUTOR', 'PLANNER', 'ADMIN'];

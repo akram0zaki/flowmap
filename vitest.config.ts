@@ -7,6 +7,9 @@ export default defineConfig({
       'packages/ui/tokens/**/*.test.ts',
       'fixtures/src/**/*.test.ts',
       'apps/desktop/src/**/*.test.tsx',
+      // The scale benchmark lives here because it needs both the fixtures and
+      // the visual model, which no pure package is allowed to depend on.
+      'apps/desktop/src/**/*.test.ts',
     ],
     environment: 'node',
     clearMocks: true,

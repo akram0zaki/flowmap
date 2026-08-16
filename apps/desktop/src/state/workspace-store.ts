@@ -11,6 +11,7 @@
 
 import { create } from 'zustand';
 import {
+  applyTransition,
   assignCapacityFootprint,
   createIdea,
   createTeam,
@@ -20,11 +21,26 @@ import {
   removeCapacityFootprint,
   resizeCapacityFootprint,
   restoreCapacityFootprint,
+  setPrimaryTeam,
+  updateCommitment,
   type Command,
   type CommandContext,
   type CommandResult,
   type EntityId,
   type WorkspaceState,
+} from '@flowmap/domain';
+import {
+  addDependency,
+  addExternalLink,
+  addMilestone,
+  removeDependency,
+  removeExternalLink,
+  removeMilestone,
+  removeProductImpact,
+  setProductImpact,
+  updateDependency,
+  updateMilestone,
+  type RelationState,
 } from '@flowmap/domain';
 import type { WorkspaceRepository } from '@flowmap/storage';
 
@@ -32,6 +48,29 @@ import { t } from '../i18n/t.js';
 import { seedSampleWorkspace } from './sample-workspace.js';
 
 const WORKSPACE_ID = 'flowmap-local-workspace';
+
+/**
+ * One user action, however many commands it takes.
+ *
+ * Depth, not a boolean, because a step can call another action that is itself
+ * a step — unplacing calls `removeFootprint`, which is a perfectly good action
+ * on its own. `stepStarted` marks the first command, which opens the step; the
+ * rest join it.
+ */
+let stepDepth = 0;
+let stepStarted = false;
+
+async function runAsStep<T>(run: () => Promise<T>): Promise<T> {
+  const outermost = stepDepth === 0;
+  stepDepth += 1;
+  if (outermost) stepStarted = false;
+  try {
+    return await run();
+  } finally {
+    stepDepth -= 1;
+    if (stepDepth === 0) stepStarted = false;
+  }
+}
 const PROFILE_ID = 'local-profile';
 
 export type Runtime = {
@@ -66,8 +105,14 @@ type StoreState = {
   profileName: string;
   selectedFootprintId: string | null;
   status: Status;
-  undoStack: Command[];
-  redoStack: Command[];
+  /**
+   * Steps, not commands. One user action can be several commands — taking work
+   * off the board is a revert plus a removal — and undoing half of it leaves a
+   * state the model forbids: an Idea sitting in a capacity block, visible on
+   * the board and in the demand lane at the same time. A step undoes whole.
+   */
+  undoStack: Command[][];
+  redoStack: Command[][];
   pendingCount: number;
 
   init(runtime: Runtime, profileName: string): Promise<void>;
@@ -84,16 +129,78 @@ type StoreState = {
     quarterId: string;
     units?: number;
     size?: 'XS' | 'S' | 'M' | 'L' | 'XL';
+    isPrimary?: boolean;
   }): Promise<boolean>;
-  moveFootprint(footprintId: EntityId, quarterId: string): Promise<boolean>;
+  /**
+   * Cross-team as well as cross-quarter: a drag can land anywhere on the board,
+   * and the domain payload always supported both even though the first caller
+   * only ever changed the quarter.
+   */
+  moveFootprint(
+    footprintId: EntityId,
+    target: { teamId?: EntityId; quarterId?: string },
+  ): Promise<boolean>;
+  /**
+   * The drop that turns an Idea into committed work.
+   *
+   * Placing it and passing the gate are one gesture because they are one
+   * decision — and because an Idea may not hold a capacity block on the near
+   * side of the gate, so the intermediate state must not outlive the call.
+   */
+  commitIdeaInto(input: {
+    commitmentId: EntityId;
+    teamId: EntityId;
+    quarterId: string;
+    units: number;
+  }): Promise<boolean>;
   resizeFootprint(footprintId: EntityId, units: number): Promise<boolean>;
   removeFootprint(footprintId: EntityId): Promise<boolean>;
+  /**
+   * Take work off the board.
+   *
+   * Not a delete: the commitment survives, and when this was its last placement
+   * it goes back through the gate into the demand lane, where it can be placed
+   * again. Dropping work for good is `DropCommitment`, a different decision.
+   */
+  unplaceFootprint(input: {
+    footprintId: EntityId;
+    commitmentId: EntityId;
+    returnToRail: boolean;
+  }): Promise<boolean>;
   undo(): Promise<void>;
   redo(): Promise<void>;
+  /** Edit a commitment's own fields. The property sheet's only write path. */
+  editCommitment(commitmentId: EntityId, patch: Record<string, unknown>): Promise<boolean>;
+  /**
+   * Relations: impacts, dependencies, milestones and links.
+   *
+   * One entry point rather than ten store methods, because they all share the
+   * same shape — take the relation view of state, run a handler, persist.
+   */
+  relate(
+    name: string,
+    run: (state: RelationState, cmd: Command, ctx: CommandContext) => CommandResult,
+  ): Promise<boolean>;
+  /** Take an Idea through the Commit Gate from the panel. */
+  passGate(commitmentId: EntityId): Promise<boolean>;
+  /**
+   * Work that arrived mid-quarter and is already real.
+   *
+   * Captured, placed and committed as one step — three commands, one undo. It
+   * stops at COMMITTED deliberately: creating straight into IN_DELIVERY would
+   * mean work that was never committed to anything, and the capacity it is
+   * consuming would have no record of having been agreed.
+   */
+  captureUnplanned(input: {
+    name: string;
+    teamId: EntityId;
+    quarterId: string;
+    units: number;
+  }): Promise<boolean>;
   select(footprintId: string | null): void;
   clearStatus(): void;
   clearLocalData(): Promise<void>;
-  loadSample(): Promise<void>;
+  loadSample(scale?: 25 | 100 | 500): Promise<void>;
 };
 
 export const useWorkspace = create<StoreState>((set, get) => ({
@@ -140,6 +247,10 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     const { runtime, state } = get();
     if (!runtime || !state) return false;
 
+    // Whether this command joins the step already being built.
+    const grouping = stepDepth > 0 && stepStarted;
+    if (stepDepth > 0) stepStarted = true;
+
     const cmd = makeCommand(runtime, name);
     const ctx = makeContext(runtime, await runtime.repository.nextSequence(WORKSPACE_ID));
     const result = run(state, cmd, ctx);
@@ -168,15 +279,21 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       // Undo and redo are stacks of inverse commands, each re-validated when it
       // executes — so an undo that has since become illegal is refused rather
       // than corrupting state.
+      // Inside a step, inverses accumulate onto the step being built rather
+      // than each becoming an undo of its own.
+      const append = (stack: Command[][]): Command[][] => {
+        if (!inverse) return stack;
+        if (!grouping) return [...stack, [inverse]];
+        const head = stack.at(-1) ?? [];
+        return [...stack.slice(0, -1), [...head, inverse]];
+      };
+
       const stacks =
         history === 'record'
-          ? {
-              undoStack: inverse ? [...prev.undoStack, inverse].slice(-100) : prev.undoStack,
-              redoStack: [],
-            }
+          ? { undoStack: append(prev.undoStack).slice(-100), redoStack: [] }
           : history === 'undoing'
-            ? { redoStack: inverse ? [...prev.redoStack, inverse] : prev.redoStack }
-            : { undoStack: inverse ? [...prev.undoStack, inverse] : prev.undoStack };
+            ? { redoStack: append(prev.redoStack) }
+            : { undoStack: append(prev.undoStack) };
 
       return {
         ...stacks,
@@ -234,6 +351,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
             quarterId: input.quarterId as never,
             ...(input.units !== undefined ? { units: input.units } : {}),
             ...(input.size !== undefined ? { size: input.size } : {}),
+            ...(input.isPrimary !== undefined ? { isPrimary: input.isPrimary } : {}),
           },
           cmd,
           ctx,
@@ -242,12 +360,92 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     );
   },
 
-  async moveFootprint(footprintId, quarterId) {
+  async moveFootprint(footprintId, target) {
+    // MoveCapacityFootprint does not materialise its destination, unlike
+    // assign. Dragging into a quarter a team has never been given lands on a
+    // container that does not exist yet, so create it first.
+    if (target.teamId !== undefined && target.quarterId !== undefined) {
+      const ensured = await get().dispatch('EnsureTeamQuarter', (state, cmd, ctx) =>
+        ensureTeamQuarter(
+          state,
+          { teamId: target.teamId as EntityId, quarterId: target.quarterId as never },
+          cmd,
+          ctx,
+        ),
+      );
+      if (ensured === false) return false;
+    }
+
     return (
       (await get().dispatch('MoveCapacityFootprint', (state, cmd, ctx) =>
-        moveCapacityFootprint(state, { footprintId, quarterId: quarterId as never }, cmd, ctx),
+        moveCapacityFootprint(
+          state,
+          {
+            footprintId,
+            ...(target.teamId !== undefined ? { teamId: target.teamId } : {}),
+            ...(target.quarterId !== undefined ? { quarterId: target.quarterId as never } : {}),
+          },
+          cmd,
+          ctx,
+        ),
       )) !== false
     );
+  },
+
+  async commitIdeaInto(input) {
+    return runAsStep(async () => {
+      // Dropping work on a row says that team does it. The Commit Gate requires
+      // the primary footprint to sit on the primary team, so without this an Idea
+      // could only be dropped on the one row it already named — and the gate
+      // refused everywhere else in complete silence.
+      const commitment = get().state?.commitments.get(input.commitmentId);
+      if (commitment && commitment.primaryTeamId !== input.teamId) {
+        const owned = await get().dispatch('SetPrimaryTeam', (state, cmd, ctx) =>
+          setPrimaryTeam(
+            state,
+            { commitmentId: input.commitmentId, teamId: input.teamId },
+            cmd,
+            ctx,
+          ),
+        );
+        if (owned === false) return false;
+      }
+
+      const placed = await get().placeFootprint({
+        commitmentId: input.commitmentId,
+        teamId: input.teamId,
+        quarterId: input.quarterId,
+        units: input.units,
+        isPrimary: true,
+      });
+      if (!placed) return false;
+
+      const passed = await get().dispatch('PassCommitGate', (state, cmd, ctx) =>
+        applyTransition('PassCommitGate', state, { commitmentId: input.commitmentId }, cmd, ctx),
+      );
+
+      // The gate refused after the footprint landed. Leaving it there would put an
+      // Idea in a capacity block, which the model does not allow, so take it back
+      // out — the status message from the failed gate is what the user sees.
+      if (passed === false) {
+        // Keep the gate's explanation. The rollback below is a *successful*
+        // command, and a successful dispatch clears the status — so undoing the
+        // footprint also erased the only account of why the drop failed, and the
+        // whole gesture appeared to do nothing at all.
+        const reason = get().status;
+        const footprint = [...(get().state?.footprints.values() ?? [])].find(
+          (f) =>
+            f.commitmentId === input.commitmentId &&
+            f.teamId === input.teamId &&
+            f.quarterId === input.quarterId &&
+            f.archivedAt === undefined,
+        );
+        if (footprint) await get().removeFootprint(footprint.id);
+        if (reason) set({ status: reason });
+        return false;
+      }
+      return true;
+    });
   },
 
   async resizeFootprint(footprintId, units) {
@@ -266,32 +464,100 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     );
   },
 
+  async unplaceFootprint({ footprintId, commitmentId, returnToRail }) {
+    return runAsStep(async () => {
+      // Revert first, while the footprint still exists. Reverting afterwards
+      // would leave a window where a COMMITTED commitment holds no placement.
+      if (returnToRail) {
+        const reverted = await get().dispatch('RevertCommitGate', (state, cmd, ctx) =>
+          applyTransition('RevertCommitGate', state, { commitmentId }, cmd, ctx),
+        );
+        if (reverted === false) return false;
+      }
+      return get().removeFootprint(footprintId);
+    });
+  },
+
   async undo() {
     const { undoStack } = get();
-    const inverse = undoStack.at(-1);
-    if (!inverse) {
+    const step = undoStack.at(-1);
+    if (!step || step.length === 0) {
       set({ status: { tone: 'info', message: t('undo.nothing') } });
       return;
     }
 
     set({ undoStack: undoStack.slice(0, -1) });
-    await get().dispatch(
-      inverse.name,
-      (state, cmd, ctx) => runNamed(inverse.name, state, { ...cmd, payload: inverse.payload }, ctx),
-      'undoing',
-    );
+    // Last command first: the inverses of a step have to run in reverse, or a
+    // revert lands before the removal it was meant to precede.
+    await runAsStep(async () => {
+      for (const inverse of [...step].reverse()) {
+        await get().dispatch(
+          inverse.name,
+          (state, cmd, ctx) =>
+            runNamed(inverse.name, state, { ...cmd, payload: inverse.payload }, ctx),
+          'undoing',
+        );
+      }
+    });
   },
 
   async redo() {
     const { redoStack } = get();
-    const inverse = redoStack.at(-1);
-    if (!inverse) return;
+    const step = redoStack.at(-1);
+    if (!step || step.length === 0) return;
 
     set({ redoStack: redoStack.slice(0, -1) });
-    await get().dispatch(
-      inverse.name,
-      (state, cmd, ctx) => runNamed(inverse.name, state, { ...cmd, payload: inverse.payload }, ctx),
-      'redoing',
+    await runAsStep(async () => {
+      for (const inverse of [...step].reverse()) {
+        await get().dispatch(
+          inverse.name,
+          (state, cmd, ctx) =>
+            runNamed(inverse.name, state, { ...cmd, payload: inverse.payload }, ctx),
+          'redoing',
+        );
+      }
+    });
+  },
+
+  async editCommitment(commitmentId, patch) {
+    return (
+      (await get().dispatch('UpdateCommitment', (state, cmd, ctx) =>
+        updateCommitment(state, { commitmentId, ...patch } as never, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async relate(name, run) {
+    return (
+      (await get().dispatch(name, (state, cmd, ctx) => run(relationView(state), cmd, ctx))) !==
+      false
+    );
+  },
+
+  async captureUnplanned(input) {
+    return runAsStep(async () => {
+      const before = new Set(get().state?.commitments.keys() ?? []);
+      if (!(await get().captureIdea(input.name))) return false;
+
+      const created = [...(get().state?.commitments.values() ?? [])].find(
+        (commitment) => !before.has(commitment.id) && commitment.name === input.name,
+      );
+      if (!created) return false;
+
+      return get().commitIdeaInto({
+        commitmentId: created.id,
+        teamId: input.teamId,
+        quarterId: input.quarterId,
+        units: input.units,
+      });
+    });
+  },
+
+  async passGate(commitmentId) {
+    return (
+      (await get().dispatch('PassCommitGate', (state, cmd, ctx) =>
+        applyTransition('PassCommitGate', state, { commitmentId }, cmd, ctx),
+      )) !== false
     );
   },
 
@@ -303,11 +569,12 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     set({ status: null });
   },
 
-  async loadSample() {
+  async loadSample(scale) {
     const { runtime, profileName } = get();
     if (!runtime) return;
 
     const report = await seedSampleWorkspace({
+      ...(scale !== undefined ? { scale } : {}),
       repository: runtime.repository,
       workspaceId: WORKSPACE_ID,
       actorId: `local:${PROFILE_ID}`,
@@ -377,12 +644,68 @@ function runNamed(
       return removeCapacityFootprint(state, payload as never, cmd, ctx);
     case 'RestoreCapacityFootprint':
       return restoreCapacityFootprint(state, payload as never, cmd, ctx);
+    case 'SetPrimaryTeam':
+      return setPrimaryTeam(state, payload as never, cmd, ctx);
+    case 'UpdateCommitment':
+      return updateCommitment(state, payload as never, cmd, ctx);
+    // Relations replay through the same view the forward command used.
+    case 'SetProductImpact':
+      return setProductImpact(relationView(state), payload as never, cmd, ctx);
+    case 'RemoveProductImpact':
+      return removeProductImpact(relationView(state), payload as never, cmd, ctx);
+    case 'AddDependency':
+      return addDependency(relationView(state), payload as never, cmd, ctx);
+    case 'UpdateDependency':
+      return updateDependency(relationView(state), payload as never, cmd, ctx);
+    case 'RemoveDependency':
+      return removeDependency(relationView(state), payload as never, cmd, ctx);
+    case 'AddMilestone':
+      return addMilestone(relationView(state), payload as never, cmd, ctx);
+    case 'UpdateMilestone':
+      return updateMilestone(relationView(state), payload as never, cmd, ctx);
+    case 'RemoveMilestone':
+      return removeMilestone(relationView(state), payload as never, cmd, ctx);
+    case 'AddExternalLink':
+      return addExternalLink(relationView(state), payload as never, cmd, ctx);
+    case 'RemoveExternalLink':
+      return removeExternalLink(relationView(state), payload as never, cmd, ctx);
+    // Every lifecycle transition is its own inverse's handler. Without these,
+    // committing an Idea produced a RevertCommitGate inverse that undo could
+    // not run, so the action looked undoable and silently was not.
+    case 'PassCommitGate':
+    case 'RevertCommitGate':
+    case 'StartDelivery':
+    case 'CorrectToCommitted':
+    case 'HoldCommitment':
+    case 'ResumeCommitment':
+    case 'CompleteCommitment':
+    case 'DropCommitment':
+      return applyTransition(name, state, payload as never, cmd, ctx);
     default:
       return {
         ok: false,
         error: { code: 'ENTITY_NOT_FOUND', messageKey: 'error.ENTITY_NOT_FOUND' },
       };
   }
+}
+
+/**
+ * `RelationState` names its maps differently from `WorkspaceState` — `impacts`
+ * rather than `productImpacts`, `links` rather than `externalLinks` — and the
+ * relation maps are optional on the workspace because older code paths build
+ * state without them. This is the one place that reconciles the two.
+ */
+function relationView(state: WorkspaceState): RelationState {
+  return {
+    ...state,
+    products: state.products ?? new Map(),
+    impacts: state.productImpacts ?? new Map(),
+    dependencies: state.dependencies ?? new Map(),
+    decisions: state.decisions ?? new Map(),
+    milestones: state.milestones ?? new Map(),
+    themes: state.themes ?? new Map(),
+    links: state.externalLinks ?? new Map(),
+  };
 }
 
 function makeCommand(runtime: Runtime, name: string): Command {

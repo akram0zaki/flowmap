@@ -33,9 +33,13 @@ export function CaptureBar({
   onRedo,
   onClearLocalData,
 }: CaptureBarProps) {
-  const { captureIdea, addTeam, placeFootprint, loadSample } = useWorkspace.getState();
+  const { captureIdea, addTeam, placeFootprint, loadSample, captureUnplanned } =
+    useWorkspace.getState();
 
   const [ideaName, setIdeaName] = useState('');
+  const [unplannedName, setUnplannedName] = useState('');
+  const [unplannedTeam, setUnplannedTeam] = useState('');
+  const [unplannedUnits, setUnplannedUnits] = useState(10);
   const [teamName, setTeamName] = useState('');
   const [commitmentId, setCommitmentId] = useState('');
   const [teamId, setTeamId] = useState('');
@@ -49,9 +53,9 @@ export function CaptureBar({
   const resolvedTeam = teamId || teams[0]?.id || '';
 
   return (
-    <div className="fm-toolbar">
+    <>
       {/* Always reachable. Only the creation forms fold away. */}
-      <div className="fm-form">
+      <div className="fm-controlbar">
         <button type="button" onClick={onUndo}>
           {t('action.undo')}
         </button>
@@ -61,7 +65,8 @@ export function CaptureBar({
         <button type="button" onClick={onToggleList} aria-pressed={showList}>
           {t('nav.listCompanion')}
         </button>
-        <button type="button" onClick={() => void loadSample()}>
+        <span className="fm-controlbar__spacer" />
+        <button type="button" className="fm-quiet" onClick={() => void loadSample()}>
           {t('action.loadSample')}
         </button>
         <button type="button" className="fm-danger" onClick={onClearLocalData}>
@@ -69,101 +74,162 @@ export function CaptureBar({
         </button>
       </div>
 
-      <details className="fm-controls" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <details className="fm-editor" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
         <summary>{t('action.edit')}</summary>
-        <form
-          className="fm-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!teamName.trim()) return;
-            void addTeam(teamName.trim()).then(() => setTeamName(''));
-          }}
-        >
-          <label htmlFor="team-name">{t('field.team')}</label>
-          <input
-            id="team-name"
-            value={teamName}
-            onChange={(e) => setTeamName(e.target.value)}
-            placeholder="Payments"
-          />
-          <button type="submit">Add team</button>
-        </form>
-
-        <form
-          className="fm-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!ideaName.trim()) return;
-            void captureIdea(ideaName.trim()).then(() => setIdeaName(''));
-          }}
-        >
-          <label htmlFor="idea-name">{t('field.ideaName')}</label>
-          <input
-            id="idea-name"
-            value={ideaName}
-            onChange={(e) => setIdeaName(e.target.value)}
-            placeholder="SEPA instant payments"
-          />
-          <button type="submit">{t('action.captureIdea')}</button>
-        </form>
-
-        {canPlace && (
+        <div className="fm-editor__body">
           <form
             className="fm-form"
-            aria-label={t('action.assignFootprint')}
             onSubmit={(e) => {
               e.preventDefault();
-              void placeFootprint({
-                commitmentId: resolvedCommitment,
-                teamId: resolvedTeam,
-                quarterId: currentQuarter,
-                size,
-              });
+              if (!teamName.trim()) return;
+              void addTeam(teamName.trim()).then(() => setTeamName(''));
             }}
           >
-            <label htmlFor="place-commitment">{t('list.commitment')}</label>
-            <select
-              id="place-commitment"
-              value={resolvedCommitment}
-              onChange={(e) => setCommitmentId(e.target.value)}
-            >
-              {ideas.map((idea) => (
-                <option key={idea.id} value={idea.id}>
-                  {idea.name}
-                </option>
-              ))}
-            </select>
-
-            <label htmlFor="place-team">{t('field.team')}</label>
-            <select
-              id="place-team"
-              value={resolvedTeam}
-              onChange={(e) => setTeamId(e.target.value)}
-            >
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
-
-            <label htmlFor="place-size">{t('field.size')}</label>
-            <select
-              id="place-size"
-              value={size}
-              onChange={(e) => setSize(e.target.value as 'XS' | 'S' | 'M' | 'L')}
-            >
-              {(['XS', 'S', 'M', 'L'] as const).map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-
-            <button type="submit">{t('action.place')}</button>
+            <label htmlFor="team-name">{t('field.team')}</label>
+            <input
+              id="team-name"
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+              placeholder="Payments"
+            />
+            <button type="submit" className="fm-quiet">
+              Add team
+            </button>
           </form>
-        )}
+
+          <form
+            className="fm-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!ideaName.trim()) return;
+              void captureIdea(ideaName.trim()).then(() => setIdeaName(''));
+            }}
+          >
+            <label htmlFor="idea-name">{t('field.ideaName')}</label>
+            <input
+              id="idea-name"
+              value={ideaName}
+              onChange={(e) => setIdeaName(e.target.value)}
+              placeholder="SEPA instant payments"
+            />
+            <button type="submit" className="fm-primary">
+              {t('action.captureIdea')}
+            </button>
+          </form>
+
+          {/* Work that arrived mid-quarter and is already real. One action,
+              three commands, one undo — and it stops at COMMITTED, because
+              work created straight into delivery would be consuming capacity
+              nobody ever agreed to. */}
+          {teams.length > 0 && (
+            <form
+              className="fm-form"
+              aria-label={t('capture.unplanned')}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!unplannedName.trim()) return;
+                void captureUnplanned({
+                  name: unplannedName.trim(),
+                  teamId: unplannedTeam || teams[0]!.id,
+                  quarterId: currentQuarter,
+                  units: unplannedUnits,
+                }).then((ok) => ok && setUnplannedName(''));
+              }}
+            >
+              <label htmlFor="unplanned-name">{t('capture.unplanned')}</label>
+              <input
+                id="unplanned-name"
+                value={unplannedName}
+                onChange={(e) => setUnplannedName(e.target.value)}
+                placeholder={t('capture.unplannedHint')}
+              />
+
+              <label htmlFor="unplanned-team">{t('field.team')}</label>
+              <select
+                id="unplanned-team"
+                value={unplannedTeam || teams[0]!.id}
+                onChange={(e) => setUnplannedTeam(e.target.value)}
+              >
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+
+              <label htmlFor="unplanned-units">{t('fields.units.label')}</label>
+              <input
+                id="unplanned-units"
+                type="number"
+                min={1}
+                value={unplannedUnits}
+                onChange={(e) => setUnplannedUnits(Math.max(1, Number(e.target.value)))}
+              />
+
+              <button type="submit">{t('action.captureUnplanned')}</button>
+            </form>
+          )}
+
+          {canPlace && (
+            <form
+              className="fm-form"
+              aria-label={t('action.assignFootprint')}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void placeFootprint({
+                  commitmentId: resolvedCommitment,
+                  teamId: resolvedTeam,
+                  quarterId: currentQuarter,
+                  size,
+                });
+              }}
+            >
+              <label htmlFor="place-commitment">{t('list.commitment')}</label>
+              <select
+                id="place-commitment"
+                value={resolvedCommitment}
+                onChange={(e) => setCommitmentId(e.target.value)}
+              >
+                {ideas.map((idea) => (
+                  <option key={idea.id} value={idea.id}>
+                    {idea.name}
+                  </option>
+                ))}
+              </select>
+
+              <label htmlFor="place-team">{t('field.team')}</label>
+              <select
+                id="place-team"
+                value={resolvedTeam}
+                onChange={(e) => setTeamId(e.target.value)}
+              >
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+
+              <label htmlFor="place-size">{t('field.size')}</label>
+              <select
+                id="place-size"
+                value={size}
+                onChange={(e) => setSize(e.target.value as 'XS' | 'S' | 'M' | 'L')}
+              >
+                {(['XS', 'S', 'M', 'L'] as const).map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+
+              <button type="submit" className="fm-quiet">
+                {t('action.place')}
+              </button>
+            </form>
+          )}
+        </div>
       </details>
-    </div>
+    </>
   );
 }

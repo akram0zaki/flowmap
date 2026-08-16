@@ -1,0 +1,18 @@
+/**
+ * Typefaces, self-hosted.
+ *
+ * The CSP forbids remote origins (docs/spec/10-desktop-security.md §2), so these
+ * ship in the bundle rather than coming from a CDN.
+ *
+ * Atkinson Hyperlegible was designed by the Braille Institute for low vision:
+ * unmistakable 1/l/I and 0/O. In a product where misreading a 1 is misreading a
+ * capacity figure, legibility is the brief rather than a preference.
+ *
+ * IBM Plex Mono carries every figure, so units and percentages line up down a
+ * column like a drawing schedule.
+ */
+
+@import '@fontsource/atkinson-hyperlegible/400.css';
+@import '@fontsource/atkinson-hyperlegible/700.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';

@@ -105,7 +105,7 @@ Deliverables:
 
 ---
 
-## M2 — Physical portfolio
+## M2 — Physical portfolio 🔵 **built; Gate C not yet passed**
 
 **Objective:** a lead can model and understand a real portfolio visually.
 
@@ -132,9 +132,15 @@ Deliverables:
 - [ ] A pilot lead models the agreed real portfolio without any execution-task data
 - [ ] A new user identifies the overloaded team, the affected product, and a commitment's footprints
       from the sample workspace **without documentation**
-- [ ] Capacity totals agree between the visual, the list companion, and the domain projection
+- [x] Capacity totals agree between the visual, the list companion, and the domain projection
 - [ ] Cold start ≤ 2 s and drag feedback ≤ 100 ms at 500 commitments on reference hardware
-- [ ] Every board interaction has a working keyboard path; `axe` clean
+- [x] Every board interaction has a working keyboard path; `axe` clean
+
+> The three unchecked boxes need people and hardware, not code. Two are
+> observation sessions with a lead; the third is a measurement on the reference
+> device, which spec 11 §6.1 makes the gate and says CI cannot stand in for. The
+> board itself is built — see the backlog for the eight items carried out of M2
+> with their specific gaps.
 
 **► Product Validation Alpha, part 1**
 

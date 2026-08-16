@@ -9,10 +9,15 @@
   "exports": {
     ".": "./tokens/index.ts",
     "./tokens": "./tokens/index.ts",
-    "./tokens.css": "./tokens/tokens.css"
+    "./tokens.css": "./tokens/tokens.css",
+    "./fonts.css": "./tokens/fonts.css"
   },
   "scripts": {
     "typecheck": "tsc -b",
     "build": "tsc -b"
+  },
+  "dependencies": {
+    "@fontsource/atkinson-hyperlegible": "^5",
+    "@fontsource/ibm-plex-mono": "^5"
   }
 }

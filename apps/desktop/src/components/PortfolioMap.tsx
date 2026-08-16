@@ -15,14 +15,23 @@
  * and text, never colour alone.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import {
   allBlocks,
   isBlockFocused,
   isCellFocused,
   matchesFilter,
+  previewDrop,
   type BoardModel,
   type CellModel,
+  type DragPayload,
   type FilterState,
   type FocusModel,
   type ZoomLevel,
@@ -30,6 +39,8 @@ import {
 import { utilisationPercent, type QuarterId } from '@flowmap/domain';
 
 import { CapacityVessel, type VesselBlock } from './CapacityVessel.jsx';
+import { DependencyLayer, type DependencyEdge } from './DependencyLayer.jsx';
+import { observeResize } from '../state/observe-resize.js';
 import { t } from '../i18n/t.js';
 
 export type PortfolioMapProps = {
@@ -44,6 +55,44 @@ export type PortfolioMapProps = {
   readonly onFilterTeam: (teamId: string) => void;
   readonly onFilterQuarter: (quarterId: QuarterId) => void;
   readonly onAnnounce: (message: string) => void;
+  /** Work currently in the hand, if any — drives the drop preview. */
+  readonly dragging: DragPayload | null;
+  /** Where a keyboard drag is aimed. The pointer aims itself, by hit-testing. */
+  readonly dragTarget:
+    { kind: 'CELL'; teamId: string; quarterId: string } | { kind: 'RAIL' } | null;
+  readonly onPickUpBlock: (
+    footprintId: string,
+    teamId: string,
+    quarterId: QuarterId,
+    event?: ReactPointerEvent,
+  ) => void;
+  readonly onAimDrag: (teamId: string, quarterId: QuarterId) => void;
+  readonly onRemoveBlock: (footprintId: string, teamId: string, quarterId: QuarterId) => void;
+  readonly onResizeBlock: (
+    footprintId: string,
+    teamId: string,
+    quarterId: QuarterId,
+    units: number,
+    via: 'pointer' | 'keyboard',
+  ) => void;
+  readonly onResizeStart: (
+    input: {
+      footprintId: string;
+      teamId: string;
+      quarterId: QuarterId;
+      units: number;
+      unitPx: number;
+    },
+    event: ReactPointerEvent,
+  ) => void;
+  readonly resizing: { footprintId: string; units: number } | null;
+  readonly onLinkFrom: (commitmentId: string, event?: ReactPointerEvent) => void;
+  /** Continuous zoom. Blocks scale with it, so a thin one can be made hittable. */
+  readonly scale: number;
+  readonly onWheelZoom: (deltaY: number) => void;
+  /** Dependencies of the focused commitment, drawn over the grid. */
+  readonly dependencyEdges: readonly DependencyEdge[];
+  readonly onDropHere: () => void;
 };
 
 export function PortfolioMap({
@@ -58,6 +107,19 @@ export function PortfolioMap({
   onFilterTeam,
   onFilterQuarter,
   onAnnounce,
+  dragging,
+  dragTarget,
+  onPickUpBlock,
+  onAimDrag,
+  onRemoveBlock,
+  onResizeBlock,
+  onResizeStart,
+  resizing,
+  onLinkFrom,
+  scale,
+  onWheelZoom,
+  dependencyEdges,
+  onDropHere,
 }: PortfolioMapProps) {
   // Roving focus: the grid is one tab stop, arrows move within it.
   const [cursor, setCursor] = useState<{ row: number; col: number }>({ row: 0, col: 0 });
@@ -69,11 +131,17 @@ export function PortfolioMap({
         const row = Math.min(board.rows.length - 1, Math.max(0, prev.row + dRow));
         const col = Math.min(board.quarters.length - 1, Math.max(0, prev.col + dCol));
         const cell = board.rows[row]?.cells[col];
-        if (cell) onAnnounce(describeCell(cell));
+        // While work is in the hand the cursor *is* the aim: the same arrows
+        // that browse the board carry the piece, so there is nothing extra to
+        // learn and no second cursor to keep track of.
+        if (cell) {
+          if (dragging) onAimDrag(cell.teamId, cell.quarterId);
+          else onAnnounce(describeCell(cell));
+        }
         return { row, col };
       });
     },
-    [board, onAnnounce],
+    [board, onAnnounce, dragging, onAimDrag],
   );
 
   const onKeyDown = useCallback(
@@ -106,6 +174,10 @@ export function PortfolioMap({
         case 'Enter':
         case ' ': {
           e.preventDefault();
+          if (dragging) {
+            onDropHere();
+            break;
+          }
           const cell = board.rows[cursor.row]?.cells[cursor.col];
           if (cell) onSelectCell(cell.teamId, cell.quarterId);
           break;
@@ -114,8 +186,72 @@ export function PortfolioMap({
           break;
       }
     },
-    [board, cursor, move, onSelectCell],
+    [board, cursor, move, onSelectCell, dragging, onDropHere],
   );
+
+  /**
+   * Zoom on Ctrl/Cmd + wheel, and on pinch — which the browser also reports as
+   * a wheel event with `ctrlKey` set.
+   *
+   * Attached natively rather than through `onWheel` because React registers
+   * wheel listeners as passive, so `preventDefault` there is ignored and the
+   * *browser* zooms the whole page instead of the board. That is not a nuance;
+   * it is the difference between the feature working and the page scaling.
+   */
+  useEffect(() => {
+    const node = gridRef.current;
+    if (!node) return undefined;
+
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      onWheelZoom(event.deltaY);
+    };
+
+    node.addEventListener('wheel', onWheel, { passive: false });
+    return () => node.removeEventListener('wheel', onWheel);
+  }, [onWheelZoom]);
+
+  /**
+   * Whether the board has anywhere left to go, and how to take it there.
+   *
+   * A mouse with no horizontal wheel has no way to pan a scroll container, and
+   * on macOS the scrollbar is hidden until something moves — so without this
+   * the far quarters were simply unreachable with the most common input device
+   * in the building.
+   */
+  const [pan, setPan] = useState({ left: false, right: false });
+
+  const measurePan = useCallback(() => {
+    const node = gridRef.current;
+    if (!node) return;
+    setPan({
+      left: node.scrollLeft > 1,
+      right: node.scrollLeft + node.clientWidth < node.scrollWidth - 1,
+    });
+  }, []);
+
+  useEffect(() => {
+    const node = gridRef.current;
+    if (!node) return undefined;
+    measurePan();
+
+    const unobserve = observeResize(node, measurePan);
+    node.addEventListener('scroll', measurePan);
+    return () => {
+      unobserve();
+      node.removeEventListener('scroll', measurePan);
+    };
+  }, [measurePan, board.quarters.length, level]);
+
+  /** One column at a time, so the step matches the unit the board is made of. */
+  const step = useCallback((direction: -1 | 1) => {
+    const node = gridRef.current;
+    if (!node) return;
+    const column = node.querySelector<HTMLElement>('[data-column="1"]');
+    const width = column?.getBoundingClientRect().width ?? node.clientWidth / 3;
+    node.scrollBy({ left: direction * width, behavior: 'smooth' });
+  }, []);
 
   // Centre the current quarter on first render, as the spec requires.
   useEffect(() => {
@@ -127,6 +263,27 @@ export function PortfolioMap({
 
   return (
     <div className="fm-map" data-level={level}>
+      {(pan.left || pan.right) && (
+        <div className="fm-steps" role="group" aria-label={t('map.pan')}>
+          <button
+            type="button"
+            disabled={!pan.left}
+            aria-label={t('map.panEarlier')}
+            onClick={() => step(-1)}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            disabled={!pan.right}
+            aria-label={t('map.panLater')}
+            onClick={() => step(1)}
+          >
+            ›
+          </button>
+        </div>
+      )}
+
       <div className="fm-map__scroll" ref={gridRef}>
         <div
           role="grid"
@@ -139,9 +296,15 @@ export function PortfolioMap({
           className="fm-grid"
           tabIndex={0}
           onKeyDown={onKeyDown}
-          style={{
-            gridTemplateColumns: `var(--fm-row-header) repeat(${board.quarters.length}, 1fr)`,
-          }}
+          style={
+            {
+              gridTemplateColumns: `var(--fm-row-header) repeat(${board.quarters.length}, 1fr)`,
+              // Zoom magnifies both axes. Growing only the block heights made
+              // zooming feel useless on a narrow screen: the labels were what
+              // you could not read, and they never got any more room.
+              '--fm-zoom': scale,
+            } as CSSProperties
+          }
         >
           <div role="row" className="fm-grid__head" style={{ display: 'contents' }}>
             <div role="columnheader" className="fm-grid__corner">
@@ -207,22 +370,43 @@ export function PortfolioMap({
                 const focused = isCellFocused(focus, cell);
                 const isCursor = cursor.row === rowIndex && cursor.col === colIndex;
 
+                // Every container answers the question during the drag, not
+                // after it: what would this become, and would it take this.
+                const preview = dragging ? previewDrop(cell, dragging) : null;
+                const aimedHere =
+                  dragTarget?.kind === 'CELL' &&
+                  dragTarget.teamId === cell.teamId &&
+                  dragTarget.quarterId === cell.quarterId;
+
                 return (
                   <div
                     key={cell.key}
                     role="gridcell"
                     data-column={colIndex}
+                    data-drop-team={cell.teamId}
+                    data-drop-quarter={cell.quarterId}
                     aria-selected={isCursor}
                     aria-label={describeCell(cell)}
                     className="fm-grid__cell"
                     data-cursor={isCursor || undefined}
                     data-dimmed={!focused || undefined}
                     data-closed={cell.closed || undefined}
+                    data-drop={aimedHere ? (preview?.allowed ? 'ok' : 'no') : undefined}
                     onClick={() => {
                       setCursor({ row: rowIndex, col: colIndex });
                       onSelectCell(cell.teamId, cell.quarterId);
                     }}
                   >
+                    {/* The reason arrives before the commitment does. */}
+                    {aimedHere && preview && !preview.allowed && preview.refusal && (
+                      <span className="fm-drop__refusal">{t(`drop.no.${preview.refusal}`)}</span>
+                    )}
+                    {/* Never reassign ownership quietly. */}
+                    {aimedHere && preview?.allowed && preview.reassignsOwner && (
+                      <span className="fm-drop__note">
+                        {t('drop.reassigns', { team: cell.teamName })}
+                      </span>
+                    )}
                     {level === 1 ? (
                       <AggregateBar cell={cell} />
                     ) : cell.teamQuarter && cell.summary ? (
@@ -232,12 +416,51 @@ export function PortfolioMap({
                         summary={cell.summary}
                         blocks={vesselBlocksFor(cell)}
                         compact={level === 2}
+                        zoom={scale}
                         dimmedFootprintIds={dimmedIds(cell, focus, filter)}
                         {...(selectedFootprintId !== null ? { selectedFootprintId } : {})}
+                        {...(aimedHere && preview
+                          ? {
+                              incoming: {
+                                units: dragging?.units ?? 0,
+                                allowed: preview.allowed,
+                                percent: preview.percent,
+                                overflow: preview.overflow,
+                              },
+                            }
+                          : {})}
                         onSelect={(footprintId) => {
                           const block = cell.blocks.find((b) => b.footprintId === footprintId);
                           if (block) onSelectBlock(footprintId, block.commitmentId);
                         }}
+                        onPickUp={(footprintId: string, event?: ReactPointerEvent) =>
+                          onPickUpBlock(footprintId, cell.teamId, cell.quarterId, event)
+                        }
+                        onRemove={(footprintId: string) =>
+                          onRemoveBlock(footprintId, cell.teamId, cell.quarterId)
+                        }
+                        onLink={onLinkFrom}
+                        onResize={(footprintId, units, via) =>
+                          onResizeBlock(footprintId, cell.teamId, cell.quarterId, units, via)
+                        }
+                        onResizeStart={(footprintId, event, unitPx) => {
+                          const block = cell.blocks.find((b) => b.footprintId === footprintId);
+                          if (!block) return;
+                          onResizeStart(
+                            {
+                              footprintId,
+                              teamId: cell.teamId,
+                              quarterId: cell.quarterId,
+                              units: block.units,
+                              unitPx,
+                            },
+                            event,
+                          );
+                        }}
+                        {...(resizing?.footprintId !== undefined &&
+                        cell.blocks.some((b) => b.footprintId === resizing.footprintId)
+                          ? { resizing }
+                          : {})}
                       />
                     ) : (
                       <span className="fm-grid__empty" aria-hidden="true">
@@ -250,6 +473,8 @@ export function PortfolioMap({
             </div>
           ))}
         </div>
+
+        <DependencyLayer edges={dependencyEdges} scrollRef={gridRef} />
       </div>
     </div>
   );
@@ -258,6 +483,12 @@ export function PortfolioMap({
 /**
  * Level 1: one bar per cell instead of every block. Aggregate before cluttering
  * — at 20 teams × 6 quarters, drawing every block is noise, not information.
+ *
+ * Aggregating is not the same as flattening. A cell at 90% made of work that
+ * cannot move is a different problem from one at 90% of work that can, and a
+ * single grey bar says they are the same. So the bar is split at the point where
+ * choice ends: mandatory load in the heavy tone, discretionary load in the light
+ * one, and anything past the capacity rule drawn beyond it rather than clipped.
  */
 function AggregateBar({ cell }: { cell: CellModel }) {
   const summary = cell.summary;
@@ -270,19 +501,56 @@ function AggregateBar({ cell }: { cell: CellModel }) {
 
   const percent = utilisationPercent(summary);
   const over = summary.overflow > 0;
+  const { signals } = cell;
+
+  // The bar's own scale. At 121% the rule sits at 83% of the track, so the
+  // excess is drawn past the limit instead of pinned to it.
+  const axisMax = Math.max(100, percent ?? 0);
+  const share = (units: number) =>
+    summary.deliverableCapacity > 0
+      ? (units / summary.deliverableCapacity) * (100 / axisMax) * 100
+      : 0;
+
+  const fixed = Math.min(signals.mandatoryUnits, summary.committedLoad);
+  const movable = Math.max(0, summary.committedLoad - fixed);
+
+  // What the bar cannot say on its own: which kind of load dominates, and how
+  // much of it arrived rather than was chosen this quarter.
+  const notes = [
+    t('map.blockCount', { count: signals.commitmentCount }),
+    signals.mandatoryUnits > 0 ? t('signal.fixed', { units: signals.mandatoryUnits }) : null,
+    signals.carriedUnits > 0 ? t('signal.carried', { units: signals.carriedUnits }) : null,
+  ].filter((note): note is string => note !== null);
 
   return (
     <div className="fm-aggregate" data-over={over || undefined}>
-      <div className="fm-aggregate__track" aria-hidden="true">
-        <div className="fm-aggregate__fill" style={{ width: `${Math.min(100, percent ?? 0)}%` }} />
+      <div className="fm-aggregate__figure">
+        <span className="fm-aggregate__label">{percent === null ? '—' : `${percent}%`}</span>
+        {/* The glyph lives in the string — `capacity.overBy` already carries it. */}
+        {over && (
+          <span className="fm-aggregate__over">
+            {t('capacity.overBy', { units: summary.overflow })}
+          </span>
+        )}
       </div>
-      <span className="fm-aggregate__label" data-figure="">
-        {percent === null ? '—' : `${percent}%`}
-      </span>
-      <span className="fm-aggregate__count">
-        {t('map.blockCount', { count: cell.blocks.length })}
-      </span>
-      {over && <span className="fm-aggregate__over">▲</span>}
+
+      <div
+        className="fm-aggregate__track"
+        aria-hidden="true"
+        style={{ '--fm-rule-at': `${100 / axisMax}` } as CSSProperties}
+      >
+        <div
+          className="fm-aggregate__fill fm-aggregate__fill--fixed"
+          style={{ width: `${share(fixed)}%` }}
+        />
+        <div
+          className="fm-aggregate__fill fm-aggregate__fill--movable"
+          style={{ width: `${share(movable)}%` }}
+        />
+        {over && <div className="fm-aggregate__excess" />}
+      </div>
+
+      <span className="fm-aggregate__count">{notes.join(' · ')}</span>
     </div>
   );
 }

@@ -14,10 +14,19 @@
 import type {
   CapacityFootprint,
   Commitment,
+  CommitmentTheme,
+  Decision,
+  Dependency,
   DomainEvent,
   EntityId,
+  ExternalLink,
+  Milestone,
+  Person,
+  ProductImpact,
+  ProductService,
   Team,
   TeamQuarter,
+  Theme,
   Workspace,
   WorkspaceId,
   WorkspaceState,
@@ -32,6 +41,15 @@ type Snapshot = {
   teamQuarters: Record<string, TeamQuarter>;
   commitments: Record<string, Commitment>;
   footprints: Record<string, CapacityFootprint>;
+  products: Record<string, ProductService>;
+  productImpacts: Record<string, ProductImpact>;
+  dependencies: Record<string, Dependency>;
+  decisions: Record<string, Decision>;
+  milestones: Record<string, Milestone>;
+  themes: Record<string, Theme>;
+  commitmentThemes: Record<string, CommitmentTheme>;
+  externalLinks: Record<string, ExternalLink>;
+  people: Record<string, Person>;
   events: DomainEvent[];
   outbox: OutboxEntry[];
   profile?: { id: string; displayName: string };
@@ -52,6 +70,29 @@ export function localStoragePersistence(key = 'flowmap.dev.workspace'): Persiste
   };
 }
 
+/**
+ * Reads a persisted snapshot, forwards-compatibly.
+ *
+ * A snapshot written before a bucket existed does not have it, and reading one
+ * straight into `#data` left `undefined` where a record was expected — which
+ * `Object.values` then refused, on the very first load, with a blank page. New
+ * buckets are additive by definition, so merging over an empty snapshot is the
+ * whole migration: absent means empty.
+ *
+ * Anyone who already had a workspace open hit this the moment schema v2 shipped.
+ * The tests never did, because every one of them starts by clearing storage.
+ */
+function readSnapshot(raw: string | null): Snapshot {
+  if (raw === null) return emptySnapshot();
+  try {
+    return { ...emptySnapshot(), ...(JSON.parse(raw) as Partial<Snapshot>) };
+  } catch {
+    // Corrupt storage is not a reason to refuse to start. The workspace is
+    // rebuildable from the provider or the sample; a blank page is not.
+    return emptySnapshot();
+  }
+}
+
 function emptySnapshot(): Snapshot {
   return {
     workspaces: {},
@@ -59,6 +100,15 @@ function emptySnapshot(): Snapshot {
     teamQuarters: {},
     commitments: {},
     footprints: {},
+    products: {},
+    productImpacts: {},
+    dependencies: {},
+    decisions: {},
+    milestones: {},
+    themes: {},
+    commitmentThemes: {},
+    externalLinks: {},
+    people: {},
     events: [],
     outbox: [],
   };
@@ -70,14 +120,39 @@ const KIND_TO_BUCKET = {
   TEAM_QUARTER: 'teamQuarters',
   COMMITMENT: 'commitments',
   CAPACITY_FOOTPRINT: 'footprints',
+  PRODUCT_SERVICE: 'products',
+  PRODUCT_IMPACT: 'productImpacts',
+  DEPENDENCY: 'dependencies',
+  DECISION: 'decisions',
+  MILESTONE: 'milestones',
+  THEME: 'themes',
+  COMMITMENT_THEME: 'commitmentThemes',
+  EXTERNAL_LINK: 'externalLinks',
+  PERSON: 'people',
 } as const;
+
+/** Every bucket that holds workspace-scoped entities, for load and clear. */
+const ENTITY_BUCKETS = [
+  'teams',
+  'teamQuarters',
+  'commitments',
+  'footprints',
+  'products',
+  'productImpacts',
+  'dependencies',
+  'decisions',
+  'milestones',
+  'themes',
+  'commitmentThemes',
+  'externalLinks',
+  'people',
+] as const;
 
 export class MemoryWorkspaceRepository implements WorkspaceRepository {
   #data: Snapshot;
 
   constructor(private readonly persistence?: PersistenceAdapter) {
-    const raw = persistence?.read();
-    this.#data = raw ? (JSON.parse(raw) as Snapshot) : emptySnapshot();
+    this.#data = readSnapshot(persistence?.read() ?? null);
   }
 
   async listWorkspaces(): Promise<Array<{ id: WorkspaceId; name: string; updatedAt: string }>> {
@@ -91,10 +166,10 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
     if (!workspace || workspace.deletedAt !== undefined) return null;
 
     const scoped = <T extends { workspaceId: string; deletedAt?: string }>(
-      bucket: Record<string, T>,
+      bucket: Record<string, T> | undefined,
     ): Map<EntityId, T> =>
       new Map(
-        Object.values(bucket)
+        Object.values(bucket ?? {})
           .filter((e) => e.workspaceId === workspaceId && e.deletedAt === undefined)
           .map((e) => [(e as unknown as { id: EntityId }).id, e]),
       );
@@ -105,6 +180,15 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
       teamQuarters: scoped(this.#data.teamQuarters),
       commitments: scoped(this.#data.commitments),
       footprints: scoped(this.#data.footprints),
+      products: scoped(this.#data.products),
+      productImpacts: scoped(this.#data.productImpacts),
+      dependencies: scoped(this.#data.dependencies),
+      decisions: scoped(this.#data.decisions),
+      milestones: scoped(this.#data.milestones),
+      themes: scoped(this.#data.themes),
+      commitmentThemes: scoped(this.#data.commitmentThemes),
+      externalLinks: scoped(this.#data.externalLinks),
+      people: scoped(this.#data.people),
     };
   }
 
@@ -191,7 +275,7 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
 
     const draft = structuredClone(this.#data);
     delete draft.workspaces[workspaceId];
-    for (const bucket of ['teams', 'teamQuarters', 'commitments', 'footprints'] as const) {
+    for (const bucket of ENTITY_BUCKETS) {
       for (const [id, entity] of Object.entries(draft[bucket])) {
         if ((entity as { workspaceId: string }).workspaceId === workspaceId) {
           delete (draft[bucket] as Record<string, unknown>)[id];

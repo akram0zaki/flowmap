@@ -6,7 +6,13 @@
  * verified against it at build time by `pnpm i18n:check`.
  */
 
-import { DEFAULT_LOCALE, translate, type Locale, type TranslateParams } from '@flowmap/i18n';
+import {
+  DEFAULT_LOCALE,
+  NAMESPACES,
+  translate,
+  type Locale,
+  type TranslateParams,
+} from '@flowmap/i18n';
 
 let current: Locale = DEFAULT_LOCALE;
 
@@ -26,10 +32,5 @@ export function t(key: string, params: TranslateParams = {}): string {
 }
 
 function isNamespace(candidate: string): boolean {
-  return (
-    candidate === 'common' ||
-    candidate === 'errors' ||
-    candidate === 'patterns' ||
-    candidate === 'severity'
-  );
+  return (NAMESPACES as readonly string[]).includes(candidate);
 }

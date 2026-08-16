@@ -46,6 +46,24 @@ export type BlockModel = {
   readonly overflowing: boolean;
 };
 
+/**
+ * What a cell concentrates, beyond how full it is.
+ *
+ * These are the signals level 1 shows instead of individual blocks. They are
+ * derived from capacity alone — the rule-based signals (dependency hubs,
+ * staleness, attention) arrive with the rules engine in M3.
+ */
+export type CellSignals = {
+  /** Units that cannot move: mandatory work already committed. */
+  readonly mandatoryUnits: number;
+  readonly carriedUnits: number;
+  /** Present but not consuming — held or not yet committed. */
+  readonly uncountedUnits: number;
+  readonly commitmentCount: number;
+  /** Share of the counted load that is mandatory, 0–1. */
+  readonly mandatoryShare: number;
+};
+
 export type CellModel = {
   readonly key: string;
   readonly teamId: EntityId;
@@ -54,6 +72,7 @@ export type CellModel = {
   readonly teamQuarter: TeamQuarter | null;
   readonly summary: CapacitySummary | null;
   readonly blocks: readonly BlockModel[];
+  readonly signals: CellSignals;
   readonly closed: boolean;
 };
 
@@ -65,6 +84,8 @@ export type RowModel = {
   readonly load: number;
   readonly capacity: number;
   readonly overflowingCells: number;
+  readonly mandatoryUnits: number;
+  readonly carriedUnits: number;
 };
 
 export type BoardModel = {
@@ -81,6 +102,8 @@ export type IdeaModel = {
   readonly commitmentId: EntityId;
   readonly name: string;
   readonly commitmentClass: Commitment['class'];
+  /** The rail orders by preparation first, then by this. */
+  readonly importance: Commitment['importance'];
   readonly targetQuarterId?: QuarterId;
   /** Refinement-reserve links: the only way an Idea touches the grid. */
   readonly refinementLinks: ReadonlyArray<{ teamId: EntityId; quarterId: QuarterId }>;
@@ -148,6 +171,7 @@ export function buildBoard(input: BoardInput): BoardModel {
         teamQuarter,
         summary,
         blocks,
+        signals: summariseSignals(blocks, summary),
         closed: teamQuarter?.closedAt !== undefined,
       };
     });
@@ -159,6 +183,8 @@ export function buildBoard(input: BoardInput): BoardModel {
       load: cells.reduce((sum, c) => sum + (c.summary?.committedLoad ?? 0), 0),
       capacity: cells.reduce((sum, c) => sum + (c.summary?.deliverableCapacity ?? 0), 0),
       overflowingCells: cells.filter((c) => (c.summary?.overflow ?? 0) > 0).length,
+      mandatoryUnits: cells.reduce((sum, c) => sum + c.signals.mandatoryUnits, 0),
+      carriedUnits: cells.reduce((sum, c) => sum + c.signals.carriedUnits, 0),
     };
   });
 
@@ -235,6 +261,30 @@ function layOutBlocks(
   });
 }
 
+function summariseSignals(
+  blocks: readonly BlockModel[],
+  summary: CapacitySummary | null,
+): CellSignals {
+  let mandatoryUnits = 0;
+  let carriedUnits = 0;
+  let uncountedUnits = 0;
+
+  for (const block of blocks) {
+    if (block.counted && block.commitmentClass === 'MANDATORY') mandatoryUnits += block.units;
+    if (block.carriedFromQuarterId !== undefined) carriedUnits += block.units;
+    if (!block.counted) uncountedUnits += block.units;
+  }
+
+  const load = summary?.committedLoad ?? 0;
+  return {
+    mandatoryUnits,
+    carriedUnits,
+    uncountedUnits,
+    commitmentCount: blocks.length,
+    mandatoryShare: load === 0 ? 0 : mandatoryUnits / load,
+  };
+}
+
 /**
  * Ideas live in their own lane and never occupy a team-quarter block. They touch
  * the grid only as connector markers from a refinement reserve.
@@ -271,6 +321,7 @@ function collectIdeas(
       commitmentId: commitment.id,
       name: commitment.name,
       commitmentClass: commitment.class,
+      importance: commitment.importance,
       refinementLinks: linksByIdea.get(commitment.id) ?? [],
       ...(commitment.targetQuarterId !== undefined
         ? { targetQuarterId: commitment.targetQuarterId }
