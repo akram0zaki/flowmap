@@ -272,6 +272,12 @@ export function PortfolioMap({
                     {aimedHere && preview && !preview.allowed && preview.refusal && (
                       <span className="fm-drop__refusal">{t(`drop.no.${preview.refusal}`)}</span>
                     )}
+                    {/* Never reassign ownership quietly. */}
+                    {aimedHere && preview?.allowed && preview.reassignsOwner && (
+                      <span className="fm-drop__note">
+                        {t('drop.reassigns', { team: cell.teamName })}
+                      </span>
+                    )}
                     {level === 1 ? (
                       <AggregateBar cell={cell} />
                     ) : cell.teamQuarter && cell.summary ? (

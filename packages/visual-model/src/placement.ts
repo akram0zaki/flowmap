@@ -28,6 +28,8 @@ export type DragPayload =
       /** Mandatory work without a target date cannot pass the gate on drop. */
       readonly commitmentClass: Commitment['class'];
       readonly hasTargetDate: boolean;
+      /** Who owns it now. A drop onto another team reassigns it. */
+      readonly primaryTeamId?: EntityId;
     }
   | {
       readonly kind: 'BLOCK';
@@ -67,6 +69,15 @@ export type DropPreview = {
   readonly percentDelta: number | null;
   /** True when a drop that fits today would not fit after. */
   readonly tipsOver: boolean;
+  /**
+   * The drop would move ownership to this container's team.
+   *
+   * Dropping work on a row says that team does it, and the Commit Gate insists
+   * the primary footprint sits on the primary team — so the gesture reassigns.
+   * It is stated rather than done quietly, because a lead dragging an Idea to
+   * see whether it fits should not silently hand it to someone else.
+   */
+  readonly reassignsOwner: boolean;
 };
 
 /**
@@ -90,6 +101,7 @@ export function previewDrop(cell: CellModel, payload: DragPayload): DropPreview 
       overflow: 0,
       percentDelta: null,
       tipsOver: false,
+      reassignsOwner: false,
     };
   }
 
@@ -113,6 +125,10 @@ export function previewDrop(cell: CellModel, payload: DragPayload): DropPreview 
     overflow,
     percentDelta: percent !== null && percentBefore !== null ? percent - percentBefore : null,
     tipsOver: summary.overflow === 0 && overflow > 0,
+    reassignsOwner:
+      payload.kind === 'IDEA' &&
+      payload.primaryTeamId !== undefined &&
+      payload.primaryTeamId !== cell.teamId,
   };
 
   const refusal = refuse(cell, payload, movingWithin);

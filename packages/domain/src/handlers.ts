@@ -656,5 +656,72 @@ function overflowConsequence(
   };
 }
 
+// ── SetPrimaryTeam ─────────────────────────────────────────────────────────
+
+export type SetPrimaryTeamPayload = {
+  readonly commitmentId: EntityId;
+  readonly teamId: EntityId;
+};
+
+/**
+ * Which team owns this work.
+ *
+ * Needed because the Commit Gate requires the primary footprint to sit on the
+ * primary team, and dragging an Idea onto a row is a statement about exactly
+ * that: *this* team does it. Without this command the drop had to leave the
+ * primary team alone, the gate refused, and the placement silently reverted —
+ * so an Idea could only ever be dropped on the one row it already named.
+ *
+ * Deliberately narrow. It is not a general commitment editor; it changes one
+ * field, and the inverse restores whatever was there before, including nothing.
+ */
+export function setPrimaryTeam(
+  state: WorkspaceState,
+  payload: SetPrimaryTeamPayload,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'PLANNER');
+  if (unauthorised) return unauthorised;
+
+  const commitment = state.commitments.get(payload.commitmentId);
+  if (!commitment) {
+    return fail('ENTITY_NOT_FOUND', {
+      entityRef: { kind: 'COMMITMENT', id: payload.commitmentId },
+    });
+  }
+  if (!isActive(commitment)) return fail('ENTITY_ARCHIVED', { params: { name: commitment.name } });
+
+  const team = state.teams.get(payload.teamId);
+  if (!team) return fail('ENTITY_NOT_FOUND', { entityRef: { kind: 'TEAM', id: payload.teamId } });
+  if (!isActive(team)) return fail('ENTITY_ARCHIVED', { params: { name: team.name } });
+
+  if (commitment.primaryTeamId === payload.teamId) {
+    return succeed({ changes: [], events: [], affectedProjections: [] });
+  }
+
+  const after = bumped({ ...commitment, primaryTeamId: payload.teamId }, ctx);
+  const ref = { kind: 'COMMITMENT', id: commitment.id } as const;
+
+  return succeed({
+    changes: [updated(ref, commitment, after)],
+    events: [
+      event(cmd, ctx, 0, 'PRIMARY_TEAM_SET', [ref, { kind: 'TEAM', id: team.id }], {
+        commitment: commitment.name,
+        team: team.name,
+      }),
+    ],
+    affectedProjections: [commitmentKey(commitment.id)],
+    inverse: {
+      ...cmd,
+      id: ctx.ids.next(),
+      name: 'SetPrimaryTeam',
+      // Restoring "no primary team" is not expressible, so the inverse is only
+      // recorded when there was one to go back to.
+      payload: { commitmentId: commitment.id, teamId: commitment.primaryTeamId ?? payload.teamId },
+    },
+  });
+}
+
 export const CAPACITY_PROJECTION_HELPERS = { deliverableCapacity, reservedTotal };
 export type { ProjectionKey };

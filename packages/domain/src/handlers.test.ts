@@ -11,6 +11,7 @@ import {
   removeCapacityFootprint,
   resizeCapacityFootprint,
   restoreCapacityFootprint,
+  setPrimaryTeam,
 } from './handlers.js';
 import {
   diffFields,
@@ -32,6 +33,7 @@ import {
   type Workspace,
   type WorkspaceRole,
 } from './entities.js';
+import { assessCommitGate } from './lifecycle-handlers.js';
 import type { QuarterId } from './quarter.js';
 
 const NOW = '2026-08-15T09:00:00Z';
@@ -865,5 +867,121 @@ describe('diffFields', () => {
         },
       ),
     );
+  });
+});
+
+
+// ── SetPrimaryTeam ─────────────────────────────────────────────────────────
+
+describe('setPrimaryTeam', () => {
+  const other: Team = {
+    ...env('team-2'),
+    name: 'Platform',
+    defaultQuarterCapacity: 100,
+    displayOrder: 1,
+    active: true,
+  };
+
+  beforeEach(() => {
+    state = { ...state, teams: new Map([...state.teams, [other.id, other]]) };
+  });
+
+  it('names the team that owns the work', () => {
+    const result = setPrimaryTeam(
+      state,
+      { commitmentId: 'c-1', teamId: 'team-2' },
+      command('SetPrimaryTeam'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const after = result.effects.changes[0]?.after as Commitment;
+    expect(after.primaryTeamId).toBe('team-2');
+  });
+
+  /**
+   * Without this the Commit Gate refuses every drop onto a row the Idea does
+   * not already name — which is every row a lead would actually reach for.
+   */
+  it('lets the primary footprint match the primary team after a move', () => {
+    const owned = setPrimaryTeam(
+      state,
+      { commitmentId: 'c-1', teamId: 'team-2' },
+      command('SetPrimaryTeam'),
+      ctx(),
+    );
+    expect(owned.ok).toBe(true);
+    if (!owned.ok) return;
+
+    const commitment = owned.effects.changes[0]?.after as Commitment;
+    const footprint = withFootprint({ teamId: 'team-2', isPrimary: true });
+    const readiness = assessCommitGate({
+      commitment: { ...commitment, targetQuarterId: Q },
+      footprints: [footprint],
+      hasProductImpact: true,
+      dependenciesReviewed: true,
+      largeThreshold: 40,
+    });
+
+    expect(readiness.blockers).toEqual([]);
+  });
+
+  it('is a no-op when the team is already the owner', () => {
+    const result = setPrimaryTeam(
+      state,
+      { commitmentId: 'c-1', teamId: 'team-1' },
+      command('SetPrimaryTeam'),
+      ctx(),
+    );
+    const first = setPrimaryTeam(
+      { ...state, commitments: new Map([['c-1', { ...idea, primaryTeamId: 'team-1' }]]) },
+      { commitmentId: 'c-1', teamId: 'team-1' },
+      command('SetPrimaryTeam'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(first.ok).toBe(true);
+    if (first.ok) expect(first.effects.changes).toEqual([]);
+  });
+
+  it('refuses an unknown team', () => {
+    expectError(
+      setPrimaryTeam(state, { commitmentId: 'c-1', teamId: 'nope' }, command('SetPrimaryTeam'), ctx()),
+      'ENTITY_NOT_FOUND',
+    );
+  });
+
+  it('refuses a Contributor', () => {
+    expectError(
+      setPrimaryTeam(
+        state,
+        { commitmentId: 'c-1', teamId: 'team-2' },
+        command('SetPrimaryTeam'),
+        ctx('CONTRIBUTOR'),
+      ),
+      'UNAUTHORISED',
+    );
+  });
+
+  it('carries an inverse back to the previous owner', () => {
+    const state2 = {
+      ...state,
+      commitments: new Map([['c-1', { ...idea, primaryTeamId: 'team-1' }]]),
+    };
+    const result = setPrimaryTeam(
+      state2,
+      { commitmentId: 'c-1', teamId: 'team-2' },
+      command('SetPrimaryTeam'),
+      ctx(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.inverse).toMatchObject({
+      name: 'SetPrimaryTeam',
+      payload: { commitmentId: 'c-1', teamId: 'team-1' },
+    });
   });
 });

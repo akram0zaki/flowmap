@@ -554,3 +554,39 @@ test('a drag held against the edge scrolls the board to reach the far quarters',
   // Snapping stands down for the drag and comes back after it.
   await expect(scroller).not.toHaveAttribute('data-dragging', 'true');
 });
+
+/**
+ * The bug the user hit: dropping an Idea onto any team other than the one it
+ * already named. The Commit Gate refused, the rollback wiped the explanation,
+ * and the whole gesture did nothing at all — with the preview still saying it
+ * was fine. Dropping on a row now means that team owns the work.
+ */
+test('an Idea can be dropped on a team that does not already own it', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  // "Request to pay" belongs to Payments. Platform is the second row.
+  const idea = page.locator('.fm-idea').filter({ hasText: 'Request to pay' });
+  const platformRow = page.locator('.fm-grid [role="row"]').filter({ hasText: 'Platform' });
+  const target = platformRow.locator('[data-drop-quarter="2026-Q4"]').first();
+
+  const from = await idea.boundingBox();
+  const to = await target.boundingBox();
+  if (!from || !to) throw new Error('missing geometry');
+
+  await page.mouse.move(from.x + 40, from.y + 15);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 90, from.y + 40, { steps: 3 });
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+
+  // The reassignment is stated before it happens, not discovered afterwards.
+  await expect(target).toHaveAttribute('data-drop', 'ok');
+  await expect(target).toContainText('becomes the owner');
+
+  await page.mouse.up();
+
+  await expect(target).toContainText('Request to pay');
+  await expect(page.locator('.fm-idea').filter({ hasText: 'Request to pay' })).toHaveCount(0);
+});

@@ -49,6 +49,7 @@
   "drop.no.NOT_MATERIALISED": "this team has no capacity set for that quarter yet",
   "drop.placed": "{name} placed on {team} {quarter}.",
   "drop.railHint": "Drag onto a quarter to place. Space picks up, arrows aim, Enter drops.",
+  "drop.reassigns": "{team} becomes the owner",
   "drop.refusedAt": "Cannot drop on {team} {quarter} — {reason}.",
   "drop.wouldBe": "was {percent}%",
   "drop.wouldLand": "{name} would land on {team} {quarter}, taking it to {percent}%.",

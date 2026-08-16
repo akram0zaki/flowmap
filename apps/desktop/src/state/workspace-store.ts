@@ -21,6 +21,7 @@ import {
   removeCapacityFootprint,
   resizeCapacityFootprint,
   restoreCapacityFootprint,
+  setPrimaryTeam,
   type Command,
   type CommandContext,
   type CommandResult,
@@ -299,6 +300,18 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   },
 
   async commitIdeaInto(input) {
+    // Dropping work on a row says that team does it. The Commit Gate requires
+    // the primary footprint to sit on the primary team, so without this an Idea
+    // could only be dropped on the one row it already named — and the gate
+    // refused everywhere else in complete silence.
+    const commitment = get().state?.commitments.get(input.commitmentId);
+    if (commitment && commitment.primaryTeamId !== input.teamId) {
+      const owned = await get().dispatch('SetPrimaryTeam', (state, cmd, ctx) =>
+        setPrimaryTeam(state, { commitmentId: input.commitmentId, teamId: input.teamId }, cmd, ctx),
+      );
+      if (owned === false) return false;
+    }
+
     const placed = await get().placeFootprint({
       commitmentId: input.commitmentId,
       teamId: input.teamId,
@@ -316,6 +329,11 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     // Idea in a capacity block, which the model does not allow, so take it back
     // out — the status message from the failed gate is what the user sees.
     if (passed === false) {
+      // Keep the gate's explanation. The rollback below is a *successful*
+      // command, and a successful dispatch clears the status — so undoing the
+      // footprint also erased the only account of why the drop failed, and the
+      // whole gesture appeared to do nothing at all.
+      const reason = get().status;
       const footprint = [...(get().state?.footprints.values() ?? [])].find(
         (f) =>
           f.commitmentId === input.commitmentId &&
@@ -324,6 +342,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
           f.archivedAt === undefined,
       );
       if (footprint) await get().removeFootprint(footprint.id);
+      if (reason) set({ status: reason });
       return false;
     }
     return true;
@@ -456,6 +475,8 @@ function runNamed(
       return removeCapacityFootprint(state, payload as never, cmd, ctx);
     case 'RestoreCapacityFootprint':
       return restoreCapacityFootprint(state, payload as never, cmd, ctx);
+    case 'SetPrimaryTeam':
+      return setPrimaryTeam(state, payload as never, cmd, ctx);
     // Every lifecycle transition is its own inverse's handler. Without these,
     // committing an Idea produced a RevertCommitGate inverse that undo could
     // not run, so the action looked undoable and silently was not.

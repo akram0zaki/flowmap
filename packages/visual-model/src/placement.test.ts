@@ -180,6 +180,26 @@ describe('previewDrop', () => {
     });
   });
 
+  /**
+   * The gate insists the primary footprint sits on the primary team, so a drop
+   * onto any other row has to reassign — and used to fail in silence instead.
+   */
+  describe('ownership', () => {
+    it('says when the drop would move ownership to this team', () => {
+      const preview = previewDrop(cell(), { ...idea, primaryTeamId: 't-9' });
+      expect(preview.reassignsOwner).toBe(true);
+      expect(preview.allowed).toBe(true);
+    });
+
+    it('says nothing when the team already owns it', () => {
+      expect(previewDrop(cell(), { ...idea, primaryTeamId: 't-1' }).reassignsOwner).toBe(false);
+    });
+
+    it('never claims a moved block reassigns anything', () => {
+      expect(previewDrop(cell(), carried).reassignsOwner).toBe(false);
+    });
+  });
+
   it('reports no percentage when there is no deliverable capacity', () => {
     const preview = previewDrop(
       cell({ summary: summary({ deliverableCapacity: 0, committedLoad: 0 }) }),

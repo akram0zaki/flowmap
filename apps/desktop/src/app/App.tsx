@@ -138,12 +138,15 @@ export function App() {
           reason: preview.refusal ? t(`drop.no.${preview.refusal}`) : '',
         });
       }
-      return t('drop.wouldLand', {
+      const landing = t('drop.wouldLand', {
         name: payload.name,
         team: cell.teamName,
         quarter: cell.quarterId,
         percent: preview.percent ?? 0,
       });
+      return preview.reassignsOwner
+        ? `${landing} ${t('drop.reassigns', { team: cell.teamName })}`
+        : landing;
     },
     [board],
   );
@@ -194,6 +197,9 @@ export function App() {
         units: defaultDropUnits(state.workspace.settings.capacity.sizeMapping),
         commitmentClass: idea.commitmentClass,
         hasTargetDate: state.commitments.get(commitmentId)?.targetDate !== undefined,
+        ...(state.commitments.get(commitmentId)?.primaryTeamId !== undefined
+          ? { primaryTeamId: state.commitments.get(commitmentId)!.primaryTeamId! }
+          : {}),
       };
       if (event) beginPointer(payload, event);
       else beginKeyboard(payload);
