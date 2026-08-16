@@ -17,16 +17,22 @@ import {
   createTeam,
   createWorkspace,
   ensureTeamQuarter,
+  linkIdeaToRefinementReserve,
+  mergeCapacityFootprints,
   moveCapacityFootprint,
   removeCapacityFootprint,
+  reorderTeams,
   resizeCapacityFootprint,
   restoreCapacityFootprint,
   setPrimaryTeam,
+  splitCapacityFootprint,
+  unlinkIdeaFromRefinementReserve,
   updateCommitment,
   type Command,
   type CommandContext,
   type CommandResult,
   type EntityId,
+  type QuarterId,
   type WorkspaceState,
 } from '@flowmap/domain';
 import {
@@ -37,6 +43,7 @@ import {
   removeExternalLink,
   removeMilestone,
   removeProductImpact,
+  setCommitmentThemes,
   setProductImpact,
   updateDependency,
   updateMilestone,
@@ -86,6 +93,14 @@ export type Runtime = {
   /** Where this instance keeps its data. Surfaced in Settings; absent in browser mode. */
   readonly dataDir?: string;
   readonly portable?: boolean;
+  /**
+   * Hands an https link to the operating system.
+   *
+   * Enterprise systems are referenced, never embedded (spec 10 §4): the record
+   * stays in the system it came from, and Flowmap does not become a browser. On
+   * desktop this is the Tauri opener plugin; in the browser it is a new tab.
+   */
+  readonly openExternal?: (url: string) => Promise<void>;
 };
 
 type Status = { readonly tone: 'info' | 'warning' | 'critical'; readonly message: string } | null;
@@ -154,7 +169,24 @@ type StoreState = {
     units: number;
   }): Promise<boolean>;
   resizeFootprint(footprintId: EntityId, units: number): Promise<boolean>;
+  /**
+   * Divide a placement across quarters, keeping the total the same.
+   *
+   * Distinct from resize, which changes how much work there is, and from move,
+   * which changes where all of it sits. Splitting says the work happens in both
+   * quarters — which is the honest answer more often than either alternative.
+   */
+  splitFootprint(footprintId: EntityId, toQuarterId: string, units: number): Promise<boolean>;
   removeFootprint(footprintId: EntityId): Promise<boolean>;
+  /** The Planner's explicit row order. Pressure never reshuffles rows. */
+  moveTeamRow(teamId: EntityId, direction: -1 | 1): Promise<boolean>;
+  /** Which Ideas a refinement reserve is shaping. Qualitative: no units move. */
+  linkIdeaToRefinement(reserveId: EntityId, ideaId: EntityId): Promise<boolean>;
+  unlinkIdeaFromRefinement(reserveId: EntityId, ideaId: EntityId): Promise<boolean>;
+  /** Full-set replace, because that is how the property sheet is used. */
+  setThemes(commitmentId: EntityId, themeIds: readonly EntityId[]): Promise<boolean>;
+  /** Hands an https link to the OS. Never embedded, never navigated to in-app. */
+  openLink(url: string): Promise<void>;
   /**
    * Take work off the board.
    *
@@ -249,7 +281,6 @@ export const useWorkspace = create<StoreState>((set, get) => ({
 
     // Whether this command joins the step already being built.
     const grouping = stepDepth > 0 && stepStarted;
-    if (stepDepth > 0) stepStarted = true;
 
     const cmd = makeCommand(runtime, name);
     const ctx = makeContext(runtime, await runtime.repository.nextSequence(WORKSPACE_ID));
@@ -274,6 +305,13 @@ export const useWorkspace = create<StoreState>((set, get) => ({
 
     const overflow = result.effects.consequences?.find((c) => c.kind === 'CAPACITY');
     const inverse = result.effects.inverse ?? null;
+
+    // A command that contributes no inverse neither opens a step nor joins one.
+    // Setting this unconditionally meant a step whose *first* command had no
+    // inverse — `EnsureTeamQuarter` opens almost every placement — marked the
+    // step started anyway, so the next inverse was appended to the *previous*
+    // step. One undo then reversed two unrelated actions.
+    if (stepDepth > 0 && inverse) stepStarted = true;
 
     set((prev) => {
       // Undo and redo are stacks of inverse commands, each re-validated when it
@@ -456,12 +494,104 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     );
   },
 
+  async splitFootprint(footprintId, toQuarterId, units) {
+    const footprint = get().state?.footprints.get(footprintId);
+    if (!footprint) return false;
+
+    return runAsStep(async () => {
+      // The destination container may never have been created. Split does not
+      // materialise it, for the same reason move does not.
+      const ensured = await get().dispatch('EnsureTeamQuarter', (state, cmd, ctx) =>
+        ensureTeamQuarter(
+          state,
+          { teamId: footprint.teamId, quarterId: toQuarterId as never },
+          cmd,
+          ctx,
+        ),
+      );
+      if (ensured === false) return false;
+
+      return (
+        (await get().dispatch('SplitCapacityFootprint', (state, cmd, ctx) =>
+          splitCapacityFootprint(
+            state,
+            {
+              footprintId,
+              into: [
+                { quarterId: footprint.quarterId, units: footprint.units - units },
+                { quarterId: toQuarterId as QuarterId, units },
+              ],
+            },
+            cmd,
+            ctx,
+          ),
+        )) !== false
+      );
+    });
+  },
+
   async removeFootprint(footprintId) {
     return (
       (await get().dispatch('RemoveCapacityFootprint', (state, cmd, ctx) =>
         removeCapacityFootprint(state, { footprintId }, cmd, ctx),
       )) !== false
     );
+  },
+
+  async moveTeamRow(teamId, direction) {
+    const current = activeTeamOrder(get().state);
+    const from = current.indexOf(teamId);
+    const to = from + direction;
+    if (from === -1 || to < 0 || to >= current.length) return false;
+
+    const next = [...current];
+    next.splice(to, 0, ...next.splice(from, 1));
+
+    return (
+      (await get().dispatch('ReorderTeams', (state, cmd, ctx) =>
+        reorderTeams(state, { orderedTeamIds: next }, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async linkIdeaToRefinement(reserveId, ideaId) {
+    return (
+      (await get().dispatch('LinkIdeaToRefinementReserve', (state, cmd, ctx) =>
+        linkIdeaToRefinementReserve(state, { reserveId, ideaId }, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async unlinkIdeaFromRefinement(reserveId, ideaId) {
+    return (
+      (await get().dispatch('UnlinkIdeaFromRefinementReserve', (state, cmd, ctx) =>
+        unlinkIdeaFromRefinementReserve(state, { reserveId, ideaId }, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async setThemes(commitmentId, themeIds) {
+    return get().relate('SetCommitmentThemes', (state, cmd, ctx) =>
+      setCommitmentThemes(state, { commitmentId, themeIds }, cmd, ctx),
+    );
+  },
+
+  async openLink(url) {
+    const { runtime } = get();
+    // Refused here as well as in the domain, so a link that somehow got stored
+    // over plain http still never reaches the operating system.
+    if (!url.startsWith('https://')) {
+      set({ status: { tone: 'critical', message: t('panel.linkMustBeHttps') } });
+      return;
+    }
+
+    try {
+      if (runtime?.openExternal) await runtime.openExternal(url);
+      else window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      // A blocked opener must not look like a link that does nothing.
+      set({ status: { tone: 'warning', message: t('panel.linkOpenFailed', { url }) } });
+    }
   },
 
   async unplaceFootprint({ footprintId, commitmentId, returnToRail }) {
@@ -648,6 +778,20 @@ function runNamed(
       return setPrimaryTeam(state, payload as never, cmd, ctx);
     case 'UpdateCommitment':
       return updateCommitment(state, payload as never, cmd, ctx);
+    case 'ReorderTeams':
+      return reorderTeams(state, payload as never, cmd, ctx);
+    // Split and merge are each other's inverse, so both have to be replayable
+    // or undo stops halfway and leaves the units in two places.
+    case 'SplitCapacityFootprint':
+      return splitCapacityFootprint(state, payload as never, cmd, ctx);
+    case 'MergeCapacityFootprints':
+      return mergeCapacityFootprints(state, payload as never, cmd, ctx);
+    case 'LinkIdeaToRefinementReserve':
+      return linkIdeaToRefinementReserve(state, payload as never, cmd, ctx);
+    case 'UnlinkIdeaFromRefinementReserve':
+      return unlinkIdeaFromRefinementReserve(state, payload as never, cmd, ctx);
+    case 'SetCommitmentThemes':
+      return setCommitmentThemes(relationView(state), payload as never, cmd, ctx);
     // Relations replay through the same view the forward command used.
     case 'SetProductImpact':
       return setProductImpact(relationView(state), payload as never, cmd, ctx);
@@ -704,8 +848,27 @@ function relationView(state: WorkspaceState): RelationState {
     decisions: state.decisions ?? new Map(),
     milestones: state.milestones ?? new Map(),
     themes: state.themes ?? new Map(),
+    commitmentThemes: state.commitmentThemes ?? new Map(),
     links: state.externalLinks ?? new Map(),
   };
+}
+
+/**
+ * Teams in the order the board draws them.
+ *
+ * Duplicated from the board builder deliberately: reordering has to work from
+ * the same sequence the user is looking at, and reaching into a rendered
+ * `BoardModel` from the store would make the store depend on the view.
+ */
+function activeTeamOrder(state: WorkspaceState | null): EntityId[] {
+  return [...(state?.teams.values() ?? [])]
+    .filter((team) => team.active && team.archivedAt === undefined && team.deletedAt === undefined)
+    .sort((a, b) =>
+      a.displayOrder === b.displayOrder
+        ? a.name.localeCompare(b.name)
+        : a.displayOrder - b.displayOrder,
+    )
+    .map((team) => team.id);
 }
 
 function makeCommand(runtime: Runtime, name: string): Command {

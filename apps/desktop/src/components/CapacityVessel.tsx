@@ -26,7 +26,13 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import type { CapacitySummary, CapacityFootprint, Commitment, TeamQuarter } from '@flowmap/domain';
+import type {
+  CapacitySummary,
+  CapacityFootprint,
+  Commitment,
+  Milestone,
+  TeamQuarter,
+} from '@flowmap/domain';
 import { utilisationPercent } from '@flowmap/domain';
 import {
   PATTERNS,
@@ -44,6 +50,13 @@ export type VesselBlock = {
   readonly footprint: CapacityFootprint;
   readonly commitment: Commitment;
   readonly counted: boolean;
+  /**
+   * The checkable points inside this work, capped at six by the domain.
+   *
+   * Drawn on the block because that is where the question is asked — "is this
+   * on track" is answered by what has been passed, not by opening a panel.
+   */
+  readonly milestones?: readonly Milestone[];
 };
 
 export type CapacityVesselProps = {
@@ -85,7 +98,20 @@ export type CapacityVesselProps = {
   readonly onResizeStart?: (footprintId: string, event: ReactPointerEvent, unitPx: number) => void;
   /** While a resize is in flight, draw this block at that size instead. */
   readonly resizing?: { readonly footprintId: string; readonly units: number };
+  /**
+   * Names for the Ideas a refinement reserve supports, by id.
+   *
+   * The reserve stores ids; the tooltip has to say who they are, or "supports 4
+   * Ideas" is a number with nothing behind it (spec 02 §5.1).
+   */
+  readonly ideaNames?: ReadonlyMap<string, string>;
+  /** Milestones on related work, emphasised while focus is on. */
+  readonly focusedMilestoneIds?: ReadonlySet<string>;
 };
+
+/** Milestone marker geometry. Six of them must fit on one block. */
+const MILESTONE_SIZE = 7;
+const MILESTONE_GAP = 9;
 
 /** Grab area on a block's top edge. Generous, per the 24px hit-target rule. */
 const RESIZE_GRIP = 10;
@@ -119,6 +145,8 @@ export function CapacityVessel({
   onResizeStart,
   onLink,
   resizing,
+  ideaNames,
+  focusedMilestoneIds,
 }: CapacityVesselProps) {
   const patternPrefix = useId().replace(/:/g, '');
   const unitPx = UNIT_PX * zoom;
@@ -342,6 +370,11 @@ export function CapacityVessel({
                 <title>
                   {t(`reserve.${reserve.type}`)} — {reserve.label},{' '}
                   {t('capacity.units', { units: reserve.amount })}
+                  {/* A refinement bucket without its Ideas is a number with
+                      nothing behind it. The links carry no units, so naming
+                      them here is the only place the qualitative half of the
+                      reserve is visible at all. */}
+                  {reserve.type === 'REFINEMENT' && `. ${refinementSupport(reserve, ideaNames)}`}
                 </title>
               </g>
             );
@@ -376,6 +409,13 @@ export function CapacityVessel({
             // The grip must never own most of a block, or a small block cannot
             // be picked up and moved at all — only resized.
             const gripHeight = Math.max(4, Math.min(RESIZE_GRIP, blockHeight * 0.4));
+
+            // Milestones are Level 3 detail, like names: at Level 2 the block
+            // is a quantity, not a plan. They still reach a screen reader at
+            // every level, through the label.
+            const milestones = block.milestones ?? [];
+            const showMilestones = !compact && milestones.length > 0 && blockHeight >= 15;
+            const milestoneWidth = showMilestones ? milestones.length * MILESTONE_GAP + 4 : 0;
 
             return (
               // `gridcell` must be inside a `row` — axe flags the shortcut, and
@@ -521,15 +561,49 @@ export function CapacityVessel({
                       L2 anyway meant a 162px column rendering "Payment refe…",
                       which is worse than no label — it takes the room and says
                       nothing. The `<title>` still names it on hover. */}
+                  {/* Diamonds along the left edge, before the name. Shape is
+                      the channel, not colour: outline is still to come, solid
+                      is passed, and a bar through it is missed — all three
+                      survive greyscale, and the `<title>` names each one. */}
+                  {showMilestones && (
+                    <g className="fm-block__milestones">
+                      {milestones.map((milestone, index) => {
+                        const cx = 14 + index * MILESTONE_GAP + MILESTONE_SIZE / 2;
+                        const cy = labelY - 4;
+                        const r = MILESTONE_SIZE / 2;
+                        return (
+                          <g
+                            key={milestone.id}
+                            className="fm-milestone"
+                            data-status={milestone.status}
+                            data-dimmed={
+                              (focusedMilestoneIds !== undefined &&
+                                !focusedMilestoneIds.has(milestone.id)) ||
+                              undefined
+                            }
+                          >
+                            <path
+                              d={`M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`}
+                            />
+                            {milestone.status === 'MISSED' && (
+                              <line x1={cx - r} x2={cx + r} y1={cy} y2={cy} />
+                            )}
+                            <title>{milestoneLabel(milestone)}</title>
+                          </g>
+                        );
+                      })}
+                    </g>
+                  )}
+
                   {!compact && blockHeight >= 15 && (
                     <text
-                      x={14}
+                      x={14 + milestoneWidth}
                       y={labelY}
                       className="fm-block__label"
                       data-over={isOverflow || undefined}
                     >
                       {block.commitment.class === 'MANDATORY' ? '🔒 ' : ''}
-                      {truncate(block.commitment.name, labelBudget(BODY_WIDTH))}
+                      {truncate(block.commitment.name, labelBudget(BODY_WIDTH - milestoneWidth))}
                     </text>
                   )}
                   {blockHeight >= 9 && (
@@ -675,6 +749,7 @@ function blockLabel(
   isOverflow: boolean,
   carried: boolean,
 ): string {
+  const milestones = block.milestones ?? [];
   return [
     block.commitment.name,
     t(`lifecycle.${block.commitment.lifecycle}`),
@@ -683,9 +758,42 @@ function blockLabel(
     carried ? t('carryover.from', { quarter: block.footprint.carryOverFromQuarterId ?? '' }) : null,
     isOverflow ? t('patterns.overflow') : null,
     block.counted ? null : t('vessel.notCounted'),
+    // Announced at every level, including the ones too small to draw them —
+    // a marker a sighted user can see and a screen-reader user cannot is the
+    // failure this line exists to prevent.
+    milestones.length > 0
+      ? [
+          t('vessel.milestones', { count: milestones.length }),
+          ...milestones.map(milestoneLabel),
+        ].join(': ')
+      : null,
   ]
     .filter(Boolean)
     .join('. ');
+}
+
+function milestoneLabel(milestone: Milestone): string {
+  return t('vessel.milestoneAt', {
+    name: milestone.name,
+    status: t(`milestone.${milestone.status}`),
+    date: milestone.targetDate
+      ? t('vessel.milestoneOn', { date: milestone.targetDate })
+      : t('vessel.milestoneUndated'),
+  });
+}
+
+/** "Supports 4 Ideas: …" — the qualitative half of a refinement reserve. */
+function refinementSupport(
+  reserve: TeamQuarter['reserves'][number],
+  ideaNames: ReadonlyMap<string, string> | undefined,
+): string {
+  const linked = reserve.linkedIdeaIds ?? [];
+  if (linked.length === 0) return t('reserve.supportsNone');
+
+  return t('reserve.supports', {
+    count: linked.length,
+    names: linked.map((id) => ideaNames?.get(id) ?? id).join(', '),
+  });
 }
 
 /**

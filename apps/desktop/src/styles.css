@@ -491,6 +491,51 @@ label {
   color: var(--critical-fg);
 }
 
+/* ── Row order ─────────────────────────────────────────────────────────────
+   Quiet until wanted: reordering is something a lead does once a quarter, and
+   a control that shouts competes with the figures every other second. It stays
+   in the DOM and reachable by keyboard at all times — appearing on hover only
+   would put it out of reach of exactly the people the buttons exist for. */
+.fm-grid__reorder {
+  display: flex;
+  gap: var(--space-1);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.fm-grid__team:hover .fm-grid__reorder,
+.fm-grid__reorder:focus-within {
+  opacity: 1;
+}
+
+.fm-grid__reorder button {
+  min-width: var(--hit-target-min);
+  min-height: var(--hit-target-min);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.fm-grid__reorder button:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+
+.fm-grid__reorder button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Reduced motion turns the fade off, not the control. */
+@media (prefers-reduced-motion: reduce) {
+  .fm-grid__reorder {
+    transition: none;
+  }
+}
+
 /* Headers double as filter toggles and must stay quiet. */
 .fm-grid__filter {
   min-height: var(--hit-target-min);
@@ -702,6 +747,36 @@ label {
 
 .fm-block__label[data-over] {
   font-weight: var(--weight-medium);
+}
+
+/* ── Milestones on a block ─────────────────────────────────────────────────
+   Shape carries the state, not hue: outline is still to come, solid is passed,
+   and a bar through it is missed. All three read in greyscale, and each marker
+   names itself on hover; the block's label announces the whole set. */
+.fm-milestone path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5px;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+}
+
+.fm-milestone[data-status='DONE'] path {
+  fill: var(--ink);
+}
+
+.fm-milestone[data-status='MISSED'] path {
+  fill: var(--surface);
+}
+
+.fm-milestone[data-status='MISSED'] line {
+  stroke: var(--ink);
+  stroke-width: 1.5px;
+}
+
+/* Focus dims what it is not about. Same 25% the rest of focus mode uses. */
+.fm-milestone[data-dimmed] {
+  opacity: 0.25;
 }
 
 /* Full strength, not muted: on a mandatory block --ink-muted is 3.31:1, and a
@@ -1447,6 +1522,72 @@ label {
   color: var(--accent-on);
   background: var(--accent);
   border-color: var(--accent);
+}
+
+/* Multi-select: same control, several answers. The tick in the label is the
+   second channel, so the state survives greyscale and a screen reader gets it
+   from `aria-pressed` regardless. */
+.fm-choice--multi button[aria-pressed='true'] {
+  color: var(--accent-on);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Splitting a placement ─────────────────────────────────────────────── */
+
+.fm-panel__split {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fm-panel__splitunits {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--ink-muted);
+}
+
+.fm-panel__splitunits input {
+  width: 5rem;
+  font-family: var(--font-mono);
+}
+
+/* ── Refinement links in the rail ──────────────────────────────────────── */
+
+.fm-idea__refine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  padding-left: var(--space-2);
+}
+
+.fm-idea__refine select {
+  max-width: 100%;
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+  border: 1px dashed var(--border);
+  background: transparent;
+}
+
+/* A link carries no units, so it is drawn as a note rather than as a figure —
+   nothing here should read like an allocation. */
+.fm-idea__refinetag {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-muted);
+  padding: 0 var(--space-1);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.fm-idea__refinetag:hover {
+  color: var(--ink);
+  background: var(--surface-hover);
 }
 
 /* ── Quarter strip ─────────────────────────────────────────────────────── */

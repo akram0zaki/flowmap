@@ -44,5 +44,6 @@
   "TOO_MANY_MILESTONES": "A commitment can have up to {max} milestones.",
   "UNAUTHORISED": "You do not have permission to do this. Ask a Planner to make this change.",
   "WORKSPACE_NOT_FOUND": "That workspace could not be found.",
-  "XL_REQUIRES_EXPLICIT_UNITS": "XL has no default size. Enter the capacity units for this footprint."
+  "XL_REQUIRES_EXPLICIT_UNITS": "XL has no default size. Enter the capacity units for this footprint.",
+  "REFINEMENT_LINK_NOT_PERMITTED": "Only a refinement reserve can support an Idea, and only while the work is still an Idea."
 }

@@ -16,6 +16,7 @@ import {
   DEFAULT_VALUE_DRIVERS,
   DEFAULT_CHANGE_LOAD_SETTINGS,
   type CapacityFootprint,
+  type CapacityReserve,
   type Commitment,
   type Team,
   type TeamQuarter,
@@ -26,6 +27,8 @@ import type {
   CommandContext,
   CommandEffects,
   CommandResult,
+  Consequence,
+  EntityChange,
   WorkspaceState,
 } from './command.js';
 import {
@@ -578,7 +581,516 @@ export function restoreCapacityFootprint(
   });
 }
 
+// ── ReorderTeams ───────────────────────────────────────────────────────────
+
+export type ReorderTeamsPayload = { readonly orderedTeamIds: readonly EntityId[] };
+
+/**
+ * The Planner's explicit row order.
+ *
+ * Alphabetical is only the seed. Once a lead has arranged the rows the order is
+ * theirs, and nothing — least of all pressure — may reshuffle it: a map that
+ * rearranges itself cannot be learned (spec 06 §3.1).
+ *
+ * Teams the payload does not name keep their relative order *after* the ones it
+ * does, rather than being dropped somewhere arbitrary. That matters because the
+ * caller's list can be one team out of date — created on another machine, or by
+ * an import — and losing a row off the board is a worse outcome than putting a
+ * new one last.
+ */
+export function reorderTeams(
+  state: WorkspaceState,
+  payload: ReorderTeamsPayload,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'PLANNER');
+  if (unauthorised) return unauthorised;
+
+  const seen = new Set<EntityId>();
+  for (const teamId of payload.orderedTeamIds) {
+    const team = state.teams.get(teamId);
+    if (!team) return fail('ENTITY_NOT_FOUND', { entityRef: { kind: 'TEAM', id: teamId } });
+    if (!isActive(team)) return fail('ENTITY_ARCHIVED', { params: { name: team.name } });
+    if (seen.has(teamId)) return fail('DUPLICATE_NAME', { params: { name: team.name } });
+    seen.add(teamId);
+  }
+
+  const before = currentTeamOrder(state);
+  const ordered = [
+    ...payload.orderedTeamIds.map((id) => state.teams.get(id)!),
+    ...before.filter((team) => !seen.has(team.id)),
+  ];
+
+  const changes = ordered.flatMap((team, index) =>
+    team.displayOrder === index
+      ? []
+      : [
+          updated(
+            { kind: 'TEAM', id: team.id },
+            team,
+            bumped({ ...team, displayOrder: index }, ctx),
+          ),
+        ],
+  );
+
+  if (changes.length === 0) {
+    return succeed({ changes: [], events: [], affectedProjections: [] });
+  }
+
+  return succeed({
+    changes,
+    events: [
+      event(cmd, ctx, 0, 'TEAMS_REORDERED', [], {
+        count: changes.length,
+        first: ordered[0]?.name ?? '',
+      }),
+    ],
+    affectedProjections: [],
+    inverse: {
+      ...cmd,
+      id: ctx.ids.next(),
+      name: 'ReorderTeams',
+      payload: { orderedTeamIds: before.map((team) => team.id) },
+    },
+  });
+}
+
+// ── SplitCapacityFootprint ─────────────────────────────────────────────────
+
+export type SplitFootprintPayload = {
+  readonly footprintId: EntityId;
+  readonly into: readonly { readonly quarterId: QuarterId; readonly units: CapacityUnits }[];
+  /**
+   * Ids to restore rather than create, for the parts the source does not
+   * become, in `into` order with the source's own entry skipped.
+   *
+   * Only a `MergeCapacityFootprints` inverse supplies these. Without them a redo
+   * would rebuild the same split out of brand-new entities, leaving the archived
+   * originals behind and dropping whatever the user had selected.
+   */
+  readonly reuseFootprintIds?: readonly EntityId[];
+};
+
+/**
+ * Divides one placement across quarters. The sum must equal the original: a
+ * split redistributes work, it never quietly changes how much there is.
+ *
+ * The source footprint becomes the part in its own quarter where there is one,
+ * so the primary placement — and every reference to it — stays where the
+ * commitment already sits. Only the parts that move are new.
+ *
+ * See docs/spec/03-commands-permissions.md §3.4.
+ */
+export function splitCapacityFootprint(
+  state: WorkspaceState,
+  payload: SplitFootprintPayload,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'PLANNER');
+  if (unauthorised) return unauthorised;
+
+  const footprint = state.footprints.get(payload.footprintId);
+  if (!footprint || !isActive(footprint)) {
+    return fail('ENTITY_NOT_FOUND', {
+      entityRef: { kind: 'CAPACITY_FOOTPRINT', id: payload.footprintId },
+    });
+  }
+
+  const parts = payload.into;
+  if (parts.length === 0) {
+    return fail('SPLIT_UNITS_MISMATCH', { params: { expected: footprint.units, actual: 0 } });
+  }
+
+  const quarters = new Set<string>();
+  let total = 0;
+  for (const part of parts) {
+    if (!isQuarterId(part.quarterId)) return fail('NAME_REQUIRED', { field: 'quarterId' });
+    if (!Number.isInteger(part.units) || part.units <= 0) {
+      return fail('FOOTPRINT_UNITS_MUST_BE_POSITIVE', { field: 'units' });
+    }
+    if (quarters.has(part.quarterId)) {
+      return fail('DUPLICATE_FOOTPRINT', { params: { quarter: part.quarterId } });
+    }
+    quarters.add(part.quarterId);
+    total += part.units;
+  }
+
+  if (total !== footprint.units) {
+    return fail('SPLIT_UNITS_MISMATCH', { params: { expected: footprint.units, actual: total } });
+  }
+
+  if (closedTeamQuarter(state, footprint.teamId, footprint.quarterId)) {
+    return fail('QUARTER_CLOSED', { params: { quarter: footprint.quarterId } });
+  }
+  for (const part of parts) {
+    if (closedTeamQuarter(state, footprint.teamId, part.quarterId)) {
+      return fail('QUARTER_CLOSED', { params: { quarter: part.quarterId } });
+    }
+    // Somewhere else on this team already holds this commitment in that
+    // quarter, so the split would produce two placements of one thing in one
+    // container — which is what DUPLICATE_FOOTPRINT exists to prevent.
+    const clash = [...state.footprints.values()].find(
+      (f) =>
+        isActive(f) &&
+        f.id !== footprint.id &&
+        f.commitmentId === footprint.commitmentId &&
+        f.teamId === footprint.teamId &&
+        f.quarterId === part.quarterId,
+    );
+    if (clash) return fail('DUPLICATE_FOOTPRINT', { params: { quarter: part.quarterId } });
+  }
+
+  // The source keeps its own quarter when the split leaves work there.
+  const keepIndex = Math.max(
+    0,
+    parts.findIndex((part) => part.quarterId === footprint.quarterId),
+  );
+  const kept = parts[keepIndex]!;
+  const moved = parts.filter((_, index) => index !== keepIndex);
+
+  if (moved.length === 0) {
+    return succeed({ changes: [], events: [], affectedProjections: [] });
+  }
+
+  const after = bumped(
+    {
+      ...footprint,
+      quarterId: kept.quarterId,
+      units: kept.units,
+      unitsSource: 'EXPLICIT' as const,
+    },
+    ctx,
+  );
+  const sourceRef = { kind: 'CAPACITY_FOOTPRINT', id: footprint.id } as const;
+
+  const partIds: EntityId[] = [];
+  const changes: EntityChange[] = [updated(sourceRef, footprint, after)];
+  const projections = new Set<ProjectionKey>([
+    capacityKey(footprint.teamId, footprint.quarterId),
+    capacityKey(footprint.teamId, kept.quarterId),
+    commitmentKey(footprint.commitmentId),
+  ]);
+
+  moved.forEach((part, index) => {
+    const reuseId = payload.reuseFootprintIds?.[index];
+    const restoring = reuseId === undefined ? undefined : state.footprints.get(reuseId);
+
+    // A part is never primary: exactly one primary footprint per commitment,
+    // and the source keeps it.
+    const placement = {
+      commitmentId: footprint.commitmentId,
+      teamId: footprint.teamId,
+      quarterId: part.quarterId,
+      units: part.units,
+      unitsSource: 'EXPLICIT' as const,
+      isPrimary: false,
+    };
+
+    if (restoring) {
+      const { archivedAt: _at, archivedBy: _by, ...live } = restoring;
+      const ref = { kind: 'CAPACITY_FOOTPRINT', id: restoring.id } as const;
+      changes.push({
+        ...updated(ref, restoring, bumped({ ...live, ...placement } as CapacityFootprint, ctx)),
+        op: 'RESTORE',
+      });
+      partIds.push(restoring.id);
+    } else {
+      const fresh: CapacityFootprint = {
+        ...newEnvelope(ctx.ids.next(), cmd, ctx),
+        ...placement,
+      };
+      changes.push(created({ kind: 'CAPACITY_FOOTPRINT', id: fresh.id }, fresh));
+      partIds.push(fresh.id);
+    }
+    projections.add(capacityKey(footprint.teamId, part.quarterId));
+  });
+
+  const commitment = state.commitments.get(footprint.commitmentId);
+  return succeed({
+    changes,
+    events: [
+      event(cmd, ctx, 0, 'FOOTPRINT_SPLIT', [sourceRef], {
+        commitment: commitment?.name ?? footprint.commitmentId,
+        parts: parts.length,
+        units: footprint.units,
+        quarters: parts.map((part) => `${part.quarterId}:${part.units}`).join(', '),
+      }),
+    ],
+    affectedProjections: [...projections],
+    inverse: {
+      ...cmd,
+      id: ctx.ids.next(),
+      name: 'MergeCapacityFootprints',
+      payload: { intoFootprintId: footprint.id, fromFootprintIds: partIds },
+    },
+    ...splitConsequences(state, footprint, parts, keepIndex),
+  });
+}
+
+// ── MergeCapacityFootprints ────────────────────────────────────────────────
+
+export type MergeFootprintsPayload = {
+  readonly intoFootprintId: EntityId;
+  readonly fromFootprintIds: readonly EntityId[];
+};
+
+/**
+ * Puts a split back together. Introduced as the exact inverse of
+ * `SplitCapacityFootprint` — undoing a split has to restore one placement, and
+ * `CommandEffects.inverse` is a single command by design.
+ *
+ * Not in the spec's command table; flagged as a decision taken rather than
+ * smuggled in. It is deliberately narrow: same commitment, same team, units
+ * conserved.
+ */
+export function mergeCapacityFootprints(
+  state: WorkspaceState,
+  payload: MergeFootprintsPayload,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'PLANNER');
+  if (unauthorised) return unauthorised;
+
+  const target = state.footprints.get(payload.intoFootprintId);
+  if (!target || !isActive(target)) {
+    return fail('ENTITY_NOT_FOUND', {
+      entityRef: { kind: 'CAPACITY_FOOTPRINT', id: payload.intoFootprintId },
+    });
+  }
+  if (closedTeamQuarter(state, target.teamId, target.quarterId)) {
+    return fail('QUARTER_CLOSED', { params: { quarter: target.quarterId } });
+  }
+
+  const sources: CapacityFootprint[] = [];
+  for (const id of payload.fromFootprintIds) {
+    const source = state.footprints.get(id);
+    if (!source) return fail('ENTITY_NOT_FOUND', { entityRef: { kind: 'CAPACITY_FOOTPRINT', id } });
+    if (!isActive(source)) continue;
+    if (source.id === target.id) continue;
+    if (source.commitmentId !== target.commitmentId || source.teamId !== target.teamId) {
+      return fail('SPLIT_UNITS_MISMATCH', {
+        params: { expected: target.commitmentId, actual: source.commitmentId },
+      });
+    }
+    if (closedTeamQuarter(state, source.teamId, source.quarterId)) {
+      return fail('QUARTER_CLOSED', { params: { quarter: source.quarterId } });
+    }
+    sources.push(source);
+  }
+
+  if (sources.length === 0) {
+    return succeed({ changes: [], events: [], affectedProjections: [] });
+  }
+
+  const gained = sources.reduce((sum, source) => sum + source.units, 0);
+  const after = bumped({ ...target, units: target.units + gained }, ctx);
+  const targetRef = { kind: 'CAPACITY_FOOTPRINT', id: target.id } as const;
+
+  const changes = [
+    updated(targetRef, target, after),
+    ...sources.map((source) =>
+      archived(
+        { kind: 'CAPACITY_FOOTPRINT', id: source.id },
+        source,
+        bumped({ ...source, archivedAt: ctx.clock.now(), archivedBy: ctx.actorId }, ctx),
+      ),
+    ),
+  ];
+
+  const commitment = state.commitments.get(target.commitmentId);
+  return succeed({
+    changes,
+    events: [
+      event(cmd, ctx, 0, 'FOOTPRINTS_MERGED', [targetRef], {
+        commitment: commitment?.name ?? target.commitmentId,
+        parts: sources.length + 1,
+        units: after.units,
+      }),
+    ],
+    affectedProjections: [
+      ...new Set<ProjectionKey>([
+        capacityKey(target.teamId, target.quarterId),
+        ...sources.map((source) => capacityKey(source.teamId, source.quarterId)),
+        commitmentKey(target.commitmentId),
+      ]),
+    ],
+    inverse: {
+      ...cmd,
+      id: ctx.ids.next(),
+      name: 'SplitCapacityFootprint',
+      payload: {
+        footprintId: target.id,
+        into: [
+          { quarterId: target.quarterId, units: target.units },
+          ...sources.map((source) => ({ quarterId: source.quarterId, units: source.units })),
+        ],
+        reuseFootprintIds: sources.map((source) => source.id),
+      },
+    },
+  });
+}
+
+// ── Refinement reserve links ───────────────────────────────────────────────
+
+export type RefinementLinkPayload = {
+  readonly reserveId: EntityId;
+  readonly ideaId: EntityId;
+};
+
+/**
+ * Records that a refinement bucket supports an Idea.
+ *
+ * Qualitative only, and the constraint is the whole point: the link allocates no
+ * units, creates no footprint, and changes no lifecycle. It is the only way an
+ * uncommitted Idea appears on the map at all — as a connector to the reserve
+ * band, and in that reserve's tooltip. See docs/spec/02-capacity-model.md §5.1.
+ */
+export function linkIdeaToRefinementReserve(
+  state: WorkspaceState,
+  payload: RefinementLinkPayload,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  return refinementLink(state, payload, cmd, ctx, 'LINK');
+}
+
+export function unlinkIdeaFromRefinementReserve(
+  state: WorkspaceState,
+  payload: RefinementLinkPayload,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  return refinementLink(state, payload, cmd, ctx, 'UNLINK');
+}
+
+function refinementLink(
+  state: WorkspaceState,
+  payload: RefinementLinkPayload,
+  cmd: Command,
+  ctx: CommandContext,
+  direction: 'LINK' | 'UNLINK',
+): CommandResult {
+  const unauthorised = authorise(ctx, 'CONTRIBUTOR');
+  if (unauthorised) return unauthorised;
+
+  const holder = [...state.teamQuarters.values()].find(
+    (tq) => isActive(tq) && tq.reserves.some((reserve) => reserve.id === payload.reserveId),
+  );
+  if (!holder) {
+    return fail('ENTITY_NOT_FOUND', { entityRef: { kind: 'TEAM_QUARTER', id: payload.reserveId } });
+  }
+  if (holder.closedAt !== undefined) {
+    return fail('QUARTER_CLOSED', { params: { quarter: holder.quarterId } });
+  }
+
+  const reserve = holder.reserves.find((candidate) => candidate.id === payload.reserveId)!;
+  if (reserve.type !== 'REFINEMENT') {
+    return fail('REFINEMENT_LINK_NOT_PERMITTED', {
+      params: { reserve: reserve.label, type: reserve.type },
+    });
+  }
+
+  const idea = state.commitments.get(payload.ideaId);
+  if (!idea) {
+    return fail('ENTITY_NOT_FOUND', { entityRef: { kind: 'COMMITMENT', id: payload.ideaId } });
+  }
+  if (!isActive(idea)) return fail('ENTITY_ARCHIVED', { params: { name: idea.name } });
+  // Committed work consumes a footprint, not a refinement bucket. Allowing the
+  // link past the gate would put the same work in two places on the map.
+  if (idea.lifecycle !== 'IDEA') {
+    return fail('REFINEMENT_LINK_NOT_PERMITTED', {
+      params: { name: idea.name, lifecycle: idea.lifecycle },
+    });
+  }
+
+  const linked = reserve.linkedIdeaIds ?? [];
+  const already = linked.includes(payload.ideaId);
+  if (direction === 'LINK' ? already : !already) {
+    return succeed({ changes: [], events: [], affectedProjections: [] });
+  }
+
+  const nextLinked =
+    direction === 'LINK'
+      ? [...linked, payload.ideaId]
+      : linked.filter((id) => id !== payload.ideaId);
+
+  const reserves: CapacityReserve[] = holder.reserves.map((candidate) =>
+    candidate.id === reserve.id
+      ? // Dropping the key entirely when the last link goes keeps the reserve
+        // byte-identical to one that never had any, so `changedFields` stays
+        // truthful and an export round-trips.
+        nextLinked.length === 0
+        ? withoutLinks(candidate)
+        : { ...candidate, linkedIdeaIds: nextLinked }
+      : candidate,
+  );
+
+  const after = bumped({ ...holder, reserves }, ctx);
+  const ref = { kind: 'TEAM_QUARTER', id: holder.id } as const;
+
+  return succeed({
+    changes: [updated(ref, holder, after)],
+    events: [
+      event(
+        cmd,
+        ctx,
+        0,
+        direction === 'LINK' ? 'IDEA_LINKED_TO_REFINEMENT' : 'IDEA_UNLINKED_FROM_REFINEMENT',
+        [ref, { kind: 'COMMITMENT', id: idea.id }],
+        { idea: idea.name, reserve: reserve.label, quarter: holder.quarterId },
+      ),
+    ],
+    // The capacity projection is untouched by design — a link allocates nothing
+    // — but the reserve's tooltip and the Ideas lane both read this container.
+    affectedProjections: [capacityKey(holder.teamId, holder.quarterId), commitmentKey(idea.id)],
+    inverse: {
+      ...cmd,
+      id: ctx.ids.next(),
+      name:
+        direction === 'LINK' ? 'UnlinkIdeaFromRefinementReserve' : 'LinkIdeaToRefinementReserve',
+      payload,
+    },
+  });
+}
+
+function withoutLinks(reserve: CapacityReserve): CapacityReserve {
+  const { linkedIdeaIds: _linkedIdeaIds, ...rest } = reserve;
+  return rest;
+}
+
 // ── Shared helpers ─────────────────────────────────────────────────────────
+
+/** Active teams in the order the board draws them: explicit first, name as the seed. */
+function currentTeamOrder(state: WorkspaceState): Team[] {
+  return [...state.teams.values()]
+    .filter((team) => isActive(team) && team.active)
+    .sort((a, b) =>
+      a.displayOrder === b.displayOrder
+        ? a.name.localeCompare(b.name)
+        : a.displayOrder - b.displayOrder,
+    );
+}
+
+/** One consequence per quarter a split pushes past its deliverable capacity. */
+function splitConsequences(
+  state: WorkspaceState,
+  footprint: CapacityFootprint,
+  parts: readonly { quarterId: QuarterId; units: CapacityUnits }[],
+  keepIndex: number,
+): Pick<CommandEffects, 'consequences'> | Record<string, never> {
+  const consequences = parts.flatMap((part, index) => {
+    // The source quarter gives up whatever it no longer holds; every other
+    // quarter takes on the part that landed there.
+    const delta = index === keepIndex ? part.units - footprint.units : part.units;
+    const overflow = overflowFor(state, footprint.teamId, part.quarterId, delta);
+    return overflow ? [overflow] : [];
+  });
+
+  return consequences.length > 0 ? { consequences } : {};
+}
 
 function findTeamQuarter(
   state: WorkspaceState,
@@ -638,8 +1150,18 @@ function overflowConsequence(
   quarterId: QuarterId,
   loadDelta: number,
 ): Pick<CommandEffects, 'consequences'> | Record<string, never> {
+  const overflow = overflowFor(state, teamId, quarterId, loadDelta);
+  return overflow ? { consequences: [overflow] } : {};
+}
+
+function overflowFor(
+  state: WorkspaceState,
+  teamId: EntityId,
+  quarterId: QuarterId,
+  loadDelta: number,
+): Consequence | null {
   const tq = findTeamQuarter(state, teamId, quarterId);
-  if (!tq) return {};
+  if (!tq) return null;
 
   const before = summariseCapacity({
     teamQuarter: tq,
@@ -650,11 +1172,9 @@ function overflowConsequence(
 
   const projectedLoad = before.committedLoad + loadDelta;
   const newOverflow = Math.max(0, projectedLoad - before.deliverableCapacity);
-  if (newOverflow === 0) return {};
+  if (newOverflow === 0) return null;
 
-  return {
-    consequences: [{ kind: 'CAPACITY', teamId, quarterId, loadDelta, newOverflow }],
-  };
+  return { kind: 'CAPACITY', teamId, quarterId, loadDelta, newOverflow };
 }
 
 /** Spec 02 §9: management notes are capped, and the cap is a domain rule. */
