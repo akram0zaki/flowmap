@@ -200,7 +200,7 @@ type StoreState = {
   select(footprintId: string | null): void;
   clearStatus(): void;
   clearLocalData(): Promise<void>;
-  loadSample(): Promise<void>;
+  loadSample(scale?: 25 | 100 | 500): Promise<void>;
 };
 
 export const useWorkspace = create<StoreState>((set, get) => ({
@@ -569,11 +569,12 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     set({ status: null });
   },
 
-  async loadSample() {
+  async loadSample(scale) {
     const { runtime, profileName } = get();
     if (!runtime) return;
 
     const report = await seedSampleWorkspace({
+      ...(scale !== undefined ? { scale } : {}),
       repository: runtime.repository,
       workspaceId: WORKSPACE_ID,
       actorId: `local:${PROFILE_ID}`,

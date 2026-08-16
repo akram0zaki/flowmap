@@ -17,11 +17,13 @@
  * validation script describes was nowhere on screen.
  */
 
-import { validationFixture, type ValidationFixture } from '@flowmap/fixtures';
+import { scaleFixture, validationFixture, type ValidationFixture } from '@flowmap/fixtures';
 import type { Command, EntityChange } from '@flowmap/domain';
 import type { WorkspaceRepository } from '@flowmap/storage';
 
 type SeedOptions = {
+  /** 25, 100 or 500 loads a scale fixture instead of the validation one. */
+  readonly scale?: 25 | 100 | 500;
   readonly repository: WorkspaceRepository;
   readonly workspaceId: string;
   readonly actorId: string;
@@ -40,7 +42,11 @@ export type SeedReport = {
 };
 
 export async function seedSampleWorkspace(options: SeedOptions): Promise<SeedReport> {
-  const fixture: ValidationFixture = validationFixture();
+  // The scale fixtures carry no relations; they exist to measure rendering and
+  // capacity at size, and the validation fixture is what exercises meaning.
+  const fixture: ValidationFixture = options.scale
+    ? ({ ...validationFixture(), ...scaleFixture(options.scale) } as ValidationFixture)
+    : validationFixture();
   const { repository, workspaceId, actorId, now, newId } = options;
 
   // A sample is a replacement, not an overlay — otherwise a second click

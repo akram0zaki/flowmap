@@ -515,9 +515,32 @@ label {
   border-radius: var(--radius-sm);
 }
 
-.fm-grid__cell[data-dimmed],
+/* Focus mode de-emphasises everything unrelated. It used to do that with
+   `opacity: 0.22` on the whole cell, which took the *text* to 1.6:1 — the same
+   mistake as dimming a closed quarter, made again one level up. The drawing
+   fades; the words step back to a contrast-checked ink instead. Spec 06 §3.4
+   asks for de-emphasis, and WCAG 1.4.3 is not suspended while it happens. */
+.fm-grid__cell[data-dimmed] svg,
+.fm-grid__cell[data-dimmed] .fm-aggregate__track {
+  opacity: 0.25;
+}
+
+.fm-grid__cell[data-dimmed] .fm-vessel__caption,
+.fm-grid__cell[data-dimmed] .fm-aggregate__label,
+.fm-grid__cell[data-dimmed] .fm-aggregate__count,
 .fm-grid__team[data-dimmed] {
-  opacity: 0.22;
+  color: var(--ink-subtle);
+}
+
+.fm-grid__cell[data-dimmed] .fm-vessel__percent,
+.fm-grid__cell[data-dimmed] .fm-vessel__delta,
+.fm-grid__cell[data-dimmed] .fm-vessel__reason,
+.fm-grid__cell[data-dimmed] .fm-vessel__legend,
+.fm-grid__cell[data-dimmed] .fm-aggregate__over,
+.fm-grid__team[data-dimmed] .fm-grid__filter,
+.fm-grid__team[data-dimmed] .fm-grid__team-meta,
+.fm-grid__team[data-dimmed] .fm-grid__team-over {
+  color: var(--ink-subtle);
 }
 
 .fm-grid__empty {
@@ -541,6 +564,13 @@ label {
    caption too dropped its contrast below 4.5:1, which axe caught. */
 .fm-vessel[data-closed] svg {
   opacity: 0.6;
+}
+
+/* Same rule for a settled quarter: the drawing recedes, the figures stay
+   readable. A number nobody can read is not history, it is missing. */
+.fm-vessel[data-closed] .fm-vessel__percent,
+.fm-vessel[data-closed] .fm-vessel__delta {
+  color: var(--ink-subtle);
 }
 
 .fm-vessel__body {

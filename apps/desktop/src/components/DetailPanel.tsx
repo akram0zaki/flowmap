@@ -31,7 +31,7 @@ import type {
 } from '@flowmap/domain';
 
 import { CommitGate } from './CommitGate.jsx';
-import { Field, Section } from './Field.jsx';
+import { Field, Section, useFieldGroup, useFieldId } from './Field.jsx';
 import { QuarterStrip } from './QuarterStrip.jsx';
 import { t } from '../i18n/t.js';
 
@@ -465,6 +465,7 @@ function TextInput({
 
   return (
     <input
+      {...useFieldId()}
       type="text"
       value={draft}
       {...(placeholder !== undefined ? { placeholder } : {})}
@@ -497,6 +498,7 @@ function TextArea({
   return (
     <>
       <textarea
+        {...useFieldId()}
         rows={rows}
         value={draft}
         {...(maxLength !== undefined ? { maxLength } : {})}
@@ -522,6 +524,7 @@ function DateInput({
 }) {
   return (
     <input
+      {...useFieldId()}
       type="date"
       value={value ?? ''}
       onChange={(e) => onCommit(e.target.value === '' ? undefined : e.target.value)}
@@ -544,7 +547,7 @@ function Choice<T extends string>({
   readonly clearable?: boolean;
 }) {
   return (
-    <div className="fm-choice" role="radiogroup">
+    <div className="fm-choice" role="radiogroup" {...useFieldGroup()}>
       {options.map((option) => (
         <button
           key={option}

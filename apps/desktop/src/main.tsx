@@ -36,6 +36,13 @@ async function bootstrap(): Promise<void> {
   });
 
   const runtime = await createRuntime();
+
+  // A door for the benchmark harness only. Seeding 500 commitments through the
+  // UI would measure the form, not the board, and the budgets in spec 11 §6.2
+  // are about the board.
+  Object.assign(globalThis, {
+    __flowmapLoadScale: (size: 25 | 100 | 500) => useWorkspace.getState().loadSample(size),
+  });
   await useWorkspace.getState().init(runtime, 'You');
 
   createRoot(root).render(

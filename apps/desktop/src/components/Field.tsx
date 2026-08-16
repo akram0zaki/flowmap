@@ -11,9 +11,32 @@
  * of them is missing, so this component can render them without checking.
  */
 
-import { useId, useState, type ReactNode } from 'react';
+import { createContext, useContext, useId, useState, type ReactNode } from 'react';
 
 import { t } from '../i18n/t.js';
+
+/**
+ * How a control finds the label above it.
+ *
+ * The label has to be a real `<label for>` — a styled `<span>` gives a screen
+ * reader nothing, which is exactly what the panel shipped with. Passing the id
+ * through context rather than a render prop keeps the call sites readable:
+ * `<Field name="units"><TextInput …/></Field>` is the shape that made this
+ * mistake easy to make, so it is the shape that has to keep working.
+ */
+const FieldContext = createContext<{ id: string; labelId: string } | null>(null);
+
+/** For a single control: `<input {...useFieldId()} />`. */
+export function useFieldId(): { id?: string } {
+  const field = useContext(FieldContext);
+  return field ? { id: field.id } : {};
+}
+
+/** For a group of controls, which is labelled rather than pointed at. */
+export function useFieldGroup(): { 'aria-labelledby'?: string } {
+  const field = useContext(FieldContext);
+  return field ? { 'aria-labelledby': field.labelId } : {};
+}
 
 export type FieldProps = {
   /** Key into the `fields` catalogue, e.g. `units` or `targetQuarter`. */
@@ -24,7 +47,9 @@ export type FieldProps = {
 };
 
 export function Field({ name, children }: FieldProps) {
+  const tipId = useId();
   const id = useId();
+  const labelId = useId();
   const [open, setOpen] = useState(false);
 
   const definition = t(`fields.${name}.def`);
@@ -37,12 +62,14 @@ export function Field({ name, children }: FieldProps) {
   return (
     <div className="fm-field">
       <div className="fm-field__head">
-        <span className="fm-field__label">{t(`fields.${name}.label`)}</span>
+        <label id={labelId} className="fm-field__label" htmlFor={id}>
+          {t(`fields.${name}.label`)}
+        </label>
         <button
           type="button"
           className="fm-field__what"
           aria-expanded={open}
-          aria-controls={id}
+          aria-controls={tipId}
           aria-label={t('field.explain', { field: t(`fields.${name}.label`) })}
           onClick={() => setOpen((was) => !was)}
         >
@@ -52,7 +79,7 @@ export function Field({ name, children }: FieldProps) {
 
       {/* Always in the DOM so a screen reader can reach it, hidden visually
           until asked for — a definition nobody can find is not a definition. */}
-      <div id={id} className="fm-field__tip" hidden={!open}>
+      <div id={tipId} className="fm-field__tip" hidden={!open}>
         <p>{definition}</p>
         {hasNot && (
           <p className="fm-field__not">
@@ -66,7 +93,9 @@ export function Field({ name, children }: FieldProps) {
         )}
       </div>
 
-      <div className="fm-field__control">{children}</div>
+      <div className="fm-field__control">
+        <FieldContext.Provider value={{ id, labelId }}>{children}</FieldContext.Provider>
+      </div>
     </div>
   );
 }

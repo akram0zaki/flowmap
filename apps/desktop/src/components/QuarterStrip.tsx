@@ -11,6 +11,7 @@
 
 import type { QuarterId } from '@flowmap/domain';
 
+import { useFieldGroup } from './Field.jsx';
 import { t } from '../i18n/t.js';
 
 export type QuarterStripProps = {
@@ -29,7 +30,14 @@ export function QuarterStrip({
   disabled,
 }: QuarterStripProps) {
   return (
-    <div className="fm-strip" role="radiogroup" aria-label={t('fields.targetQuarter.label')}>
+    // Labelled by the field above it when it sits in one; the standalone label
+    // is the fallback for anywhere else it might be used.
+    <div
+      className="fm-strip"
+      role="radiogroup"
+      aria-label={t('fields.targetQuarter.label')}
+      {...useFieldGroup()}
+    >
       {quarters.map((quarterId) => {
         const selected = quarterId === value;
         return (
