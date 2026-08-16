@@ -1439,3 +1439,98 @@ label {
 .fm-strip__quarter[aria-checked='true'] .fm-strip__now {
   color: var(--accent-on);
 }
+
+.fm-panel__remove {
+  min-height: 0;
+  padding: 0 var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+  margin-left: auto;
+}
+
+.fm-panel__remove:hover {
+  color: var(--critical-fg);
+  background: var(--critical-surface);
+}
+
+.fm-panel__addrow,
+.fm-panel__addlink {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.fm-panel__addlink input,
+.fm-panel__addlink select,
+.fm-panel__addrow input,
+.fm-panel__addrow select {
+  flex: 1 1 120px;
+  max-width: none;
+}
+
+.fm-panel__error {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--critical-fg);
+}
+
+.fm-panel__list a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+/* ── Dependencies on the board ─────────────────────────────────────────── */
+
+/* Over the grid, under the panel, and transparent to the pointer: connectors
+   describe the board, they are not something you click. */
+.fm-deps {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: var(--z-canvas-overlay);
+}
+
+.fm-map__scroll {
+  position: relative;
+}
+
+.fm-deps__line {
+  fill: none;
+  stroke: var(--ink-muted);
+  stroke-width: 1.5;
+}
+
+.fm-deps__head {
+  fill: var(--ink-muted);
+}
+
+/* A hard dependency stops the work outright, so it is drawn solid; a soft one
+   is dashed. Never colour alone — the type is written on the line. */
+.fm-deps__edge:not([data-hard]) .fm-deps__line {
+  stroke-dasharray: 5 4;
+}
+
+.fm-deps__edge[data-status='AT_RISK'] .fm-deps__line,
+.fm-deps__edge[data-status='AT_RISK'] .fm-deps__head {
+  stroke: var(--warning-line);
+  fill: var(--warning-line);
+}
+
+.fm-deps__edge[data-status='RESOLVED'] {
+  opacity: 0.4;
+}
+
+.fm-deps text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink-muted);
+  paint-order: stroke fill;
+  stroke: var(--ground);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}

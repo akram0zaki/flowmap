@@ -29,6 +29,19 @@ import {
   type EntityId,
   type WorkspaceState,
 } from '@flowmap/domain';
+import {
+  addDependency,
+  addExternalLink,
+  addMilestone,
+  removeDependency,
+  removeExternalLink,
+  removeMilestone,
+  removeProductImpact,
+  setProductImpact,
+  updateDependency,
+  updateMilestone,
+  type RelationState,
+} from '@flowmap/domain';
 import type { WorkspaceRepository } from '@flowmap/storage';
 
 import { t } from '../i18n/t.js';
@@ -158,6 +171,16 @@ type StoreState = {
   redo(): Promise<void>;
   /** Edit a commitment's own fields. The property sheet's only write path. */
   editCommitment(commitmentId: EntityId, patch: Record<string, unknown>): Promise<boolean>;
+  /**
+   * Relations: impacts, dependencies, milestones and links.
+   *
+   * One entry point rather than ten store methods, because they all share the
+   * same shape — take the relation view of state, run a handler, persist.
+   */
+  relate(
+    name: string,
+    run: (state: RelationState, cmd: Command, ctx: CommandContext) => CommandResult,
+  ): Promise<boolean>;
   select(footprintId: string | null): void;
   clearStatus(): void;
   clearLocalData(): Promise<void>;
@@ -488,6 +511,13 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     );
   },
 
+  async relate(name, run) {
+    return (
+      (await get().dispatch(name, (state, cmd, ctx) => run(relationView(state), cmd, ctx))) !==
+      false
+    );
+  },
+
   select(footprintId) {
     set({ selectedFootprintId: footprintId });
   },
@@ -574,6 +604,27 @@ function runNamed(
       return setPrimaryTeam(state, payload as never, cmd, ctx);
     case 'UpdateCommitment':
       return updateCommitment(state, payload as never, cmd, ctx);
+    // Relations replay through the same view the forward command used.
+    case 'SetProductImpact':
+      return setProductImpact(relationView(state), payload as never, cmd, ctx);
+    case 'RemoveProductImpact':
+      return removeProductImpact(relationView(state), payload as never, cmd, ctx);
+    case 'AddDependency':
+      return addDependency(relationView(state), payload as never, cmd, ctx);
+    case 'UpdateDependency':
+      return updateDependency(relationView(state), payload as never, cmd, ctx);
+    case 'RemoveDependency':
+      return removeDependency(relationView(state), payload as never, cmd, ctx);
+    case 'AddMilestone':
+      return addMilestone(relationView(state), payload as never, cmd, ctx);
+    case 'UpdateMilestone':
+      return updateMilestone(relationView(state), payload as never, cmd, ctx);
+    case 'RemoveMilestone':
+      return removeMilestone(relationView(state), payload as never, cmd, ctx);
+    case 'AddExternalLink':
+      return addExternalLink(relationView(state), payload as never, cmd, ctx);
+    case 'RemoveExternalLink':
+      return removeExternalLink(relationView(state), payload as never, cmd, ctx);
     // Every lifecycle transition is its own inverse's handler. Without these,
     // committing an Idea produced a RevertCommitGate inverse that undo could
     // not run, so the action looked undoable and silently was not.
@@ -592,6 +643,25 @@ function runNamed(
         error: { code: 'ENTITY_NOT_FOUND', messageKey: 'error.ENTITY_NOT_FOUND' },
       };
   }
+}
+
+/**
+ * `RelationState` names its maps differently from `WorkspaceState` — `impacts`
+ * rather than `productImpacts`, `links` rather than `externalLinks` — and the
+ * relation maps are optional on the workspace because older code paths build
+ * state without them. This is the one place that reconciles the two.
+ */
+function relationView(state: WorkspaceState): RelationState {
+  return {
+    ...state,
+    products: state.products ?? new Map(),
+    impacts: state.productImpacts ?? new Map(),
+    dependencies: state.dependencies ?? new Map(),
+    decisions: state.decisions ?? new Map(),
+    milestones: state.milestones ?? new Map(),
+    themes: state.themes ?? new Map(),
+    links: state.externalLinks ?? new Map(),
+  };
 }
 
 function makeCommand(runtime: Runtime, name: string): Command {

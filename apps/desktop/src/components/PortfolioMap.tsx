@@ -39,6 +39,7 @@ import {
 import { utilisationPercent, type QuarterId } from '@flowmap/domain';
 
 import { CapacityVessel, type VesselBlock } from './CapacityVessel.jsx';
+import { DependencyLayer, type DependencyEdge } from './DependencyLayer.jsx';
 import { t } from '../i18n/t.js';
 
 export type PortfolioMapProps = {
@@ -84,6 +85,8 @@ export type PortfolioMapProps = {
     event: ReactPointerEvent,
   ) => void;
   readonly resizing: { footprintId: string; units: number } | null;
+  /** Dependencies of the focused commitment, drawn over the grid. */
+  readonly dependencyEdges: readonly DependencyEdge[];
   readonly onDropHere: () => void;
 };
 
@@ -107,6 +110,7 @@ export function PortfolioMap({
   onResizeBlock,
   onResizeStart,
   resizing,
+  dependencyEdges,
   onDropHere,
 }: PortfolioMapProps) {
   // Roving focus: the grid is one tab stop, arrows move within it.
@@ -368,6 +372,8 @@ export function PortfolioMap({
             </div>
           ))}
         </div>
+
+        <DependencyLayer edges={dependencyEdges} scrollRef={gridRef} />
       </div>
     </div>
   );

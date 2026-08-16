@@ -936,3 +936,100 @@ test('the target quarter is chosen on a strip, not typed', async ({ page }) => {
     'false',
   );
 });
+
+/**
+ * Relations (M2-COM-6/7/8/9). The sample workspace has always held product
+ * impacts, dependencies, milestones and links; until schema v2 they were
+ * dropped at seed time and nothing could show them.
+ */
+test('the panel shows the relations the workspace actually holds', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  await page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^Instant payments regulation/ })
+    .click();
+
+  const panel = page.getByRole('complementary');
+  for (const section of ['Impact', 'Dependencies', 'Milestones', 'Links']) {
+    await expect(panel.getByRole('heading', { name: section })).toBeVisible();
+  }
+
+  // A typed impact, from the fixture.
+  await expect(panel).toContainText('Payments Hub');
+  await expect(
+    panel.getByRole('radio', { name: 'Primary' }).and(panel.locator('[aria-checked="true"]')),
+  ).toBeVisible();
+});
+
+test('a link must be https, and says so before it is refused', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  await page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^Instant payments regulation/ })
+    .click();
+
+  const panel = page.getByRole('complementary');
+  const url = panel.getByRole('textbox', { name: 'Link' });
+  await url.fill('http://insecure.test/ticket');
+
+  await expect(panel.getByText('Links must start with https://')).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Add link' })).toBeDisabled();
+
+  await url.fill('https://secure.test/ticket');
+  await expect(panel.getByRole('button', { name: 'Add link' })).toBeEnabled();
+  await panel.getByRole('button', { name: 'Add link' }).click();
+
+  await expect(panel.getByRole('link', { name: 'https://secure.test/ticket' })).toBeVisible();
+});
+
+test('milestones stop at six, and say why', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  await page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^Instant payments regulation/ })
+    .click();
+
+  const panel = page.getByRole('complementary');
+  const add = panel.getByRole('textbox', { name: 'Add milestone' });
+
+  for (let i = 0; i < 8; i++) {
+    if (!(await add.isVisible())) break;
+    await add.fill(`Milestone ${i}`);
+    await add.press('Enter');
+  }
+
+  await expect(panel.getByText('Six is the limit')).toBeVisible();
+});
+
+test('a focused commitment draws its dependencies on the board', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  // Nothing focused: no connectors, because drawing the whole graph at once is
+  // noise rather than information.
+  await expect(page.locator('.fm-deps__edge')).toHaveCount(0);
+
+  await page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^Instant payments regulation/ })
+    .click();
+
+  const edges = page.locator('.fm-deps__edge');
+  await expect(edges.first()).toBeVisible();
+  // Never colour alone: the type is written along the line.
+  await expect(page.locator('.fm-deps')).toContainText(/Requires|Needs|Blocked|Depends/);
+});

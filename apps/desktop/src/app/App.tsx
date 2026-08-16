@@ -7,7 +7,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isCounted, utilisationPercent } from '@flowmap/domain';
+import {
+  addExternalLink,
+  addMilestone,
+  isCounted,
+  removeDependency,
+  removeExternalLink,
+  removeMilestone,
+  removeProductImpact,
+  setProductImpact,
+  updateDependency,
+  utilisationPercent,
+} from '@flowmap/domain';
 import {
   buildBoard,
   focusOn,
@@ -36,6 +47,7 @@ import { LensStrip } from '../components/LensStrip.jsx';
 import { IdeasLane } from '../components/IdeasLane.jsx';
 import { ListCompanion } from '../components/ListCompanion.jsx';
 import { DetailPanel, type PanelFootprint } from '../components/DetailPanel.jsx';
+import type { DependencyEdge } from '../components/DependencyLayer.jsx';
 import { CaptureBar } from '../components/CaptureBar.jsx';
 import type { VesselBlock } from '../components/CapacityVessel.jsx';
 import { t } from '../i18n/t.js';
@@ -56,6 +68,7 @@ export function App() {
     unplaceFootprint,
     resizeFootprint,
     editCommitment,
+    relate,
   } = useWorkspace.getState();
 
   const [level, setLevelState] = useState<ZoomLevel>(2);
@@ -422,6 +435,85 @@ export function App() {
       });
   }, [state, board, panelCommitment]);
 
+  /** The relations that belong to whatever the panel is showing. */
+  const panelRelations = useMemo(() => {
+    const id = panelCommitment?.id;
+    const of = <T extends { commitmentId?: string }>(map: ReadonlyMap<string, T> | undefined) =>
+      [...(map?.values() ?? [])].filter(
+        (row) =>
+          row.commitmentId === id && (row as { archivedAt?: string }).archivedAt === undefined,
+      );
+
+    return {
+      impacts: of(state?.productImpacts),
+      milestones: of(state?.milestones).sort((a, b) => a.displayOrder - b.displayOrder),
+      links: of(state?.externalLinks),
+      dependencies: [...(state?.dependencies?.values() ?? [])].filter(
+        (d) => d.sourceCommitmentId === id && d.archivedAt === undefined,
+      ),
+    };
+  }, [state, panelCommitment]);
+
+  /** A dependency can point at four different kinds of thing. */
+  const nameOfTarget = useCallback(
+    (target: { kind: string; id: string }): string => {
+      switch (target.kind) {
+        case 'COMMITMENT':
+          return state?.commitments.get(target.id)?.name ?? target.id;
+        case 'TEAM':
+          return state?.teams.get(target.id)?.name ?? target.id;
+        case 'MILESTONE':
+          return state?.milestones?.get(target.id)?.name ?? target.id;
+        case 'DECISION':
+          return state?.decisions?.get(target.id)?.name ?? target.id;
+        default:
+          return target.id;
+      }
+    },
+    [state],
+  );
+
+  /**
+   * Dependencies of the focused commitment, resolved to places on the board.
+   *
+   * A dependency on a decision or a milestone has no cell to point at; it is
+   * listed in the panel and simply not drawn, rather than being aimed at
+   * something arbitrary.
+   */
+  const dependencyEdges = useMemo((): DependencyEdge[] => {
+    if (!state || !board || !focusedCommitmentId) return [];
+
+    const cellsOf = (commitmentId: string) =>
+      [...state.footprints.values()]
+        .filter((f) => f.commitmentId === commitmentId && f.archivedAt === undefined)
+        .map((f) => `${f.teamId}|${f.quarterId}`);
+
+    const from = cellsOf(focusedCommitmentId)[0];
+    if (!from) return [];
+
+    return [...(state.dependencies?.values() ?? [])]
+      .filter((d) => d.sourceCommitmentId === focusedCommitmentId && d.archivedAt === undefined)
+      .map((dependency) => {
+        const target = dependency.target;
+        const to =
+          target.kind === 'COMMITMENT'
+            ? (cellsOf(target.id)[0] ?? null)
+            : target.kind === 'TEAM'
+              ? `${target.id}|${from.split('|')[1]}`
+              : null;
+
+        return {
+          id: dependency.id,
+          type: dependency.type,
+          status: dependency.status,
+          isHard: dependency.isHard,
+          fromCellKey: from,
+          toCellKey: to,
+          targetName: nameOfTarget(target),
+        };
+      });
+  }, [state, board, focusedCommitmentId, nameOfTarget]);
+
   const vesselBlocksFor = useCallback(
     (cell: CellModel): VesselBlock[] => {
       if (!state) return [];
@@ -560,6 +652,7 @@ export function App() {
           resizing={resizing ? { footprintId: resizing.footprintId, units: resizing.units } : null}
           onAimDrag={(teamId, quarterId) => aim({ kind: 'CELL', teamId, quarterId })}
           onDropHere={drop}
+          dependencyEdges={dependencyEdges}
         />
 
         {/* Inside the workspace row, not floating over it: the board narrows
@@ -574,7 +667,67 @@ export function App() {
             footprints={panelFootprints}
             quarters={board.quarters}
             currentQuarterId={state.workspace.currentQuarterId}
+            impacts={panelRelations.impacts}
+            milestones={panelRelations.milestones}
+            links={panelRelations.links}
+            dependencies={panelRelations.dependencies}
+            nameOfTarget={nameOfTarget}
             onChange={(patch) => void editCommitment(panelCommitment.id, patch)}
+            onSetImpact={(productServiceId, type) =>
+              void relate('SetProductImpact', (rs, cmd, ctx) =>
+                setProductImpact(
+                  rs,
+                  { commitmentId: panelCommitment.id, productServiceId, type },
+                  cmd,
+                  ctx,
+                ),
+              )
+            }
+            onRemoveImpact={(impactId) =>
+              void relate('RemoveProductImpact', (rs, cmd, ctx) =>
+                removeProductImpact(rs, { impactId }, cmd, ctx),
+              )
+            }
+            onAddMilestone={(name) =>
+              void relate('AddMilestone', (rs, cmd, ctx) =>
+                addMilestone(rs, { commitmentId: panelCommitment.id, name }, cmd, ctx),
+              )
+            }
+            onRemoveMilestone={(milestoneId) =>
+              void relate('RemoveMilestone', (rs, cmd, ctx) =>
+                removeMilestone(rs, { milestoneId }, cmd, ctx),
+              )
+            }
+            onAddLink={(type, url, label) =>
+              void relate('AddExternalLink', (rs, cmd, ctx) =>
+                addExternalLink(
+                  rs,
+                  {
+                    commitmentId: panelCommitment.id,
+                    type,
+                    url,
+                    ...(label ? { label } : {}),
+                  },
+                  cmd,
+                  ctx,
+                ),
+              )
+            }
+            onRemoveLink={(linkId) =>
+              void relate('RemoveExternalLink', (rs, cmd, ctx) =>
+                removeExternalLink(rs, { linkId }, cmd, ctx),
+              )
+            }
+            onSetDependencyType={(dependencyId, type) =>
+              void relate('UpdateDependency', (rs, cmd, ctx) =>
+                updateDependency(rs, { dependencyId, type }, cmd, ctx),
+              )
+            }
+            onRemoveDependency={(dependencyId) =>
+              void relate('RemoveDependency', (rs, cmd, ctx) =>
+                removeDependency(rs, { dependencyId }, cmd, ctx),
+              )
+            }
             onClose={() => setFocusedCommitmentId(null)}
           />
         )}
