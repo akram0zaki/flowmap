@@ -176,6 +176,63 @@ function refuse(
  * to choose one. Half of M is the smallest amount that still visibly moves the
  * figure, which is the point: you drop it, you see it land, you resize it.
  */
+/**
+ * Resizing a block: the same question as a drop, asked about one that is
+ * already there.
+ *
+ * Units are the only thing a footprint has that anyone argues about, so it has
+ * to be adjustable where you can see the consequence — on the block itself,
+ * against the rule. The figure updates as the edge moves; overflow is allowed
+ * and drawn, never blocked.
+ */
+export type ResizePreview = {
+  readonly allowed: boolean;
+  readonly refusal?: 'CLOSED_QUARTER';
+  readonly units: number;
+  readonly percent: number | null;
+  readonly overflow: number;
+};
+
+/** Units are whole and at least one — a footprint of nothing is a deletion. */
+export function clampUnits(units: number): number {
+  return Math.max(1, Math.round(units));
+}
+
+export function previewResize(
+  cell: CellModel,
+  footprintId: EntityId,
+  units: number,
+): ResizePreview {
+  const wanted = clampUnits(units);
+  const block = cell.blocks.find((b) => b.footprintId === footprintId);
+  const { summary } = cell;
+
+  if (!summary || !block) {
+    return { allowed: false, units: wanted, percent: null, overflow: 0 };
+  }
+  if (cell.closed) {
+    return {
+      allowed: false,
+      refusal: 'CLOSED_QUARTER',
+      units: wanted,
+      percent: null,
+      overflow: summary.overflow,
+    };
+  }
+
+  // Only counted blocks move the figure; resizing an ON_HOLD block changes what
+  // it will cost when it resumes, not what the quarter carries today.
+  const delta = block.counted ? wanted - block.units : 0;
+  const projected = withCommittedLoad(summary, summary.committedLoad + delta);
+
+  return {
+    allowed: true,
+    units: wanted,
+    percent: utilisationPercent(projected),
+    overflow: projected.overflow,
+  };
+}
+
 /** Why work cannot be taken off the board here. */
 export type RemovalRefusal = 'IDEA_NOT_PLACED' | 'NOT_REVERTIBLE' | 'FROM_CLOSED_QUARTER';
 

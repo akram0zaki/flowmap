@@ -65,7 +65,19 @@ export type CapacityVesselProps = {
   readonly onPickUp?: (footprintId: string, event?: ReactPointerEvent) => void;
   /** Take this block off the board. The keyboard route to the Ideas rail. */
   readonly onRemove?: (footprintId: string) => void;
+  /**
+   * Change how many units this block occupies. `via: 'pointer'` starts a drag
+   * on the top edge; the keyboard sends an absolute value straight through.
+   */
+  readonly onResize?: (footprintId: string, units: number, via: 'pointer' | 'keyboard') => void;
+  /** Units per pixel, so the caller can turn pointer movement into units. */
+  readonly onResizeStart?: (footprintId: string, event: ReactPointerEvent, unitPx: number) => void;
+  /** While a resize is in flight, draw this block at that size instead. */
+  readonly resizing?: { readonly footprintId: string; readonly units: number };
 };
+
+/** Grab area on a block's top edge. Generous, per the 24px hit-target rule. */
+const RESIZE_GRIP = 10;
 
 const AXIS_WIDTH = 34;
 const COMPACT_AXIS_WIDTH = 20;
@@ -86,6 +98,9 @@ export function CapacityVessel({
   onSelect,
   onPickUp,
   onRemove,
+  onResize,
+  onResizeStart,
+  resizing,
 }: CapacityVesselProps) {
   const patternPrefix = useId().replace(/:/g, '');
   const unitPx = UNIT_PX * zoom;
@@ -107,12 +122,18 @@ export function CapacityVessel({
   const percent = utilisationPercent(summary);
   const overCapacity = summary.overflow > 0;
 
-  // Stack from the top of the reserve plinth upward.
+  // Stack from the top of the reserve plinth upward. A block being resized is
+  // laid out at its provisional size, so everything above it moves with the
+  // edge rather than jumping when the pointer is released.
+  const sizeOf = (block: VesselBlock) =>
+    resizing?.footprintId === block.footprint.id ? resizing.units : block.footprint.units;
+
   let cursor = summary.reservedTotal;
   const laidOut = blocks.map((block) => {
     const bottom = cursor;
-    cursor += block.counted ? block.footprint.units : 0;
-    return { ...block, bottom, top: bottom + block.footprint.units };
+    const units = sizeOf(block);
+    cursor += block.counted ? units : 0;
+    return { ...block, units, bottom, top: bottom + units };
   });
 
   let reserveCursor = 0;
@@ -266,7 +287,7 @@ export function CapacityVessel({
 
           {laidOut.map((block) => {
             const carried = block.footprint.carryOverFromQuarterId !== undefined;
-            const blockHeight = Math.max(6, block.footprint.units * unitPx);
+            const blockHeight = Math.max(6, block.units * unitPx);
             const selected = block.footprint.id === selectedFootprintId;
             const dimmed = dimmedFootprintIds?.has(block.footprint.id) ?? false;
 
@@ -281,14 +302,18 @@ export function CapacityVessel({
             // height gets struck through. A block that straddles the limit puts
             // its label in whichever half is taller — which is also where the
             // block's weight is, so it reads better as well as more legibly.
-            const straddles = overUnits > 0 && overUnits < block.footprint.units;
-            const underUnits = block.footprint.units - overUnits;
+            const straddles = overUnits > 0 && overUnits < block.units;
+            const underUnits = block.units - overUnits;
             const labelCentre = straddles
               ? overUnits > underUnits
                 ? block.top - overUnits / 2
                 : block.bottom + underUnits / 2
-              : block.top - block.footprint.units / 2;
+              : block.top - block.units / 2;
             const labelY = Math.max(y(block.top) + 8, y(labelCentre) + 4);
+
+            // The grip must never own most of a block, or a small block cannot
+            // be picked up and moved at all — only resized.
+            const gripHeight = Math.max(4, Math.min(RESIZE_GRIP, blockHeight * 0.4));
 
             return (
               // `gridcell` must be inside a `row` — axe flags the shortcut, and
@@ -321,11 +346,28 @@ export function CapacityVessel({
                       // The keyboard equivalent of dragging it back to the lane.
                       e.preventDefault();
                       onRemove?.(block.footprint.id);
+                    } else if (e.key === '+' || e.key === '=' || e.key === 'ArrowUp') {
+                      // The keyboard equivalent of dragging the top edge. Shift
+                      // moves by the coarse step, matching how the pointer feels
+                      // when you drag a long way rather than a little.
+                      e.preventDefault();
+                      onResize?.(
+                        block.footprint.id,
+                        block.units + (e.shiftKey ? 5 : 1),
+                        'keyboard',
+                      );
+                    } else if (e.key === '-' || e.key === '_' || e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      onResize?.(
+                        block.footprint.id,
+                        block.units - (e.shiftKey ? 5 : 1),
+                        'keyboard',
+                      );
                     }
                   }}
                 >
                   <title>
-                    {block.commitment.name} · {block.footprint.units}
+                    {block.commitment.name} · {block.units}
                   </title>
                   <rect
                     x={6}
@@ -365,6 +407,31 @@ export function CapacityVessel({
                       className="fm-block__over"
                     />
                   )}
+                  {/* The top edge is the size. Grabbing it is how you change
+                      how much of the quarter this work takes, in the one place
+                      where the consequence is already drawn. */}
+                  {onResizeStart && !compact && (
+                    <rect
+                      x={6}
+                      y={y(block.top) - gripHeight / 2}
+                      width={BODY_WIDTH - 12}
+                      height={gripHeight}
+                      className="fm-block__grip"
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        // The SVG is scaled to fit its cell, so a viewBox unit
+                        // is not a screen pixel. Handing the caller the viewBox
+                        // figure made the edge lag the cursor by whatever the
+                        // scale happened to be.
+                        const svg = e.currentTarget.ownerSVGElement;
+                        const scale = svg ? svg.getBoundingClientRect().height / height : 1;
+                        onResizeStart(block.footprint.id, e, unitPx * scale);
+                      }}
+                    >
+                      <title>{t('resize.grip', { name: block.commitment.name })}</title>
+                    </rect>
+                  )}
+
                   {/* Three tiers of degradation. A block too thin for both keeps
                       the number, because the number is the part that measures. */}
                   {blockHeight >= 15 && (
@@ -386,7 +453,7 @@ export function CapacityVessel({
                       data-thin={blockHeight < 15 || undefined}
                       textAnchor="end"
                     >
-                      {block.footprint.units}
+                      {block.units}
                     </text>
                   )}
                 </g>

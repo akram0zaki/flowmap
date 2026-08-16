@@ -442,9 +442,10 @@ test('a drop the model would refuse is refused during the drag, with the reason'
   const to = await target.boundingBox();
   if (!from || !to) throw new Error('missing geometry');
 
+  // Mid-block: the top edge is the resize grip, not a place to grab and move.
   await dragTo(
     page,
-    { x: from.x + 40, y: from.y + 10 },
+    { x: from.x + 40, y: from.y + from.height / 2 },
     { x: to.x + to.width / 2, y: to.y + to.height / 2 },
   );
 
@@ -769,4 +770,75 @@ test('one undo puts unplaced work back, not half of it', async ({ page }) => {
     'aria-label',
     /Committed/,
   );
+});
+
+/**
+ * Size is the only thing about a footprint anyone argues about, so it has to
+ * be adjustable where the consequence is already drawn — on the block, against
+ * the rule. Before this there was no way to change it at all: a dropped Idea
+ * landed at S and stayed there.
+ */
+test('a block can be resized by dragging its top edge', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const cell = page.getByRole('gridcell', { name: /^Security\. 2026-Q4/ });
+  const block = cell.getByRole('gridcell', { name: /^TLS and cipher currency/ });
+  await expect(block).toHaveAttribute('aria-label', /20 units/);
+
+  // A hit test only sees what is on screen, and this row is below the fold.
+  await block.scrollIntoViewIfNeeded();
+  const box = await block.boundingBox();
+  if (!box) throw new Error('missing geometry');
+
+  // Grab the top edge and pull upward: the block grows towards the rule.
+  await page.mouse.move(box.x + box.width / 2, box.y + 1);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y - 30, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(block).not.toHaveAttribute('aria-label', /20 units/);
+  const label = (await block.getAttribute('aria-label')) ?? '';
+  const units = Number(/(\d+) units/.exec(label)?.[1] ?? 0);
+  expect(units).toBeGreaterThan(20);
+});
+
+test('a block can be resized from the keyboard, and undone', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const cell = page.getByRole('gridcell', { name: /^Security\. 2026-Q4/ });
+  const block = cell.getByRole('gridcell', { name: /^TLS and cipher currency/ });
+
+  await block.focus();
+  await page.keyboard.press('Shift+ArrowUp');
+  await expect(block).toHaveAttribute('aria-label', /25 units/);
+
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(cell.getByRole('gridcell', { name: /^TLS and cipher currency/ })).toHaveAttribute(
+    'aria-label',
+    /20 units/,
+  );
+});
+
+test('a resize is never allowed to reach zero units', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const block = page
+    .getByRole('gridcell', { name: /^Security\. 2026-Q4/ })
+    .getByRole('gridcell', { name: /^TLS and cipher currency/ });
+
+  await block.focus();
+  // Far more presses than there are units. A footprint of nothing would be a
+  // removal, which is a different decision with a different record.
+  for (let i = 0; i < 30; i++) await page.keyboard.press('Shift+ArrowDown');
+
+  await expect(block).toHaveAttribute('aria-label', /\b1 units?\b/);
 });

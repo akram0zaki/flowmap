@@ -13,10 +13,12 @@ import {
   focusOn,
   NO_FILTER,
   NO_FOCUS,
+  clampUnits,
   defaultDropUnits,
   findCell,
   previewDrop,
   previewRemoval,
+  previewResize,
   readinessForIdeas,
   toggleFilterValue,
   type CellModel,
@@ -27,6 +29,7 @@ import {
 
 import { useWorkspace } from '../state/workspace-store.js';
 import { usePlacement, type DropTarget } from '../state/use-placement.js';
+import { useResize, type ResizeState } from '../state/use-resize.js';
 import type { QuarterId } from '@flowmap/domain';
 import { PortfolioMap } from '../components/PortfolioMap.jsx';
 import { LensStrip } from '../components/LensStrip.jsx';
@@ -50,6 +53,7 @@ export function App() {
     commitIdeaInto,
     moveFootprint,
     unplaceFootprint,
+    resizeFootprint,
   } = useWorkspace.getState();
 
   const [level, setLevelState] = useState<ZoomLevel>(2);
@@ -337,6 +341,62 @@ export function App() {
     [board, state, unplaceFootprint, announce],
   );
 
+  /**
+   * Resizing. The consequence is announced while the edge is still moving, and
+   * the command is sent once, on release — a command per pixel would fill the
+   * undo stack with the journey instead of the destination.
+   */
+  const describeResize = useCallback(
+    (state: ResizeState): string | null => {
+      if (!board) return null;
+      const cell = findCell(board, state.teamId, state.quarterId as QuarterId);
+      if (!cell) return null;
+      const preview = previewResize(cell, state.footprintId, state.units);
+      if (!preview.allowed) return t('resize.refused');
+
+      const block = cell.blocks.find((b) => b.footprintId === state.footprintId);
+      return t('resize.would', {
+        name: block?.name ?? '',
+        units: preview.units,
+        team: cell.teamName,
+        quarter: cell.quarterId,
+        percent: preview.percent ?? 0,
+      });
+    },
+    [board],
+  );
+
+  const commitResize = useCallback(
+    (footprintId: string, teamId: string, quarterId: string, units: number) => {
+      if (!board) return;
+      const cell = findCell(board, teamId, quarterId as QuarterId);
+      if (!cell) return;
+
+      const preview = previewResize(cell, footprintId, units);
+      if (!preview.allowed) {
+        announce(t('resize.refused'));
+        return;
+      }
+
+      const block = cell.blocks.find((b) => b.footprintId === footprintId);
+      if (!block || preview.units === block.units) return;
+
+      void resizeFootprint(footprintId, preview.units).then((ok) => {
+        if (ok) announce(t('resize.to', { name: block.name, units: preview.units }));
+      });
+    },
+    [board, resizeFootprint, announce],
+  );
+
+  const { resizing, begin: beginResize } = useResize({
+    onPreview: (state) => {
+      const message = describeResize(state);
+      if (message) announce(message);
+    },
+    onCommit: (state) =>
+      commitResize(state.footprintId, state.teamId, state.quarterId, state.units),
+  });
+
   const vesselBlocksFor = useCallback(
     (cell: CellModel): VesselBlock[] => {
       if (!state) return [];
@@ -468,6 +528,11 @@ export function App() {
           dragTarget={placement?.target ?? null}
           onPickUpBlock={pickUpBlock}
           onRemoveBlock={removeBlock}
+          onResizeBlock={(footprintId, teamId, quarterId, units) =>
+            commitResize(footprintId, teamId, quarterId, clampUnits(units))
+          }
+          onResizeStart={(input, event) => beginResize(input, event)}
+          resizing={resizing ? { footprintId: resizing.footprintId, units: resizing.units } : null}
           onAimDrag={(teamId, quarterId) => aim({ kind: 'CELL', teamId, quarterId })}
           onDropHere={drop}
         />

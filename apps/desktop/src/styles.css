@@ -1159,3 +1159,21 @@ label {
   color: var(--critical-fg);
   background: var(--critical-surface);
 }
+
+/* The top edge of a block is its size. Invisible until you approach it, then a
+   line you can clearly grab — the block itself must stay the thing you read. */
+.fm-block__grip {
+  fill: transparent;
+  cursor: ns-resize;
+}
+
+.fm-block:hover .fm-block__grip,
+.fm-block:focus-within .fm-block__grip {
+  fill: var(--accent);
+  fill-opacity: 0.5;
+}
+
+.fm-block__grip:hover {
+  fill: var(--accent);
+  fill-opacity: 1;
+}

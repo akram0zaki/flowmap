@@ -66,6 +66,24 @@ export type PortfolioMapProps = {
   ) => void;
   readonly onAimDrag: (teamId: string, quarterId: QuarterId) => void;
   readonly onRemoveBlock: (footprintId: string, teamId: string, quarterId: QuarterId) => void;
+  readonly onResizeBlock: (
+    footprintId: string,
+    teamId: string,
+    quarterId: QuarterId,
+    units: number,
+    via: 'pointer' | 'keyboard',
+  ) => void;
+  readonly onResizeStart: (
+    input: {
+      footprintId: string;
+      teamId: string;
+      quarterId: QuarterId;
+      units: number;
+      unitPx: number;
+    },
+    event: ReactPointerEvent,
+  ) => void;
+  readonly resizing: { footprintId: string; units: number } | null;
   readonly onDropHere: () => void;
 };
 
@@ -86,6 +104,9 @@ export function PortfolioMap({
   onPickUpBlock,
   onAimDrag,
   onRemoveBlock,
+  onResizeBlock,
+  onResizeStart,
+  resizing,
   onDropHere,
 }: PortfolioMapProps) {
   // Roving focus: the grid is one tab stop, arrows move within it.
@@ -314,6 +335,27 @@ export function PortfolioMap({
                         onRemove={(footprintId: string) =>
                           onRemoveBlock(footprintId, cell.teamId, cell.quarterId)
                         }
+                        onResize={(footprintId, units, via) =>
+                          onResizeBlock(footprintId, cell.teamId, cell.quarterId, units, via)
+                        }
+                        onResizeStart={(footprintId, event, unitPx) => {
+                          const block = cell.blocks.find((b) => b.footprintId === footprintId);
+                          if (!block) return;
+                          onResizeStart(
+                            {
+                              footprintId,
+                              teamId: cell.teamId,
+                              quarterId: cell.quarterId,
+                              units: block.units,
+                              unitPx,
+                            },
+                            event,
+                          );
+                        }}
+                        {...(resizing?.footprintId !== undefined &&
+                        cell.blocks.some((b) => b.footprintId === resizing.footprintId)
+                          ? { resizing }
+                          : {})}
                       />
                     ) : (
                       <span className="fm-grid__empty" aria-hidden="true">

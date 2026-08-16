@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { CapacitySummary, TeamQuarter } from '@flowmap/domain';
 
-import { defaultDropUnits, previewDrop, previewRemoval, type DragPayload } from './placement.js';
+import {
+  clampUnits,
+  defaultDropUnits,
+  previewDrop,
+  previewRemoval,
+  previewResize,
+  type DragPayload,
+} from './placement.js';
 import type { BlockModel, CellModel } from './layout.js';
 
 const NOW = '2026-08-15T09:00:00Z';
@@ -211,6 +218,45 @@ describe('previewDrop', () => {
     expect(preview.percent).toBeNull();
     expect(preview.percentDelta).toBeNull();
     expect(preview.allowed).toBe(true);
+  });
+});
+
+describe('previewResize', () => {
+  it('states the figure the container would show at the new size', () => {
+    // 60 committed of 100 deliverable; the block is all 60 of it.
+    const preview = previewResize(cell(), 'f-1', 80);
+    expect(preview).toMatchObject({ allowed: true, units: 80, percent: 80, overflow: 0 });
+  });
+
+  it('allows a resize past the rule, and measures the excess', () => {
+    const preview = previewResize(cell(), 'f-1', 130);
+    expect(preview).toMatchObject({ allowed: true, percent: 130, overflow: 30 });
+  });
+
+  // A footprint of nothing is a removal, which is a different decision.
+  it('never goes below one unit, and never takes a fraction', () => {
+    expect(previewResize(cell(), 'f-1', 0).units).toBe(1);
+    expect(previewResize(cell(), 'f-1', -4).units).toBe(1);
+    expect(previewResize(cell(), 'f-1', 12.6).units).toBe(13);
+    expect(clampUnits(0.2)).toBe(1);
+  });
+
+  it('refuses a closed quarter', () => {
+    expect(previewResize(cell({ closed: true }), 'f-1', 80)).toMatchObject({
+      allowed: false,
+      refusal: 'CLOSED_QUARTER',
+    });
+  });
+
+  // Work on hold occupies no capacity, so its size changes what it will cost
+  // when it resumes, not what the quarter carries today.
+  it('does not move the figure for a block that is not counted', () => {
+    const held = cell({ blocks: [block({ counted: false, units: 60 })] });
+    expect(previewResize(held, 'f-1', 90).percent).toBe(60);
+  });
+
+  it('cannot preview a block that is not there', () => {
+    expect(previewResize(cell(), 'nope', 10).allowed).toBe(false);
   });
 });
 
