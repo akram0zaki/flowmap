@@ -30,6 +30,8 @@ export type IdeasLaneProps = {
   /** Work is being held over the lane: 'ok' to take it off the board, or 'no'. */
   readonly dropState: 'ok' | 'no' | null;
   readonly dropNote: string | null;
+  readonly collapsed: boolean;
+  readonly onToggleCollapsed: () => void;
 };
 
 /** Ideas that need a decision to be made rank above ones that need a name. */
@@ -44,6 +46,8 @@ export function IdeasLane({
   draggingCommitmentId,
   dropState,
   dropNote,
+  collapsed,
+  onToggleCollapsed,
 }: IdeasLaneProps) {
   const ready = ideas.filter((idea) => readiness.get(idea.commitmentId)?.readyToPlace).length;
 
@@ -65,14 +69,27 @@ export function IdeasLane({
       aria-label={t('map.ideasLane')}
       data-drop-rail=""
       data-drop={dropState ?? undefined}
+      data-collapsed={collapsed || undefined}
     >
-      {dropNote !== null && <p className="fm-ideas__drop">{dropNote}</p>}
+      {dropNote !== null && !collapsed && <p className="fm-ideas__drop">{dropNote}</p>}
       <div className="fm-ideas__head">
-        <h2>{t('map.ideasLane')}</h2>
+        {/* 188px of permanent chrome is a lot of a 13" screen, and the lane is
+            not always the question. Collapsed it stays a drop target and keeps
+            its count — you can still take work off the board onto it. */}
+        <button
+          type="button"
+          className="fm-ideas__toggle"
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? t('map.ideasExpand') : t('map.ideasCollapse')}
+          onClick={onToggleCollapsed}
+        >
+          {collapsed ? '›' : '‹'}
+        </button>
+        {!collapsed && <h2>{t('map.ideasLane')}</h2>}
         <span className="fm-ideas__count">{ideas.length}</span>
       </div>
 
-      {ideas.length === 0 ? (
+      {collapsed ? null : ideas.length === 0 ? (
         <p className="fm-idea__meta">{t('map.ideasEmpty')}</p>
       ) : (
         <>

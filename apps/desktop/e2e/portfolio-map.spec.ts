@@ -198,8 +198,10 @@ test('the sample workspace makes the map worth looking at', async ({ page }) => 
   ).toBeVisible();
 
   // Ideas stay in the lane, out of the grid.
+  // The ideas themselves, not every button in the lane — it also carries a
+  // collapse toggle now.
   const lane = page.getByRole('region', { name: /ideas and demand/i });
-  await expect(lane.getByRole('button')).toHaveCount(10);
+  await expect(lane.locator('.fm-idea')).toHaveCount(10);
 
   await expectNoAxeViolations(page, 'sample workspace');
   await expectNoUnresolvedKeys(page);

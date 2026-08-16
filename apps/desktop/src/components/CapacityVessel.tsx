@@ -21,6 +21,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -145,13 +146,25 @@ export function CapacityVessel({
 
   const measure = useCallback(() => {
     const node = frameRef.current;
-    if (node) setMeasuredWidth(Math.max(node.clientWidth, axisWidth + MIN_BODY_WIDTH));
+    if (!node) return;
+    const next = Math.max(node.clientWidth, axisWidth + MIN_BODY_WIDTH);
+    // Guarded, because this runs after every render and an unguarded set would
+    // be a loop.
+    setMeasuredWidth((current) => (current === next ? current : next));
   }, [axisWidth]);
 
-  useEffect(() => {
-    measure();
-    return observeResize(frameRef.current, measure);
-  }, [measure]);
+  /**
+   * Measured after every render, not only when a `ResizeObserver` says so.
+   *
+   * The observer is the right tool for a window resize and the wrong one for
+   * everything else: it does not deliver at all in a hidden tab, and it reports
+   * *after* the frame in which the layout changed. Zooming widens the columns,
+   * so relying on it alone left the drawing laid out for the old width and
+   * scaled up to fill the new one — the exact stretching this measurement
+   * exists to prevent, arriving by a different route.
+   */
+  useLayoutEffect(measure);
+  useEffect(() => observeResize(frameRef.current, measure), [measure]);
 
   // Room on the right for the overflow bracket, when one is drawn.
   const rightPad = overCapacity && !compact ? 34 : 4;
@@ -489,7 +502,26 @@ export function CapacityVessel({
 
                   {/* Three tiers of degradation. A block too thin for both keeps
                       the number, because the number is the part that measures. */}
-                  {blockHeight >= 15 && (
+                  {/* The lock is a state, not a label, so it survives the drop
+                      to Level 2 on its own. Mandatory work that stopped being
+                      marked would be colour-alone by omission. */}
+                  {compact && block.commitment.class === 'MANDATORY' && blockHeight >= 9 && (
+                    <text
+                      x={14}
+                      y={y(block.top) + blockHeight / 2 + 4}
+                      className="fm-block__lock"
+                      aria-hidden="true"
+                    >
+                      🔒
+                    </text>
+                  )}
+
+                  {/* Names are a Level 3 thing (spec 06 §3.3): L2 shows blocks,
+                      reserves and figures, L3 adds the labels. Drawing them at
+                      L2 anyway meant a 162px column rendering "Payment refe…",
+                      which is worse than no label — it takes the room and says
+                      nothing. The `<title>` still names it on hover. */}
+                  {!compact && blockHeight >= 15 && (
                     <text
                       x={14}
                       y={labelY}
@@ -497,10 +529,7 @@ export function CapacityVessel({
                       data-over={isOverflow || undefined}
                     >
                       {block.commitment.class === 'MANDATORY' ? '🔒 ' : ''}
-                      {truncate(
-                        block.commitment.name,
-                        Math.max(8, Math.floor((BODY_WIDTH - 56) / 6.2)),
-                      )}
+                      {truncate(block.commitment.name, labelBudget(BODY_WIDTH))}
                     </text>
                   )}
                   {blockHeight >= 9 && (
@@ -657,6 +686,22 @@ function blockLabel(
   ]
     .filter(Boolean)
     .join('. ');
+}
+
+/**
+ * How many characters fit on a block, in the width left beside the units.
+ *
+ * A heuristic rather than a measurement: SVG text has no ellipsis, so the
+ * string has to be cut before it is drawn, and measuring every label with
+ * `getComputedTextLength` would mean a layout pass per block on every render.
+ * 5.8px is Atkinson Hyperlegible's rough average advance at 12px. The reserve
+ * is the left inset (14) plus the units figure right-aligned at bodyWidth-18,
+ * plus a gap wide enough that a long name and a two-digit number do not read as
+ * one word — "Legacy gateway decommiss10" is what a too-small reserve looks
+ * like, and it reads as a rendering fault rather than as truncation.
+ */
+function labelBudget(bodyWidth: number): number {
+  return Math.max(8, Math.floor((bodyWidth - 62) / 5.8));
 }
 
 function truncate(value: string, max: number): string {

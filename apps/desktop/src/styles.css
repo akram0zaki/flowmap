@@ -1748,3 +1748,28 @@ label {
   opacity: 0.5;
   cursor: default;
 }
+
+/* Collapsed the lane keeps its count and stays a drop target — you can still
+   drag work off the board onto it — but gives its width back to the map. */
+.fm-ideas[data-collapsed] {
+  flex-basis: 44px;
+  padding-inline: var(--space-2);
+  align-items: center;
+}
+
+.fm-ideas[data-collapsed] .fm-ideas__head {
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fm-ideas__toggle {
+  min-height: 0;
+  padding: 0 var(--space-2);
+  font-family: var(--font-mono);
+  color: var(--ink-subtle);
+}
+
+/* The mandatory lock at Level 2, where the name is not drawn. */
+.fm-block__lock {
+  font-size: 11px;
+}

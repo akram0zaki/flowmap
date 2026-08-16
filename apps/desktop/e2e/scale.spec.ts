@@ -295,3 +295,81 @@ test.describe('panning the horizon', () => {
     await expect(page.getByRole('group', { name: 'Move across the horizon' })).toHaveCount(0);
   });
 });
+
+/**
+ * The drawing must never be scaled.
+ *
+ * The vessel lays itself out in CSS pixels by matching its viewBox to its
+ * measured width. If the two ever diverge, `preserveAspectRatio` silently
+ * rescales everything — including the type, which is how 11px labels ended up
+ * on screen at about 7px on a 13" board. This asserts the invariant directly,
+ * across the changes that resize a column.
+ */
+test('the vessel viewBox always matches its rendered width', async ({ page }) => {
+  await page.setViewportSize({ width: 1470, height: 956 });
+  await loadScale(page, 25);
+
+  const scales = async () =>
+    page.locator('.fm-vessel svg').evaluateAll((nodes) =>
+      nodes.map((n) => {
+        const svg = n as SVGSVGElement;
+        return +(svg.getBoundingClientRect().width / svg.viewBox.baseVal.width).toFixed(2);
+      }),
+    );
+
+  const allOne = (values: number[]) => values.every((v) => v === 1);
+
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+  await expect.poll(async () => allOne(await scales())).toBe(true);
+
+  // Zoom widens the columns; the viewBox has to follow within the same frame,
+  // not whenever a ResizeObserver gets round to it.
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await expect.poll(async () => allOne(await scales())).toBe(true);
+
+  // And back down, and across a level change.
+  await page.getByRole('button', { name: 'Zoom out' }).click();
+  await expect.poll(async () => allOne(await scales())).toBe(true);
+
+  await page.getByRole('button', { name: 'Areas', exact: true }).click();
+  await expect.poll(async () => allOne(await scales())).toBe(true);
+
+  // A narrower window is the case the observer was there for.
+  await page.setViewportSize({ width: 1100, height: 956 });
+  await expect.poll(async () => allOne(await scales())).toBe(true);
+});
+
+/**
+ * And it must hold *without* `ResizeObserver`.
+ *
+ * The observer does not deliver in a hidden tab and reports only after the
+ * frame in which layout changed — which is how a zoomed board was found laid
+ * out for the old column width and scaled up 1.6x to fill the new one. It is
+ * also simply absent from some older managed-device WebViews. Measuring after
+ * every render is what makes the drawing correct either way, and deleting the
+ * API is the only way to prove the measurement does not lean on it.
+ */
+test('the vessel is laid out correctly with no ResizeObserver at all', async ({ page }) => {
+  await page.addInitScript(() => {
+    Reflect.deleteProperty(globalThis, 'ResizeObserver');
+  });
+  await page.setViewportSize({ width: 1470, height: 956 });
+  await loadScale(page, 25);
+  expect(await page.evaluate(() => 'ResizeObserver' in globalThis)).toBe(false);
+
+  const scales = async () =>
+    page.locator('.fm-vessel svg').evaluateAll((nodes) =>
+      nodes.map((n) => {
+        const svg = n as SVGSVGElement;
+        return +(svg.getBoundingClientRect().width / svg.viewBox.baseVal.width).toFixed(2);
+      }),
+    );
+
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+  await expect.poll(async () => (await scales()).every((v) => v === 1)).toBe(true);
+
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await expect.poll(async () => (await scales()).every((v) => v === 1)).toBe(true);
+});

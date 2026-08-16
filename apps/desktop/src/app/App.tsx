@@ -89,6 +89,7 @@ export function App() {
   const [filter, setFilter] = useState<FilterState>(NO_FILTER);
   const [focusedCommitmentId, setFocusedCommitmentId] = useState<string | null>(null);
   const [showList, setShowList] = useState(true);
+  const [railCollapsed, setRailCollapsed] = useState(false);
   const [announcement, setAnnouncement] = useState('');
 
   // Announcements are debounced through a ref so rapid arrow-key movement does
@@ -744,6 +745,8 @@ export function App() {
             setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId))
           }
           onPickUp={pickUpIdea}
+          collapsed={railCollapsed}
+          onToggleCollapsed={() => setRailCollapsed((was) => !was)}
         />
 
         <PortfolioMap
