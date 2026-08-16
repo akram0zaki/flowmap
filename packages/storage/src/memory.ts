@@ -70,6 +70,29 @@ export function localStoragePersistence(key = 'flowmap.dev.workspace'): Persiste
   };
 }
 
+/**
+ * Reads a persisted snapshot, forwards-compatibly.
+ *
+ * A snapshot written before a bucket existed does not have it, and reading one
+ * straight into `#data` left `undefined` where a record was expected — which
+ * `Object.values` then refused, on the very first load, with a blank page. New
+ * buckets are additive by definition, so merging over an empty snapshot is the
+ * whole migration: absent means empty.
+ *
+ * Anyone who already had a workspace open hit this the moment schema v2 shipped.
+ * The tests never did, because every one of them starts by clearing storage.
+ */
+function readSnapshot(raw: string | null): Snapshot {
+  if (raw === null) return emptySnapshot();
+  try {
+    return { ...emptySnapshot(), ...(JSON.parse(raw) as Partial<Snapshot>) };
+  } catch {
+    // Corrupt storage is not a reason to refuse to start. The workspace is
+    // rebuildable from the provider or the sample; a blank page is not.
+    return emptySnapshot();
+  }
+}
+
 function emptySnapshot(): Snapshot {
   return {
     workspaces: {},
@@ -129,8 +152,7 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
   #data: Snapshot;
 
   constructor(private readonly persistence?: PersistenceAdapter) {
-    const raw = persistence?.read();
-    this.#data = raw ? (JSON.parse(raw) as Snapshot) : emptySnapshot();
+    this.#data = readSnapshot(persistence?.read() ?? null);
   }
 
   async listWorkspaces(): Promise<Array<{ id: WorkspaceId; name: string; updatedAt: string }>> {
@@ -144,10 +166,10 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
     if (!workspace || workspace.deletedAt !== undefined) return null;
 
     const scoped = <T extends { workspaceId: string; deletedAt?: string }>(
-      bucket: Record<string, T>,
+      bucket: Record<string, T> | undefined,
     ): Map<EntityId, T> =>
       new Map(
-        Object.values(bucket)
+        Object.values(bucket ?? {})
           .filter((e) => e.workspaceId === workspaceId && e.deletedAt === undefined)
           .map((e) => [(e as unknown as { id: EntityId }).id, e]),
       );

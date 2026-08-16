@@ -133,3 +133,81 @@ describe('MemoryWorkspaceRepository', () => {
     expect(state?.themes?.size ?? 0).toBe(0);
   });
 });
+
+/**
+ * The failure a real user hit and no test did: a workspace saved before a
+ * bucket existed. Every test here starts from empty, so schema v2 shipped with
+ * `Object.values(undefined)` on the first load of any existing workspace — a
+ * blank page and a console error.
+ */
+describe('reading a snapshot written by an older build', () => {
+  const olderSnapshot = JSON.stringify({
+    workspaces: {
+      [WS]: {
+        id: WS,
+        workspaceId: WS,
+        name: 'Saved before schema v2',
+        schemaVersion: 1,
+        entityVersion: 1,
+        createdAt: NOW,
+        createdBy: 'a',
+        updatedAt: NOW,
+        updatedBy: 'a',
+      },
+    },
+    teams: {},
+    teamQuarters: {},
+    commitments: {},
+    footprints: {},
+    events: [],
+    outbox: [],
+  });
+
+  function persistence(initial: string | null) {
+    let value = initial;
+    return {
+      read: () => value,
+      write: (next: string) => {
+        value = next;
+      },
+      clear: () => {
+        value = null;
+      },
+    };
+  }
+
+  it('loads it instead of throwing on the buckets it does not have', async () => {
+    const repo = new MemoryWorkspaceRepository(persistence(olderSnapshot));
+
+    const state = await repo.load(WS);
+    expect(state?.workspace.name).toBe('Saved before schema v2');
+    // Absent means empty, which is the only sensible reading of a bucket that
+    // did not exist when the snapshot was written.
+    expect(state?.products?.size).toBe(0);
+    expect(state?.people?.size).toBe(0);
+    expect(state?.milestones?.size).toBe(0);
+  });
+
+  it('can then write the new kinds into it', async () => {
+    const repo = new MemoryWorkspaceRepository(persistence(olderSnapshot));
+
+    await repo.apply({
+      workspaceId: WS,
+      changes: [change('PRODUCT_SERVICE', 'p-1')],
+      events: [],
+      command: command('Seed'),
+    });
+
+    expect((await repo.load(WS))?.products?.has('p-1')).toBe(true);
+  });
+
+  it('starts from empty rather than refusing to start when storage is corrupt', async () => {
+    const repo = new MemoryWorkspaceRepository(persistence('{ this is not json'));
+    expect(await repo.load(WS)).toBeNull();
+  });
+
+  it('clears cleanly, even from an older snapshot', async () => {
+    const repo = new MemoryWorkspaceRepository(persistence(olderSnapshot));
+    await expect(repo.clearLocalData(WS)).resolves.not.toThrow();
+  });
+});
