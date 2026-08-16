@@ -16,7 +16,15 @@ import type { BlockModel, BoardModel, CellModel } from './layout.js';
 export type ZoomLevel = 1 | 2 | 3;
 
 export const ZOOM_THRESHOLDS = { level2: 0.6, level3: 1.4 } as const;
-export const ZOOM_RANGE = { min: 0.35, max: 2.5 } as const;
+/**
+ * The top of the range is not arbitrary: it is the zoom at which the smallest
+ * footprint the size mapping allows (XS, five units) reaches a 24 px pointer
+ * target. A block's height *is* its size, so that target cannot be met by
+ * padding — only by being able to zoom far enough in. 2.5 was enough when a
+ * column was the full width of the vessel drawing; once columns shrink to fit
+ * the window it no longer is.
+ */
+export const ZOOM_RANGE = { min: 0.35, max: 4 } as const;
 
 export function levelForScale(scale: number): ZoomLevel {
   if (scale < ZOOM_THRESHOLDS.level2) return 1;

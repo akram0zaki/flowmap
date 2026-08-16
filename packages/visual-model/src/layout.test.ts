@@ -28,6 +28,7 @@ import {
   INITIAL_VIEW,
   clampScale,
   isFilterActive,
+  ZOOM_RANGE,
 } from './zoom.js';
 
 const NOW = '2026-08-15T09:00:00Z';
@@ -396,8 +397,22 @@ describe('semantic zoom', () => {
   });
 
   it('clamps scale to the usable range', () => {
-    expect(clampScale(0.01)).toBe(0.35);
-    expect(clampScale(99)).toBe(2.5);
+    expect(clampScale(0.01)).toBe(ZOOM_RANGE.min);
+    expect(clampScale(99)).toBe(ZOOM_RANGE.max);
+  });
+
+  /**
+   * The top of the range is load-bearing, not cosmetic: it has to be far enough
+   * to bring the smallest footprint the size mapping allows up to a 24 px
+   * pointer target, because a block's height *is* its size and no amount of
+   * padding can do it instead.
+   */
+  it('reaches far enough for an XS block to become a real pointer target', () => {
+    // Five units is the smallest the default size mapping allows, and a unit is
+    // two pixels at scale 1 (`UNIT_PX` in the token package, which a pure
+    // package may not import — so it is restated here rather than reached for).
+    const xsBlockPx = 5 * 2 * ZOOM_RANGE.max;
+    expect(xsBlockPx).toBeGreaterThanOrEqual(24);
   });
 
   it('keeps level and scale consistent through the view state', () => {

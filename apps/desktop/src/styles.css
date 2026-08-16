@@ -365,6 +365,19 @@ label {
 
 /* ── The grid ──────────────────────────────────────────────────────────── */
 
+/* The steppers sit above the board, right-aligned over the scroll area. */
+.fm-map {
+  position: relative;
+}
+
+.fm-map > .fm-steps {
+  position: absolute;
+  top: calc(var(--space-4) * -1);
+  right: var(--space-7);
+  z-index: var(--z-canvas-overlay);
+  background: var(--ground);
+}
+
 .fm-map {
   /* Consumed by the inline grid-template-columns on .fm-grid. If this is
      undefined the whole declaration is invalid and the grid collapses to one
@@ -378,6 +391,11 @@ label {
 
 .fm-map__scroll {
   overflow: auto;
+  /* macOS hides overlay scrollbars until something scrolls, so a mouse-only
+     user had no way to tell there was more board — and no way to reach it.
+     A permanent, quiet gutter is the cheapest honest fix. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
   padding: var(--space-6) var(--space-7) var(--space-7) var(--space-6);
   /* A quarter is an atom. Left free, the scroll parks a column half under the
      pinned team column, and the masked half of "2026-Q2 / 13%" reads as
@@ -393,9 +411,13 @@ label {
   scroll-snap-type: none;
 }
 
+/* No `min-width: max-content`. That made the *longest caption* set the column
+   width — "5 commitments · 55 fixed · 10 carried in" does not wrap, so the
+   board overflowed sideways even when it would have fitted the window, and a
+   mouse without a horizontal wheel could not reach the last quarter. The cells
+   keep their own minimum; below that the board scrolls, and only then. */
 .fm-grid {
   display: grid;
-  min-width: max-content;
   row-gap: var(--space-6);
 }
 
@@ -1670,4 +1692,52 @@ label {
   color: var(--ink-subtle);
   text-align: center;
   border-inline: 1px solid var(--border);
+}
+
+/* WebKit needs the parts spelled out; `scrollbar-width` alone is ignored. */
+.fm-map__scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.fm-map__scroll::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
+.fm-map__scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 2px solid var(--surface);
+  border-radius: var(--radius-sm);
+}
+
+.fm-map__scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-subtle);
+}
+
+/* Stepping the horizon a quarter at a time. The board is navigable by keyboard
+   already, but that needs the grid focused first; these work with a plain mouse
+   and are visible without having to discover anything. */
+.fm-steps {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.fm-steps button {
+  min-height: 26px;
+  padding: var(--space-1) var(--space-4);
+  font-family: var(--font-mono);
+  border: none;
+  border-radius: 0;
+}
+
+.fm-steps button + button {
+  border-left: 1px solid var(--border);
+}
+
+.fm-steps button:disabled {
+  color: var(--ink-subtle);
+  opacity: 0.5;
+  cursor: default;
 }

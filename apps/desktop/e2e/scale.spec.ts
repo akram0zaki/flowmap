@@ -244,3 +244,54 @@ test.describe('zoom', () => {
     expect(await smallest()).toBeGreaterThanOrEqual(24);
   });
 });
+
+/**
+ * Reaching the far quarters with a plain mouse.
+ *
+ * The board scrolls sideways, macOS hides the scrollbar until something moves,
+ * and a mouse without a horizontal wheel cannot pan a scroll container at all —
+ * so the last quarter was unreachable with the commonest input device there is.
+ */
+test.describe('panning the horizon', () => {
+  test('fits the window when it can, rather than overflowing on caption length', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1600, height: 950 });
+    await loadScale(page, 25);
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+
+    // Every quarter of the horizon is on screen at Overview on a normal window.
+    const scroller = page.locator('.fm-map__scroll');
+    const overflow = await scroller.evaluate((n) => n.scrollWidth - n.clientWidth);
+    expect(overflow, 'the board overflowed sideways when it did not need to').toBeLessThanOrEqual(
+      1,
+    );
+  });
+
+  test('offers steppers when there is more board, and moves by a column', async ({ page }) => {
+    // Narrow enough that six quarters genuinely cannot fit.
+    await page.setViewportSize({ width: 900, height: 900 });
+    await loadScale(page, 25);
+    await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+    const later = page.getByRole('button', { name: 'Later quarters' });
+    await expect(later).toBeEnabled();
+    // Nowhere to go left yet, so that direction says so rather than pretending.
+    await expect(page.getByRole('button', { name: 'Earlier quarters' })).toBeDisabled();
+
+    const scroller = page.locator('.fm-map__scroll');
+    const before = await scroller.evaluate((n) => n.scrollLeft);
+    await later.click();
+    await expect.poll(() => scroller.evaluate((n) => n.scrollLeft)).toBeGreaterThan(before);
+
+    await expect(page.getByRole('button', { name: 'Earlier quarters' })).toBeEnabled();
+  });
+
+  test('hides the steppers entirely when the whole horizon fits', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 950 });
+    await loadScale(page, 25);
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+
+    await expect(page.getByRole('group', { name: 'Move across the horizon' })).toHaveCount(0);
+  });
+});

@@ -211,6 +211,48 @@ export function PortfolioMap({
     return () => node.removeEventListener('wheel', onWheel);
   }, [onWheelZoom]);
 
+  /**
+   * Whether the board has anywhere left to go, and how to take it there.
+   *
+   * A mouse with no horizontal wheel has no way to pan a scroll container, and
+   * on macOS the scrollbar is hidden until something moves — so without this
+   * the far quarters were simply unreachable with the most common input device
+   * in the building.
+   */
+  const [pan, setPan] = useState({ left: false, right: false });
+
+  const measurePan = useCallback(() => {
+    const node = gridRef.current;
+    if (!node) return;
+    setPan({
+      left: node.scrollLeft > 1,
+      right: node.scrollLeft + node.clientWidth < node.scrollWidth - 1,
+    });
+  }, []);
+
+  useEffect(() => {
+    const node = gridRef.current;
+    if (!node) return undefined;
+    measurePan();
+
+    const observer = new ResizeObserver(measurePan);
+    observer.observe(node);
+    node.addEventListener('scroll', measurePan);
+    return () => {
+      observer.disconnect();
+      node.removeEventListener('scroll', measurePan);
+    };
+  }, [measurePan, board.quarters.length, level]);
+
+  /** One column at a time, so the step matches the unit the board is made of. */
+  const step = useCallback((direction: -1 | 1) => {
+    const node = gridRef.current;
+    if (!node) return;
+    const column = node.querySelector<HTMLElement>('[data-column="1"]');
+    const width = column?.getBoundingClientRect().width ?? node.clientWidth / 3;
+    node.scrollBy({ left: direction * width, behavior: 'smooth' });
+  }, []);
+
   // Centre the current quarter on first render, as the spec requires.
   useEffect(() => {
     const node = gridRef.current;
@@ -221,6 +263,27 @@ export function PortfolioMap({
 
   return (
     <div className="fm-map" data-level={level}>
+      {(pan.left || pan.right) && (
+        <div className="fm-steps" role="group" aria-label={t('map.pan')}>
+          <button
+            type="button"
+            disabled={!pan.left}
+            aria-label={t('map.panEarlier')}
+            onClick={() => step(-1)}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            disabled={!pan.right}
+            aria-label={t('map.panLater')}
+            onClick={() => step(1)}
+          >
+            ›
+          </button>
+        </div>
+      )}
+
       <div className="fm-map__scroll" ref={gridRef}>
         <div
           role="grid"

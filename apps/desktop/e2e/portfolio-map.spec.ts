@@ -1130,6 +1130,9 @@ test('shift-dragging between two blocks draws a dependency', async ({ page }) =>
     .getByRole('gridcell', { name: /^Platform\. 2026-Q3/ })
     .getByRole('gridcell', { name: /^Container platform upgrade/ });
 
+  // Both ends have to be on screen: a hit test only sees what is rendered, and
+  // the columns size to the window now rather than to the longest caption.
+  await target.scrollIntoViewIfNeeded();
   await source.scrollIntoViewIfNeeded();
   const a = await source.boundingBox();
   const b = await target.boundingBox();
