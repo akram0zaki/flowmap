@@ -493,3 +493,64 @@ test('Escape abandons a drag without changing anything', async ({ page }) => {
   await expect(page.locator('.fm-carry--keyboard')).toHaveCount(0);
   expect(await page.locator('.fm-idea').count()).toBe(before);
 });
+
+/**
+ * The shipped bug: a drag fast enough to produce one `pointermove` before the
+ * release. With the drag held in React state, the release read `null` because
+ * the render had not committed — nothing was placed and the carry chip stuck to
+ * the cursor. `steps: 1` is that drag.
+ */
+test('a drag with a single move event still places the work', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const idea = page.locator('.fm-idea').filter({ hasText: 'Request to pay' });
+  const cell = page.locator('[data-drop-team][data-drop-quarter="2026-Q4"]').first();
+  const from = await idea.boundingBox();
+  const to = await cell.boundingBox();
+  if (!from || !to) throw new Error('missing geometry');
+
+  await page.mouse.move(from.x + 40, from.y + 15);
+  await page.mouse.down();
+  // One move, straight to the target, then release.
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 1 });
+  await page.mouse.up();
+
+  await expect(cell).toContainText('Request to pay');
+  await expect(page.locator('.fm-carry')).toHaveCount(0);
+});
+
+test('a drag held against the edge scrolls the board to reach the far quarters', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+
+  const scroller = page.locator('.fm-map__scroll');
+  await scroller.evaluate((n) => {
+    n.scrollLeft = 0;
+  });
+
+  const idea = page.locator('.fm-idea').first();
+  const from = await idea.boundingBox();
+  const box = await scroller.boundingBox();
+  if (!from || !box) throw new Error('missing geometry');
+
+  await page.mouse.move(from.x + 40, from.y + 15);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 90, from.y + 40, { steps: 3 });
+  // Hold near the right edge. Without this the last quarters cannot be reached
+  // by pointer at all — a hit test only sees what is on screen.
+  await page.mouse.move(box.x + box.width - 20, from.y + 60, { steps: 3 });
+  await page.waitForTimeout(500);
+
+  const scrolled = await scroller.evaluate((n) => n.scrollLeft);
+  await page.mouse.up();
+
+  expect(scrolled).toBeGreaterThan(0);
+  // Snapping stands down for the drag and comes back after it.
+  await expect(scroller).not.toHaveAttribute('data-dragging', 'true');
+});

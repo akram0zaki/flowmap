@@ -387,6 +387,12 @@ label {
   scroll-padding-left: calc(var(--fm-row-header) + var(--space-6));
 }
 
+/* Snapping and an edge-scroll fight each other: the snap keeps pulling the
+   board back while the drag pushes it on. It stands down until the drop. */
+.fm-map__scroll[data-dragging] {
+  scroll-snap-type: none;
+}
+
 .fm-grid {
   display: grid;
   min-width: max-content;
@@ -1001,6 +1007,16 @@ label {
 }
 
 /* ── Placing work ──────────────────────────────────────────────────────── */
+
+/* Anything you can pick up. Without these the browser competes with the drag:
+   it starts a text selection out of the label, or a touch scroll, and the
+   gesture is cancelled halfway with no explanation. */
+.fm-idea,
+.fm-block {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
 
 /* The piece under the cursor. Deliberately small: the answer to "will it fit"
    is being drawn on the board, and a large ghost would cover the thing you are

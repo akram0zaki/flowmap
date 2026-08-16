@@ -176,7 +176,7 @@ export function App() {
     [board, moveFootprint, commitIdeaInto, announce],
   );
 
-  const { placement, beginPointer, beginKeyboard, aim, drop, cancel } = usePlacement({
+  const { placement, carryRef, beginPointer, beginKeyboard, aim, drop, cancel } = usePlacement({
     onDrop: applyDrop,
     onCancel: (payload) => announce(t('drop.cancelled', { name: payload.name })),
     announce,
@@ -347,13 +347,10 @@ export function App() {
       </div>
 
       {/* The piece that follows the cursor. Small and quiet — the answer is on
-          the board, not under the pointer. */}
-      {placement?.at && (
-        <div
-          className="fm-carry"
-          aria-hidden="true"
-          style={{ transform: `translate(${placement.at.x + 12}px, ${placement.at.y + 12}px)` }}
-        >
+          the board, not under the pointer. Positioned by `usePlacement` writing
+          to this node's style, never through a render. */}
+      {placement?.via === 'pointer' && (
+        <div className="fm-carry" ref={carryRef} aria-hidden="true">
           {placement.payload.name} · {placement.payload.units}
         </div>
       )}
