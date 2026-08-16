@@ -40,6 +40,7 @@ import { utilisationPercent, type QuarterId } from '@flowmap/domain';
 
 import { CapacityVessel, type VesselBlock } from './CapacityVessel.jsx';
 import { DependencyLayer, type DependencyEdge } from './DependencyLayer.jsx';
+import { observeResize } from '../state/observe-resize.js';
 import { t } from '../i18n/t.js';
 
 export type PortfolioMapProps = {
@@ -235,11 +236,10 @@ export function PortfolioMap({
     if (!node) return undefined;
     measurePan();
 
-    const observer = new ResizeObserver(measurePan);
-    observer.observe(node);
+    const unobserve = observeResize(node, measurePan);
     node.addEventListener('scroll', measurePan);
     return () => {
-      observer.disconnect();
+      unobserve();
       node.removeEventListener('scroll', measurePan);
     };
   }, [measurePan, board.quarters.length, level]);
@@ -296,9 +296,15 @@ export function PortfolioMap({
           className="fm-grid"
           tabIndex={0}
           onKeyDown={onKeyDown}
-          style={{
-            gridTemplateColumns: `var(--fm-row-header) repeat(${board.quarters.length}, 1fr)`,
-          }}
+          style={
+            {
+              gridTemplateColumns: `var(--fm-row-header) repeat(${board.quarters.length}, 1fr)`,
+              // Zoom magnifies both axes. Growing only the block heights made
+              // zooming feel useless on a narrow screen: the labels were what
+              // you could not read, and they never got any more room.
+              '--fm-zoom': scale,
+            } as CSSProperties
+          }
         >
           <div role="row" className="fm-grid__head" style={{ display: 'contents' }}>
             <div role="columnheader" className="fm-grid__corner">

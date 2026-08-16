@@ -17,7 +17,14 @@
  * a list companion that must show identical totals.
  */
 
-import { useId, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import type { CapacitySummary, CapacityFootprint, Commitment, TeamQuarter } from '@flowmap/domain';
 import { utilisationPercent } from '@flowmap/domain';
 import {
@@ -29,6 +36,7 @@ import {
   patternPitch,
 } from '@flowmap/ui';
 
+import { observeResize } from '../state/observe-resize.js';
 import { t } from '../i18n/t.js';
 
 export type VesselBlock = {
@@ -83,7 +91,13 @@ const RESIZE_GRIP = 10;
 
 const AXIS_WIDTH = 34;
 const COMPACT_AXIS_WIDTH = 20;
-const BODY_WIDTH = 260;
+
+/**
+ * Width the drawing assumes before it has measured itself, and the narrowest it
+ * will draw into. Below this the labels have nowhere to go.
+ */
+const FALLBACK_WIDTH = 294;
+const MIN_BODY_WIDTH = 120;
 const TOP_PAD = 28;
 const BOTTOM_PAD = 24;
 
@@ -110,6 +124,38 @@ export function CapacityVessel({
   // The axis is the first thing to go when space is tight; the vessel shape and
   // the caption still carry the meaning.
   const axisWidth = compact ? COMPACT_AXIS_WIDTH : AXIS_WIDTH;
+  const overCapacity = summary.overflow > 0;
+
+  /**
+   * One viewBox unit is one CSS pixel.
+   *
+   * The drawing used to be laid out in a fixed 294-unit box and left to
+   * `preserveAspectRatio` to fit the cell — which meant that on a narrow column
+   * *everything* was scaled down, including the text. At six quarters on a 13"
+   * screen that put 11px labels on screen at about 7px, and zooming did not
+   * help: zoom grows the viewBox height, so blocks got taller while the type,
+   * measured in the same shrinking units, stayed exactly as small.
+   *
+   * Measuring the element and matching the viewBox to it means the scale is
+   * always 1: type is the size it says it is, and zoom buys vertical room
+   * rather than a magnifying glass over a shrunken picture.
+   */
+  const frameRef = useRef<HTMLElement | null>(null);
+  const [measuredWidth, setMeasuredWidth] = useState(FALLBACK_WIDTH);
+
+  const measure = useCallback(() => {
+    const node = frameRef.current;
+    if (node) setMeasuredWidth(Math.max(node.clientWidth, axisWidth + MIN_BODY_WIDTH));
+  }, [axisWidth]);
+
+  useEffect(() => {
+    measure();
+    return observeResize(frameRef.current, measure);
+  }, [measure]);
+
+  // Room on the right for the overflow bracket, when one is drawn.
+  const rightPad = overCapacity && !compact ? 34 : 4;
+  const BODY_WIDTH = Math.max(MIN_BODY_WIDTH, measuredWidth - axisWidth - rightPad);
 
   // The axis spans the effective capacity, or the load when work overflows past
   // it — otherwise the spill would be drawn outside the viewBox.
@@ -123,7 +169,6 @@ export function CapacityVessel({
   const y = (units: number) => TOP_PAD + bodyHeight - units * unitPx;
 
   const percent = utilisationPercent(summary);
-  const overCapacity = summary.overflow > 0;
 
   // Stack from the top of the reserve plinth upward. A block being resized is
   // laid out at its provisional size, so everything above it moves with the
@@ -179,6 +224,7 @@ export function CapacityVessel({
 
   return (
     <figure
+      ref={frameRef}
       className="fm-vessel"
       data-over-capacity={overCapacity || undefined}
       data-closed={teamQuarter.closedAt !== undefined || undefined}
@@ -192,7 +238,7 @@ export function CapacityVessel({
         // of white — the block heights stay proportional either way.
         width="100%"
         height={height}
-        viewBox={`0 0 ${axisWidth + BODY_WIDTH + (overCapacity && !compact ? 34 : 4)} ${height}`}
+        viewBox={`0 0 ${measuredWidth} ${height}`}
         preserveAspectRatio="xMidYMax meet"
       >
         <defs>
@@ -428,10 +474,10 @@ export function CapacityVessel({
                       className="fm-block__grip"
                       onPointerDown={(e) => {
                         e.stopPropagation();
-                        // The SVG is scaled to fit its cell, so a viewBox unit
-                        // is not a screen pixel. Handing the caller the viewBox
-                        // figure made the edge lag the cursor by whatever the
-                        // scale happened to be.
+                        // A viewBox unit is a CSS pixel now, so the conversion
+                        // is the identity — but it is still measured rather
+                        // than assumed, because the day that stops being true
+                        // the edge would silently lag the cursor again.
                         const svg = e.currentTarget.ownerSVGElement;
                         const scale = svg ? svg.getBoundingClientRect().height / height : 1;
                         onResizeStart(block.footprint.id, e, unitPx * scale);
@@ -451,7 +497,10 @@ export function CapacityVessel({
                       data-over={isOverflow || undefined}
                     >
                       {block.commitment.class === 'MANDATORY' ? '🔒 ' : ''}
-                      {truncate(block.commitment.name, 30)}
+                      {truncate(
+                        block.commitment.name,
+                        Math.max(8, Math.floor((BODY_WIDTH - 56) / 6.2)),
+                      )}
                     </text>
                   )}
                   {blockHeight >= 9 && (

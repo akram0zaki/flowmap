@@ -519,7 +519,10 @@ label {
   scroll-snap-align: start;
   display: flex;
   align-items: stretch;
-  min-width: 176px;
+  /* Scales with zoom, so zooming in buys the labels room as well as the
+     blocks. At 100% six quarters fit a laptop; past that the board scrolls,
+     which is what the steppers and the scrollbar are for. */
+  min-width: calc(176px * var(--fm-zoom, 1));
   padding-right: var(--space-6);
   transition: opacity var(--motion-base) var(--ease-out);
 }
@@ -624,7 +627,7 @@ label {
 .fm-tick__label {
   fill: var(--ink-subtle);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .fm-block {
@@ -684,9 +687,13 @@ label {
 /* A halo, not a plate. Blocks under the overflow hatch would otherwise put
    11px text on top of 1px stripes, which is unreadable at any contrast ratio.
    `paint-order` draws the stroke first so the fill stays crisp. */
+/* A viewBox unit is a CSS pixel now, so these are the sizes that actually
+   reach the screen. They used to be divided by whatever the column-to-viewBox
+   ratio happened to be, which on a six-quarter 13" board was about 0.65 — 11px
+   type arriving at 7px, and no amount of zooming fixed it. */
 .fm-block__label {
   fill: var(--ink);
-  font-size: 11px;
+  font-size: 12px;
   paint-order: stroke fill;
   stroke: var(--surface);
   stroke-width: 3px;
@@ -702,7 +709,7 @@ label {
 .fm-block__units {
   fill: var(--ink);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   paint-order: stroke fill;
   stroke: var(--surface);
   stroke-width: 3px;

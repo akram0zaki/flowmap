@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Dependency } from '@flowmap/domain';
 
+import { observeResize } from '../state/observe-resize.js';
 import { t } from '../i18n/t.js';
 
 export type DependencyEdge = {
@@ -93,13 +94,12 @@ export function DependencyLayer({
       frame.current = requestAnimationFrame(measure);
     };
 
-    const observer = new ResizeObserver(schedule);
-    observer.observe(scroller);
+    const unobserve = observeResize(scroller, schedule);
     scroller.addEventListener('scroll', schedule);
     window.addEventListener('resize', schedule);
     return () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
-      observer.disconnect();
+      unobserve();
       scroller.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
     };
