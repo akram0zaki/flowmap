@@ -26,7 +26,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragPayload } from '@flowmap/visual-model';
 
-export type DropTarget = { readonly teamId: string; readonly quarterId: string };
+/**
+ * Where a drop would land. The Ideas rail is a destination in its own right —
+ * taking work off the board is the same gesture as putting it on, run backwards.
+ */
+export type DropTarget =
+  | { readonly kind: 'CELL'; readonly teamId: string; readonly quarterId: string }
+  | { readonly kind: 'RAIL' };
 
 export type PlacementState = {
   readonly payload: DragPayload;
@@ -41,6 +47,12 @@ const DRAG_THRESHOLD_PX = 4;
 
 /** Pixels per frame when holding a drag against the edge of the board. */
 const EDGE_SCROLL_PX = 14;
+
+/** Identity of a target, for deciding whether anything a component draws moved. */
+function describeTarget(target: DropTarget | null | undefined): string {
+  if (!target) return '';
+  return target.kind === 'RAIL' ? 'rail' : `${target.teamId}:${target.quarterId}`;
+}
 
 export type UsePlacementOptions = {
   readonly onDrop: (payload: DragPayload, target: DropTarget) => void;
@@ -73,9 +85,7 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
     const previous = drag.current;
     drag.current = next;
 
-    const sameTarget =
-      previous?.target?.teamId === next?.target?.teamId &&
-      previous?.target?.quarterId === next?.target?.quarterId;
+    const sameTarget = describeTarget(previous?.target) === describeTarget(next?.target);
     if (previous && next && previous.payload === next.payload && sameTarget) return;
 
     setPlacement(next);
@@ -83,13 +93,16 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
 
   /** Which container is under a point. The DOM is the authority on hit areas. */
   const targetAt = useCallback((x: number, y: number): DropTarget | null => {
-    const cell = document
-      .elementFromPoint(x, y)
-      ?.closest<HTMLElement>('[data-drop-team][data-drop-quarter]');
+    const under = document.elementFromPoint(x, y);
+    if (!under) return null;
+
+    if (under.closest('[data-drop-rail]')) return { kind: 'RAIL' };
+
+    const cell = under.closest<HTMLElement>('[data-drop-team][data-drop-quarter]');
     if (!cell) return null;
     const teamId = cell.dataset['dropTeam'];
     const quarterId = cell.dataset['dropQuarter'];
-    return teamId && quarterId ? { teamId, quarterId } : null;
+    return teamId && quarterId ? { kind: 'CELL', teamId, quarterId } : null;
   }, []);
 
   const cancel = useCallback(() => {
@@ -203,10 +216,7 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
       edgeScroll(event.clientX);
 
       const target = latest.current.targetAt(event.clientX, event.clientY);
-      const changed =
-        target?.teamId !== current.target?.teamId ||
-        target?.quarterId !== current.target?.quarterId;
-      if (!changed) return;
+      if (describeTarget(target) === describeTarget(current.target)) return;
 
       latest.current.set({ ...current, target });
       if (target) latest.current.announce(latest.current.describe(current.payload, target));

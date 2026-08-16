@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CapacitySummary, TeamQuarter } from '@flowmap/domain';
 
-import { defaultDropUnits, previewDrop, type DragPayload } from './placement.js';
+import { defaultDropUnits, previewDrop, previewRemoval, type DragPayload } from './placement.js';
 import type { BlockModel, CellModel } from './layout.js';
 
 const NOW = '2026-08-15T09:00:00Z';
@@ -98,6 +98,9 @@ const carried: DragPayload = {
   units: 20,
   fromTeamId: 't-2',
   fromQuarterId: '2026-Q4',
+  lifecycle: 'COMMITTED',
+  footprintCount: 1,
+  fromClosed: false,
 };
 
 describe('previewDrop', () => {
@@ -208,6 +211,45 @@ describe('previewDrop', () => {
     expect(preview.percent).toBeNull();
     expect(preview.percentDelta).toBeNull();
     expect(preview.allowed).toBe(true);
+  });
+});
+
+describe('previewRemoval', () => {
+  it('returns work to the lane when this was its only placement', () => {
+    const preview = previewRemoval(carried);
+    expect(preview).toMatchObject({ allowed: true, returnsToRail: true, units: 20 });
+  });
+
+  // Work placed on several teams is only unplaced from one of them; the
+  // commitment is still committed elsewhere and must not reappear as demand.
+  it('only unplaces when the commitment has other placements', () => {
+    const preview = previewRemoval({ ...carried, footprintCount: 3 });
+    expect(preview).toMatchObject({ allowed: true, returnsToRail: false });
+  });
+
+  it('refuses to send work in delivery back to the lane', () => {
+    const preview = previewRemoval({ ...carried, lifecycle: 'IN_DELIVERY' });
+    expect(preview).toMatchObject({ allowed: false, refusal: 'NOT_REVERTIBLE' });
+  });
+
+  // Only the last placement is a lifecycle question. Unplacing one of several
+  // is just capacity, whatever state the work is in.
+  it('still unplaces one of several placements of work in delivery', () => {
+    const preview = previewRemoval({ ...carried, lifecycle: 'IN_DELIVERY', footprintCount: 2 });
+    expect(preview).toMatchObject({ allowed: true, returnsToRail: false });
+  });
+
+  it('has nothing to remove for an Idea, which is already in the lane', () => {
+    expect(previewRemoval(idea)).toMatchObject({ allowed: false, refusal: 'IDEA_NOT_PLACED' });
+  });
+
+  // A settled quarter is history. The domain refuses to edit it, so the drag
+  // must refuse too rather than promising something the command will decline.
+  it('refuses to take work out of a closed quarter', () => {
+    expect(previewRemoval({ ...carried, fromClosed: true })).toMatchObject({
+      allowed: false,
+      refusal: 'FROM_CLOSED_QUARTER',
+    });
   });
 });
 

@@ -27,6 +27,9 @@ export type IdeasLaneProps = {
   /** Pick this Idea up to place it — pointer press, or Space. */
   readonly onPickUp: (commitmentId: string, event?: ReactPointerEvent) => void;
   readonly draggingCommitmentId: string | null;
+  /** Work is being held over the lane: 'ok' to take it off the board, or 'no'. */
+  readonly dropState: 'ok' | 'no' | null;
+  readonly dropNote: string | null;
 };
 
 /** Ideas that need a decision to be made rank above ones that need a name. */
@@ -39,6 +42,8 @@ export function IdeasLane({
   onSelect,
   onPickUp,
   draggingCommitmentId,
+  dropState,
+  dropNote,
 }: IdeasLaneProps) {
   const ready = ideas.filter((idea) => readiness.get(idea.commitmentId)?.readyToPlace).length;
 
@@ -53,7 +58,15 @@ export function IdeasLane({
   });
 
   return (
-    <section className="fm-ideas" aria-label={t('map.ideasLane')}>
+    // A drop target as well as a source: the lane is where work comes from and
+    // where it goes back to, and both directions are the same gesture.
+    <section
+      className="fm-ideas"
+      aria-label={t('map.ideasLane')}
+      data-drop-rail=""
+      data-drop={dropState ?? undefined}
+    >
+      {dropNote !== null && <p className="fm-ideas__drop">{dropNote}</p>}
       <div className="fm-ideas__head">
         <h2>{t('map.ideasLane')}</h2>
         <span className="fm-ideas__count">{ideas.length}</span>
@@ -65,6 +78,7 @@ export function IdeasLane({
         <>
           {ready > 0 && <p className="fm-ideas__ready">{t('idea.readyCount', { count: ready })}</p>}
           <p className="fm-ideas__hint">{t('drop.railHint')}</p>
+          <p className="fm-ideas__hint">{t('remove.hint')}</p>
 
           <ul>
             {ordered.map((idea) => {

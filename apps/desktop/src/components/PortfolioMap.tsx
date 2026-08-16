@@ -56,7 +56,8 @@ export type PortfolioMapProps = {
   /** Work currently in the hand, if any — drives the drop preview. */
   readonly dragging: DragPayload | null;
   /** Where a keyboard drag is aimed. The pointer aims itself, by hit-testing. */
-  readonly dragTarget: { teamId: string; quarterId: string } | null;
+  readonly dragTarget:
+    { kind: 'CELL'; teamId: string; quarterId: string } | { kind: 'RAIL' } | null;
   readonly onPickUpBlock: (
     footprintId: string,
     teamId: string,
@@ -64,6 +65,7 @@ export type PortfolioMapProps = {
     event?: ReactPointerEvent,
   ) => void;
   readonly onAimDrag: (teamId: string, quarterId: QuarterId) => void;
+  readonly onRemoveBlock: (footprintId: string, teamId: string, quarterId: QuarterId) => void;
   readonly onDropHere: () => void;
 };
 
@@ -83,6 +85,7 @@ export function PortfolioMap({
   dragTarget,
   onPickUpBlock,
   onAimDrag,
+  onRemoveBlock,
   onDropHere,
 }: PortfolioMapProps) {
   // Roving focus: the grid is one tab stop, arrows move within it.
@@ -247,7 +250,9 @@ export function PortfolioMap({
                 // after it: what would this become, and would it take this.
                 const preview = dragging ? previewDrop(cell, dragging) : null;
                 const aimedHere =
-                  dragTarget?.teamId === cell.teamId && dragTarget.quarterId === cell.quarterId;
+                  dragTarget?.kind === 'CELL' &&
+                  dragTarget.teamId === cell.teamId &&
+                  dragTarget.quarterId === cell.quarterId;
 
                 return (
                   <div
@@ -305,6 +310,9 @@ export function PortfolioMap({
                         }}
                         onPickUp={(footprintId: string, event?: ReactPointerEvent) =>
                           onPickUpBlock(footprintId, cell.teamId, cell.quarterId, event)
+                        }
+                        onRemove={(footprintId: string) =>
+                          onRemoveBlock(footprintId, cell.teamId, cell.quarterId)
                         }
                       />
                     ) : (

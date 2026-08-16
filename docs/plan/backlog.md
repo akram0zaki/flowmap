@@ -136,7 +136,7 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 | --- | --------- | --------------------------------------------------- | :--: | --------- | ----------------------------------------------------------------------------------- |
 | ✅  | M2-A11Y-1 | Canvas grid semantics + roving tabindex             |  M   | M2-MAP-1  | `role="grid"`, `gridcell` per block, labels carry name/units/lifecycle/signal count |
 | ✅  | M2-A11Y-2 | Move mode                                           |  M   | M2-A11Y-1 | Arrows choose target; live headroom announced; `Enter` commits; `Esc` restores      |
-| ⬜  | M2-A11Y-3 | Resize mode + keyboard dependency drawing           |  S   | M2-A11Y-2 | Same command emitted as the pointer path                                            |
+| 🔵  | M2-A11Y-3 | Resize mode + keyboard dependency drawing           |  S   | M2-A11Y-2 | Same command emitted as the pointer path                                            |
 | ✅  | M2-A11Y-4 | Live-region announcements for capacity consequences |  S   | M2-A11Y-2 | Overflow, headroom change, and rule outcomes announced as they happen               |
 | ✅  | M2-A11Y-5 | List companion for every M2 view                    |  M   | M2-MAP-8  | `Ctrl/Cmd + L`; totals match; sortable; exportable                                  |
 | ⬜  | M2-A11Y-6 | Reduced motion + high contrast verified end to end  |  S   | M1-REP-6  | No state cue lost with motion at 0 ms; high contrast raises every signal fg ≥ 7:1   |

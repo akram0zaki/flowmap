@@ -1132,3 +1132,30 @@ label {
   background: var(--accent-surface);
   border-radius: var(--radius-sm);
 }
+
+/* The lane as a destination. Work comes from here and goes back to here, so it
+   answers a drag the same way a container does — outline, and a reason. */
+.fm-ideas[data-drop='ok'] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.fm-ideas[data-drop='no'] {
+  outline: 2px dashed var(--critical-line);
+  outline-offset: -2px;
+}
+
+.fm-ideas__drop {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  color: var(--ink);
+  background: var(--accent-surface);
+  border-radius: var(--radius-sm);
+}
+
+.fm-ideas[data-drop='no'] .fm-ideas__drop {
+  color: var(--critical-fg);
+  background: var(--critical-surface);
+}

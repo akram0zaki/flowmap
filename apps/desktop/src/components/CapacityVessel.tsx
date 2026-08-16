@@ -63,6 +63,8 @@ export type CapacityVesselProps = {
   readonly onSelect?: (footprintId: string) => void;
   /** Start moving this block — pointer press, or Space on the keyboard. */
   readonly onPickUp?: (footprintId: string, event?: ReactPointerEvent) => void;
+  /** Take this block off the board. The keyboard route to the Ideas rail. */
+  readonly onRemove?: (footprintId: string) => void;
 };
 
 const AXIS_WIDTH = 34;
@@ -83,6 +85,7 @@ export function CapacityVessel({
   incoming,
   onSelect,
   onPickUp,
+  onRemove,
 }: CapacityVesselProps) {
   const patternPrefix = useId().replace(/:/g, '');
   const unitPx = UNIT_PX * zoom;
@@ -314,6 +317,10 @@ export function CapacityVessel({
                     } else if (e.key === ' ') {
                       e.preventDefault();
                       onPickUp?.(block.footprint.id);
+                    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                      // The keyboard equivalent of dragging it back to the lane.
+                      e.preventDefault();
+                      onRemove?.(block.footprint.id);
                     }
                   }}
                 >

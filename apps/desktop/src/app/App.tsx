@@ -16,6 +16,7 @@ import {
   defaultDropUnits,
   findCell,
   previewDrop,
+  previewRemoval,
   readinessForIdeas,
   toggleFilterValue,
   type CellModel,
@@ -40,8 +41,16 @@ export function App() {
   const status = useWorkspace((s) => s.status);
   const profileName = useWorkspace((s) => s.profileName);
   const selectedFootprintId = useWorkspace((s) => s.selectedFootprintId);
-  const { undo, redo, select, clearStatus, clearLocalData, commitIdeaInto, moveFootprint } =
-    useWorkspace.getState();
+  const {
+    undo,
+    redo,
+    select,
+    clearStatus,
+    clearLocalData,
+    commitIdeaInto,
+    moveFootprint,
+    unplaceFootprint,
+  } = useWorkspace.getState();
 
   const [level, setLevelState] = useState<ZoomLevel>(2);
   const [filter, setFilter] = useState<FilterState>(NO_FILTER);
@@ -127,6 +136,20 @@ export function App() {
   const describeDrag = useCallback(
     (payload: DragPayload, target: DropTarget | null): string => {
       if (!board || !target) return t('drop.carrying', { name: payload.name });
+
+      // The rail is the way back off the board.
+      if (target.kind === 'RAIL') {
+        const removal = previewRemoval(payload);
+        if (!removal.allowed) {
+          return t('remove.refused', {
+            reason: removal.refusal ? t(`remove.no.${removal.refusal}`) : '',
+          });
+        }
+        return removal.returnsToRail
+          ? t('remove.wouldReturn', { name: payload.name })
+          : t('remove.wouldUnplace', { name: payload.name, units: removal.units });
+      }
+
       const cell = findCell(board, target.teamId, target.quarterId as QuarterId);
       if (!cell) return t('drop.carrying', { name: payload.name });
 
@@ -154,6 +177,25 @@ export function App() {
   const applyDrop = useCallback(
     (payload: DragPayload, target: DropTarget) => {
       if (!board) return;
+
+      if (target.kind === 'RAIL') {
+        const removal = previewRemoval(payload);
+        if (!removal.allowed || payload.kind !== 'BLOCK') return;
+        void unplaceFootprint({
+          footprintId: payload.footprintId,
+          commitmentId: payload.commitmentId,
+          returnToRail: removal.returnsToRail,
+        }).then((ok) => {
+          if (!ok) return;
+          announce(
+            removal.returnsToRail
+              ? t('remove.returned', { name: payload.name })
+              : t('remove.unplaced', { name: payload.name }),
+          );
+        });
+        return;
+      }
+
       const cell = findCell(board, target.teamId, target.quarterId as QuarterId);
       // Re-check on release. The board can change under a slow drag, and the
       // preview that allowed it may no longer be the truth.
@@ -176,7 +218,7 @@ export function App() {
         t('drop.placed', { name: payload.name, team: cell.teamName, quarter: cell.quarterId }),
       );
     },
-    [board, moveFootprint, commitIdeaInto, announce],
+    [board, moveFootprint, commitIdeaInto, unplaceFootprint, announce],
   );
 
   const { placement, carryRef, beginPointer, beginKeyboard, aim, drop, cancel } = usePlacement({
@@ -213,7 +255,14 @@ export function App() {
         .flatMap((row) => row.cells)
         .flatMap((cell) => cell.blocks)
         .find((b) => b.footprintId === footprintId);
-      if (!block) return;
+      if (!block || !state) return;
+
+      // How many placements this work has decides whether taking one off the
+      // board unplaces it or sends the whole commitment back to the lane.
+      const footprintCount = [...state.footprints.values()].filter(
+        (f) => f.commitmentId === block.commitmentId && f.archivedAt === undefined,
+      ).length;
+
       const payload: DragPayload = {
         kind: 'BLOCK',
         footprintId,
@@ -222,11 +271,70 @@ export function App() {
         units: block.units,
         fromTeamId: teamId,
         fromQuarterId: quarterId as never,
+        lifecycle: block.lifecycle,
+        footprintCount,
+        fromClosed: board
+          ? (findCell(board, teamId, quarterId as QuarterId)?.closed ?? false)
+          : false,
       };
       if (event) beginPointer(payload, event);
       else beginKeyboard(payload);
     },
-    [board, beginPointer, beginKeyboard],
+    [board, state, beginPointer, beginKeyboard],
+  );
+
+  /** Delete on a focused block: the same action as dragging it to the lane. */
+  const removeBlock = useCallback(
+    (footprintId: string, teamId: string, quarterId: string) => {
+      const block = board?.rows
+        .flatMap((row) => row.cells)
+        .flatMap((cell) => cell.blocks)
+        .find((b) => b.footprintId === footprintId);
+      if (!block || !state) return;
+
+      const footprintCount = [...state.footprints.values()].filter(
+        (f) => f.commitmentId === block.commitmentId && f.archivedAt === undefined,
+      ).length;
+      const removal = previewRemoval({
+        kind: 'BLOCK',
+        footprintId,
+        commitmentId: block.commitmentId,
+        name: block.name,
+        units: block.units,
+        fromTeamId: teamId,
+        fromQuarterId: quarterId as QuarterId,
+        lifecycle: block.lifecycle,
+        footprintCount,
+        fromClosed: board
+          ? (findCell(board, teamId, quarterId as QuarterId)?.closed ?? false)
+          : false,
+      });
+
+      if (!removal.allowed) {
+        announce(
+          t('remove.refused', {
+            reason: removal.refusal ? t(`remove.no.${removal.refusal}`) : '',
+          }),
+        );
+        return;
+      }
+
+      // Announce the outcome, not the intent. Saying "returned to the lane"
+      // before the command has run is how a refusal turns into a dead gesture.
+      void unplaceFootprint({
+        footprintId,
+        commitmentId: block.commitmentId,
+        returnToRail: removal.returnsToRail,
+      }).then((ok) => {
+        if (!ok) return;
+        announce(
+          removal.returnsToRail
+            ? t('remove.returned', { name: block.name })
+            : t('remove.unplaced', { name: block.name }),
+        );
+      });
+    },
+    [board, state, unplaceFootprint, announce],
   );
 
   const vesselBlocksFor = useCallback(
@@ -318,6 +426,18 @@ export function App() {
           readiness={readiness}
           selectedCommitmentId={focusedCommitmentId}
           draggingCommitmentId={placement?.payload.commitmentId ?? null}
+          dropState={
+            placement?.target?.kind === 'RAIL'
+              ? previewRemoval(placement.payload).allowed
+                ? 'ok'
+                : 'no'
+              : null
+          }
+          dropNote={
+            placement?.target?.kind === 'RAIL'
+              ? describeDrag(placement.payload, placement.target)
+              : null
+          }
           onSelect={(commitmentId) =>
             setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId))
           }
@@ -347,7 +467,8 @@ export function App() {
           dragging={placement?.payload ?? null}
           dragTarget={placement?.target ?? null}
           onPickUpBlock={pickUpBlock}
-          onAimDrag={(teamId, quarterId) => aim({ teamId, quarterId })}
+          onRemoveBlock={removeBlock}
+          onAimDrag={(teamId, quarterId) => aim({ kind: 'CELL', teamId, quarterId })}
           onDropHere={drop}
         />
       </div>

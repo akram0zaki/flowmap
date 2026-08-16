@@ -34,6 +34,29 @@ import { t } from '../i18n/t.js';
 import { seedSampleWorkspace } from './sample-workspace.js';
 
 const WORKSPACE_ID = 'flowmap-local-workspace';
+
+/**
+ * One user action, however many commands it takes.
+ *
+ * Depth, not a boolean, because a step can call another action that is itself
+ * a step — unplacing calls `removeFootprint`, which is a perfectly good action
+ * on its own. `stepStarted` marks the first command, which opens the step; the
+ * rest join it.
+ */
+let stepDepth = 0;
+let stepStarted = false;
+
+async function runAsStep<T>(run: () => Promise<T>): Promise<T> {
+  const outermost = stepDepth === 0;
+  stepDepth += 1;
+  if (outermost) stepStarted = false;
+  try {
+    return await run();
+  } finally {
+    stepDepth -= 1;
+    if (stepDepth === 0) stepStarted = false;
+  }
+}
 const PROFILE_ID = 'local-profile';
 
 export type Runtime = {
@@ -68,8 +91,14 @@ type StoreState = {
   profileName: string;
   selectedFootprintId: string | null;
   status: Status;
-  undoStack: Command[];
-  redoStack: Command[];
+  /**
+   * Steps, not commands. One user action can be several commands — taking work
+   * off the board is a revert plus a removal — and undoing half of it leaves a
+   * state the model forbids: an Idea sitting in a capacity block, visible on
+   * the board and in the demand lane at the same time. A step undoes whole.
+   */
+  undoStack: Command[][];
+  redoStack: Command[][];
   pendingCount: number;
 
   init(runtime: Runtime, profileName: string): Promise<void>;
@@ -112,6 +141,18 @@ type StoreState = {
   }): Promise<boolean>;
   resizeFootprint(footprintId: EntityId, units: number): Promise<boolean>;
   removeFootprint(footprintId: EntityId): Promise<boolean>;
+  /**
+   * Take work off the board.
+   *
+   * Not a delete: the commitment survives, and when this was its last placement
+   * it goes back through the gate into the demand lane, where it can be placed
+   * again. Dropping work for good is `DropCommitment`, a different decision.
+   */
+  unplaceFootprint(input: {
+    footprintId: EntityId;
+    commitmentId: EntityId;
+    returnToRail: boolean;
+  }): Promise<boolean>;
   undo(): Promise<void>;
   redo(): Promise<void>;
   select(footprintId: string | null): void;
@@ -164,6 +205,10 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     const { runtime, state } = get();
     if (!runtime || !state) return false;
 
+    // Whether this command joins the step already being built.
+    const grouping = stepDepth > 0 && stepStarted;
+    if (stepDepth > 0) stepStarted = true;
+
     const cmd = makeCommand(runtime, name);
     const ctx = makeContext(runtime, await runtime.repository.nextSequence(WORKSPACE_ID));
     const result = run(state, cmd, ctx);
@@ -192,15 +237,21 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       // Undo and redo are stacks of inverse commands, each re-validated when it
       // executes — so an undo that has since become illegal is refused rather
       // than corrupting state.
+      // Inside a step, inverses accumulate onto the step being built rather
+      // than each becoming an undo of its own.
+      const append = (stack: Command[][]): Command[][] => {
+        if (!inverse) return stack;
+        if (!grouping) return [...stack, [inverse]];
+        const head = stack.at(-1) ?? [];
+        return [...stack.slice(0, -1), [...head, inverse]];
+      };
+
       const stacks =
         history === 'record'
-          ? {
-              undoStack: inverse ? [...prev.undoStack, inverse].slice(-100) : prev.undoStack,
-              redoStack: [],
-            }
+          ? { undoStack: append(prev.undoStack).slice(-100), redoStack: [] }
           : history === 'undoing'
-            ? { redoStack: inverse ? [...prev.redoStack, inverse] : prev.redoStack }
-            : { undoStack: inverse ? [...prev.undoStack, inverse] : prev.undoStack };
+            ? { redoStack: append(prev.redoStack) }
+            : { undoStack: append(prev.undoStack) };
 
       return {
         ...stacks,
@@ -300,52 +351,59 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   },
 
   async commitIdeaInto(input) {
-    // Dropping work on a row says that team does it. The Commit Gate requires
-    // the primary footprint to sit on the primary team, so without this an Idea
-    // could only be dropped on the one row it already named — and the gate
-    // refused everywhere else in complete silence.
-    const commitment = get().state?.commitments.get(input.commitmentId);
-    if (commitment && commitment.primaryTeamId !== input.teamId) {
-      const owned = await get().dispatch('SetPrimaryTeam', (state, cmd, ctx) =>
-        setPrimaryTeam(state, { commitmentId: input.commitmentId, teamId: input.teamId }, cmd, ctx),
-      );
-      if (owned === false) return false;
-    }
+    return runAsStep(async () => {
+      // Dropping work on a row says that team does it. The Commit Gate requires
+      // the primary footprint to sit on the primary team, so without this an Idea
+      // could only be dropped on the one row it already named — and the gate
+      // refused everywhere else in complete silence.
+      const commitment = get().state?.commitments.get(input.commitmentId);
+      if (commitment && commitment.primaryTeamId !== input.teamId) {
+        const owned = await get().dispatch('SetPrimaryTeam', (state, cmd, ctx) =>
+          setPrimaryTeam(
+            state,
+            { commitmentId: input.commitmentId, teamId: input.teamId },
+            cmd,
+            ctx,
+          ),
+        );
+        if (owned === false) return false;
+      }
 
-    const placed = await get().placeFootprint({
-      commitmentId: input.commitmentId,
-      teamId: input.teamId,
-      quarterId: input.quarterId,
-      units: input.units,
-      isPrimary: true,
+      const placed = await get().placeFootprint({
+        commitmentId: input.commitmentId,
+        teamId: input.teamId,
+        quarterId: input.quarterId,
+        units: input.units,
+        isPrimary: true,
+      });
+      if (!placed) return false;
+
+      const passed = await get().dispatch('PassCommitGate', (state, cmd, ctx) =>
+        applyTransition('PassCommitGate', state, { commitmentId: input.commitmentId }, cmd, ctx),
+      );
+
+      // The gate refused after the footprint landed. Leaving it there would put an
+      // Idea in a capacity block, which the model does not allow, so take it back
+      // out — the status message from the failed gate is what the user sees.
+      if (passed === false) {
+        // Keep the gate's explanation. The rollback below is a *successful*
+        // command, and a successful dispatch clears the status — so undoing the
+        // footprint also erased the only account of why the drop failed, and the
+        // whole gesture appeared to do nothing at all.
+        const reason = get().status;
+        const footprint = [...(get().state?.footprints.values() ?? [])].find(
+          (f) =>
+            f.commitmentId === input.commitmentId &&
+            f.teamId === input.teamId &&
+            f.quarterId === input.quarterId &&
+            f.archivedAt === undefined,
+        );
+        if (footprint) await get().removeFootprint(footprint.id);
+        if (reason) set({ status: reason });
+        return false;
+      }
+      return true;
     });
-    if (!placed) return false;
-
-    const passed = await get().dispatch('PassCommitGate', (state, cmd, ctx) =>
-      applyTransition('PassCommitGate', state, { commitmentId: input.commitmentId }, cmd, ctx),
-    );
-
-    // The gate refused after the footprint landed. Leaving it there would put an
-    // Idea in a capacity block, which the model does not allow, so take it back
-    // out — the status message from the failed gate is what the user sees.
-    if (passed === false) {
-      // Keep the gate's explanation. The rollback below is a *successful*
-      // command, and a successful dispatch clears the status — so undoing the
-      // footprint also erased the only account of why the drop failed, and the
-      // whole gesture appeared to do nothing at all.
-      const reason = get().status;
-      const footprint = [...(get().state?.footprints.values() ?? [])].find(
-        (f) =>
-          f.commitmentId === input.commitmentId &&
-          f.teamId === input.teamId &&
-          f.quarterId === input.quarterId &&
-          f.archivedAt === undefined,
-      );
-      if (footprint) await get().removeFootprint(footprint.id);
-      if (reason) set({ status: reason });
-      return false;
-    }
-    return true;
   },
 
   async resizeFootprint(footprintId, units) {
@@ -364,33 +422,59 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     );
   },
 
+  async unplaceFootprint({ footprintId, commitmentId, returnToRail }) {
+    return runAsStep(async () => {
+      // Revert first, while the footprint still exists. Reverting afterwards
+      // would leave a window where a COMMITTED commitment holds no placement.
+      if (returnToRail) {
+        const reverted = await get().dispatch('RevertCommitGate', (state, cmd, ctx) =>
+          applyTransition('RevertCommitGate', state, { commitmentId }, cmd, ctx),
+        );
+        if (reverted === false) return false;
+      }
+      return get().removeFootprint(footprintId);
+    });
+  },
+
   async undo() {
     const { undoStack } = get();
-    const inverse = undoStack.at(-1);
-    if (!inverse) {
+    const step = undoStack.at(-1);
+    if (!step || step.length === 0) {
       set({ status: { tone: 'info', message: t('undo.nothing') } });
       return;
     }
 
     set({ undoStack: undoStack.slice(0, -1) });
-    await get().dispatch(
-      inverse.name,
-      (state, cmd, ctx) => runNamed(inverse.name, state, { ...cmd, payload: inverse.payload }, ctx),
-      'undoing',
-    );
+    // Last command first: the inverses of a step have to run in reverse, or a
+    // revert lands before the removal it was meant to precede.
+    await runAsStep(async () => {
+      for (const inverse of [...step].reverse()) {
+        await get().dispatch(
+          inverse.name,
+          (state, cmd, ctx) =>
+            runNamed(inverse.name, state, { ...cmd, payload: inverse.payload }, ctx),
+          'undoing',
+        );
+      }
+    });
   },
 
   async redo() {
     const { redoStack } = get();
-    const inverse = redoStack.at(-1);
-    if (!inverse) return;
+    const step = redoStack.at(-1);
+    if (!step || step.length === 0) return;
 
     set({ redoStack: redoStack.slice(0, -1) });
-    await get().dispatch(
-      inverse.name,
-      (state, cmd, ctx) => runNamed(inverse.name, state, { ...cmd, payload: inverse.payload }, ctx),
-      'redoing',
-    );
+    await runAsStep(async () => {
+      for (const inverse of [...step].reverse()) {
+        await get().dispatch(
+          inverse.name,
+          (state, cmd, ctx) =>
+            runNamed(inverse.name, state, { ...cmd, payload: inverse.payload }, ctx),
+          'redoing',
+        );
+      }
+    });
   },
 
   select(footprintId) {

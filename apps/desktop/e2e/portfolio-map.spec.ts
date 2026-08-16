@@ -590,3 +590,183 @@ test('an Idea can be dropped on a team that does not already own it', async ({ p
   await expect(target).toContainText('Request to pay');
   await expect(page.locator('.fm-idea').filter({ hasText: 'Request to pay' })).toHaveCount(0);
 });
+
+/**
+ * Taking work back off the board — the same gesture as putting it on, run
+ * backwards. Not a delete: the commitment survives and returns to demand.
+ */
+test('a block dragged back to the lane returns to demand', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  // Place an Idea first, so there is something with exactly one placement.
+  const idea = page.locator('.fm-idea').filter({ hasText: 'Request to pay' });
+  const cell = page.locator('[data-drop-team][data-drop-quarter="2026-Q4"]').first();
+  const from = await idea.boundingBox();
+  const to = await cell.boundingBox();
+  if (!from || !to) throw new Error('missing geometry');
+
+  await page.mouse.move(from.x + 40, from.y + 15);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect(cell).toContainText('Request to pay');
+
+  // Now drag it back.
+  const block = cell.getByRole('gridcell', { name: /^Request to pay/ });
+  const rail = page.locator('.fm-ideas');
+  const blockBox = await block.boundingBox();
+  const railBox = await rail.boundingBox();
+  if (!blockBox || !railBox) throw new Error('missing geometry');
+
+  await page.mouse.move(blockBox.x + 40, blockBox.y + blockBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(blockBox.x - 60, blockBox.y + 20, { steps: 4 });
+  await page.mouse.move(railBox.x + railBox.width / 2, railBox.y + 200, { steps: 8 });
+
+  // The lane says what it will do before it does it.
+  await expect(rail).toHaveAttribute('data-drop', 'ok');
+  await expect(rail).toContainText('Return Request to pay to the demand lane');
+
+  await page.mouse.up();
+
+  await expect(page.locator('.fm-idea').filter({ hasText: 'Request to pay' })).toHaveCount(1);
+  await expect(cell).not.toContainText('Request to pay');
+});
+
+test('work already in delivery is refused, with the reason, not silently', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  // "Legacy gateway decommission" is IN_DELIVERY in the fixture.
+  const block = page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^Legacy gateway decommission/ });
+  const rail = page.locator('.fm-ideas');
+  const blockBox = await block.boundingBox();
+  const railBox = await rail.boundingBox();
+  if (!blockBox || !railBox) throw new Error('missing geometry');
+
+  await page.mouse.move(blockBox.x + 40, blockBox.y + blockBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(blockBox.x - 60, blockBox.y + 20, { steps: 4 });
+  await page.mouse.move(railBox.x + railBox.width / 2, railBox.y + 200, { steps: 8 });
+
+  await expect(rail).toHaveAttribute('data-drop', 'no');
+  await expect(rail).toContainText('cannot go back to the lane');
+
+  await page.mouse.up();
+  // Refused means unchanged.
+  await expect(page.getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })).toContainText(
+    'Legacy gateway decommission',
+  );
+});
+
+/**
+ * Delete unplaces from *this* quarter. "Core ledger consolidation" runs across
+ * Platform and Data, so taking it off one is a capacity change, not a lifecycle
+ * one — it stays in delivery on the other team and must not reappear as demand.
+ */
+test('Delete on a focused block unplaces it from that quarter only', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const platform = page.getByRole('gridcell', { name: /^Platform\. 2026-Q3/ });
+  const data = page.getByRole('gridcell', { name: /^Data\. 2026-Q3/ });
+  await expect(platform).toContainText('92%');
+
+  await platform.getByRole('gridcell', { name: /^Core ledger consolidation/ }).focus();
+  await page.keyboard.press('Delete');
+
+  await expect(platform).not.toContainText('Core ledger consolidation');
+  // The capacity it was using comes back.
+  await expect(platform).toContainText('54%');
+  // The other placement is untouched, and it is not demand again.
+  await expect(data).toContainText('Core ledger consolidation');
+  await expect(
+    page.locator('.fm-idea').filter({ hasText: 'Core ledger consolidation' }),
+  ).toHaveCount(0);
+});
+
+test('Delete returns work to demand when it was its last placement', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  // "TLS and cipher currency" is COMMITTED on Security alone.
+  const cell = page.getByRole('gridcell', { name: /^Security\. 2026-Q4/ });
+  await cell.getByRole('gridcell', { name: /^TLS and cipher currency/ }).focus();
+  await page.keyboard.press('Delete');
+
+  await expect(cell).not.toContainText('TLS and cipher currency');
+  await expect(page.locator('.fm-idea').filter({ hasText: 'TLS and cipher currency' })).toHaveCount(
+    1,
+  );
+});
+
+test('a closed quarter refuses to give work up, and says so', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  // 2026-Q2 is settled history; the domain will not edit it.
+  const cell = page.getByRole('gridcell', { name: /^Payments\. 2026-Q2/ });
+  const block = cell.getByRole('gridcell', { name: /^Payment reference enrichment/ });
+  const rail = page.locator('.fm-ideas');
+
+  const blockBox = await block.boundingBox();
+  const railBox = await rail.boundingBox();
+  if (!blockBox || !railBox) throw new Error('missing geometry');
+
+  await page.mouse.move(blockBox.x + 40, blockBox.y + blockBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(blockBox.x - 40, blockBox.y + 20, { steps: 4 });
+  await page.mouse.move(railBox.x + railBox.width / 2, railBox.y + 200, { steps: 8 });
+
+  await expect(rail).toHaveAttribute('data-drop', 'no');
+  await expect(rail).toContainText('that quarter is closed');
+
+  await page.mouse.up();
+  await expect(cell).toContainText('Payment reference enrichment');
+});
+
+/**
+ * Taking work off the board is a revert *and* a removal. Undoing only half of
+ * it left the work visible as a block on the board and in the demand lane at
+ * once — an Idea occupying a capacity block, which the model forbids. One user
+ * action is one undo.
+ */
+test('one undo puts unplaced work back, not half of it', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const cell = page.getByRole('gridcell', { name: /^Security\. 2026-Q4/ });
+  await cell.getByRole('gridcell', { name: /^TLS and cipher currency/ }).focus();
+  await page.keyboard.press('Delete');
+
+  await expect(page.locator('.fm-idea').filter({ hasText: 'TLS and cipher currency' })).toHaveCount(
+    1,
+  );
+
+  await page.getByRole('button', { name: 'Undo' }).click();
+
+  // Back on the board as committed work, and gone from the lane — never both.
+  await expect(cell).toContainText('TLS and cipher currency');
+  await expect(page.locator('.fm-idea').filter({ hasText: 'TLS and cipher currency' })).toHaveCount(
+    0,
+  );
+  await expect(cell.getByRole('gridcell', { name: /^TLS and cipher currency/ })).toHaveAttribute(
+    'aria-label',
+    /Committed/,
+  );
+});

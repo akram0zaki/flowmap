@@ -39,6 +39,12 @@ export type DragPayload =
       readonly units: CapacityUnits;
       readonly fromTeamId: EntityId;
       readonly fromQuarterId: QuarterId;
+      /** Decides whether taking it off the board can send it back to the rail. */
+      readonly lifecycle: Commitment['lifecycle'];
+      /** Active footprints this commitment holds, including this one. */
+      readonly footprintCount: number;
+      /** A settled quarter cannot be edited, so it cannot be unplaced from. */
+      readonly fromClosed: boolean;
     };
 
 /**
@@ -170,6 +176,61 @@ function refuse(
  * to choose one. Half of M is the smallest amount that still visibly moves the
  * figure, which is the point: you drop it, you see it land, you resize it.
  */
+/** Why work cannot be taken off the board here. */
+export type RemovalRefusal = 'IDEA_NOT_PLACED' | 'NOT_REVERTIBLE' | 'FROM_CLOSED_QUARTER';
+
+export type RemovalPreview = {
+  readonly allowed: boolean;
+  readonly refusal?: RemovalRefusal;
+  /**
+   * True when this is the commitment's last placement, so taking it off the
+   * board returns it to the demand lane rather than merely unplacing it.
+   */
+  readonly returnsToRail: boolean;
+  readonly units: number;
+};
+
+/**
+ * What dropping work back on the Ideas rail would do.
+ *
+ * The inverse of placing it, and deliberately not a delete: work you take off
+ * the board goes back to being demand, where it can be placed again. Nothing
+ * here removes a commitment — dropping work for good is `DropCommitment`, a
+ * different decision with a different record.
+ */
+export function previewRemoval(payload: DragPayload): RemovalPreview {
+  if (payload.kind === 'IDEA') {
+    // An Idea is already in the lane; there is nothing to take off the board.
+    return { allowed: false, refusal: 'IDEA_NOT_PLACED', returnsToRail: false, units: 0 };
+  }
+
+  // The domain refuses to edit a settled quarter, so the gesture must too —
+  // otherwise the drag promises something the command will then decline.
+  if (payload.fromClosed) {
+    return {
+      allowed: false,
+      refusal: 'FROM_CLOSED_QUARTER',
+      returnsToRail: false,
+      units: payload.units,
+    };
+  }
+
+  const last = payload.footprintCount <= 1;
+
+  // Only COMMITTED work can go back through the gate. Work already in delivery,
+  // done, held or dropped has a history that unplacing would quietly rewrite.
+  if (last && payload.lifecycle !== 'COMMITTED') {
+    return {
+      allowed: false,
+      refusal: 'NOT_REVERTIBLE',
+      returnsToRail: false,
+      units: payload.units,
+    };
+  }
+
+  return { allowed: true, returnsToRail: last, units: payload.units };
+}
+
 export function defaultDropUnits(sizeMapping: Readonly<Record<string, number>>): CapacityUnits {
   return sizeMapping['S'] ?? sizeMapping['M'] ?? 10;
 }
