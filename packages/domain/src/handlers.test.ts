@@ -870,7 +870,6 @@ describe('diffFields', () => {
   });
 });
 
-
 // ── SetPrimaryTeam ─────────────────────────────────────────────────────────
 
 describe('setPrimaryTeam', () => {
@@ -948,7 +947,12 @@ describe('setPrimaryTeam', () => {
 
   it('refuses an unknown team', () => {
     expectError(
-      setPrimaryTeam(state, { commitmentId: 'c-1', teamId: 'nope' }, command('SetPrimaryTeam'), ctx()),
+      setPrimaryTeam(
+        state,
+        { commitmentId: 'c-1', teamId: 'nope' },
+        command('SetPrimaryTeam'),
+        ctx(),
+      ),
       'ENTITY_NOT_FOUND',
     );
   });
