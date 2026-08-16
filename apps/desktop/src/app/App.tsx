@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  addDependency,
   addExternalLink,
   addMilestone,
   assessCommitGate,
@@ -182,6 +183,18 @@ export function App() {
           reason: preview.refusal ? t(`drop.no.${preview.refusal}`) : '',
         });
       }
+      if (payload.kind === 'LINK') {
+        const targetId =
+          target.commitmentId ??
+          cell.blocks.find((block) => block.commitmentId !== payload.commitmentId)?.commitmentId;
+        return targetId
+          ? t('link.would', {
+              from: payload.name,
+              to: state?.commitments.get(targetId)?.name ?? '',
+            })
+          : t('link.needsWork');
+      }
+
       const landing = t('drop.wouldLand', {
         name: payload.name,
         team: cell.teamName,
@@ -192,7 +205,7 @@ export function App() {
         ? `${landing} ${t('drop.reassigns', { team: cell.teamName })}`
         : landing;
     },
-    [board],
+    [board, state],
   );
 
   const applyDrop = useCallback(
@@ -222,6 +235,36 @@ export function App() {
       // preview that allowed it may no longer be the truth.
       if (!cell || !previewDrop(cell, payload).allowed) return;
 
+      // A dependency lands on work, not on a container.
+      if (payload.kind === 'LINK') {
+        const targetId =
+          target.commitmentId ??
+          cell.blocks.find((block) => block.commitmentId !== payload.commitmentId)?.commitmentId;
+        if (!targetId || targetId === payload.commitmentId) return;
+
+        void relate('AddDependency', (rs, cmd, ctx) =>
+          addDependency(
+            rs,
+            {
+              sourceCommitmentId: payload.commitmentId,
+              target: { kind: 'COMMITMENT', id: targetId },
+            },
+            cmd,
+            ctx,
+          ),
+        ).then((ok) => {
+          if (ok) {
+            announce(
+              t('link.made', {
+                from: payload.name,
+                to: state?.commitments.get(targetId)?.name ?? '',
+              }),
+            );
+          }
+        });
+        return;
+      }
+
       if (payload.kind === 'BLOCK') {
         void moveFootprint(payload.footprintId, {
           teamId: target.teamId,
@@ -239,7 +282,7 @@ export function App() {
         t('drop.placed', { name: payload.name, team: cell.teamName, quarter: cell.quarterId }),
       );
     },
-    [board, moveFootprint, commitIdeaInto, unplaceFootprint, announce],
+    [board, state, moveFootprint, commitIdeaInto, unplaceFootprint, relate, announce],
   );
 
   const { placement, carryRef, beginPointer, beginKeyboard, aim, drop, cancel } = usePlacement({
@@ -268,6 +311,28 @@ export function App() {
       else beginKeyboard(payload);
     },
     [board, state, beginPointer, beginKeyboard],
+  );
+
+  /**
+   * Drawing a dependency. Shift-drag from a block, or `d` then the arrows —
+   * the same gesture as moving work, because it is the same question asked of
+   * two pieces of work instead of one. Visual creation defaults to REQUIRES;
+   * the type is refined in the panel, and the direction never flips.
+   */
+  const linkFrom = useCallback(
+    (commitmentId: string, event?: React.PointerEvent) => {
+      const commitment = state?.commitments.get(commitmentId);
+      if (!commitment) return;
+      const payload: DragPayload = {
+        kind: 'LINK',
+        commitmentId,
+        name: commitment.name,
+        units: 0,
+      };
+      if (event) beginPointer(payload, event);
+      else beginKeyboard(payload);
+    },
+    [state, beginPointer, beginKeyboard],
   );
 
   const pickUpBlock = useCallback(
@@ -683,6 +748,7 @@ export function App() {
           onResizeStart={(input, event) => beginResize(input, event)}
           resizing={resizing ? { footprintId: resizing.footprintId, units: resizing.units } : null}
           onAimDrag={(teamId, quarterId) => aim({ kind: 'CELL', teamId, quarterId })}
+          onLinkFrom={linkFrom}
           onDropHere={drop}
           dependencyEdges={dependencyEdges}
         />

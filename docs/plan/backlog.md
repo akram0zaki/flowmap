@@ -11,7 +11,7 @@ capability**, not by technical layer — each ticket should leave the product me
 > This file is kept current as work lands. A ticket is ✅ only when its acceptance criteria pass and
 > the [`AGENTS.md`](../../AGENTS.md) definition of done is met — not when the code merely exists.
 
-**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 28/28 — complete** · M6-WSP-2 pulled forward · M3–M9 not started
+**Progress:** M0 2/14 · **M1 22/22 — complete** · M2 27/28 (M2-MAP-1 partial: no pointer zoom gesture; thin blocks below the 24 px hit target by design, reached by keyboard) · M6-WSP-2 pulled forward · M3–M9 not started
 
 Every ticket inherits the definition of done from [`AGENTS.md`](../../AGENTS.md). The acceptance
 criteria below are the _additional_, ticket-specific ones.
@@ -103,7 +103,7 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 
 | St  | ID       | Title                                                  | Size | Dep      | Acceptance                                                                                              |
 | --- | -------- | ------------------------------------------------------ | :--: | -------- | ------------------------------------------------------------------------------------------------------- |
-| ✅  | M2-MAP-1 | Canvas primitives: viewport, pan, zoom, hit-testing    |  M   | M1-VS-3  | 60 fps pan/zoom at 500 commitments; hit areas ≥ 24 px even for XS blocks                                |
+| 🔵  | M2-MAP-1 | Canvas primitives: viewport, pan, zoom, hit-testing    |  M   | M1-VS-3  | 60 fps pan/zoom at 500 commitments; hit areas ≥ 24 px even for XS blocks                                |
 | ✅  | M2-MAP-2 | Quarter columns + team rows + current-quarter centring |  M   | M2-MAP-1 | Alphabetical default order; Planner reorder persists; pressure never reorders rows                      |
 | ✅  | M2-MAP-3 | Semantic zoom L1/L2/L3 + explicit level control        |  L   | M2-MAP-2 | Level thresholds per spec 06 §3.3; level changes announced; ≤ 250 ms                                    |
 | ✅  | M2-MAP-4 | Reserve plinth with per-type segments and labels       |  S   | M2-MAP-2 | Each reserve type uses its own pattern token; tooltip lists linked Ideas for refinement                 |

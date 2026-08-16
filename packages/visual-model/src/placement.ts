@@ -21,6 +21,17 @@ import type { CellModel } from './layout.js';
 /** What is in the hand. */
 export type DragPayload =
   | {
+      /**
+       * Drawing a dependency. The gesture is the same as moving work — pick up,
+       * pass over, release — because a dependency is a statement about two
+       * pieces of work and pointing at both of them is how you make it.
+       */
+      readonly kind: 'LINK';
+      readonly commitmentId: EntityId;
+      readonly name: string;
+      readonly units: CapacityUnits;
+    }
+  | {
       readonly kind: 'IDEA';
       readonly commitmentId: EntityId;
       readonly name: string;
@@ -56,6 +67,8 @@ export type DragPayload =
  * that you did.
  */
 export type DropRefusal =
+  | 'LINK_NEEDS_WORK'
+  | 'LINK_TO_ITSELF'
   | 'NOT_MATERIALISED'
   | 'CLOSED_QUARTER'
   | 'ALREADY_HERE'
@@ -116,9 +129,9 @@ export function previewDrop(cell: CellModel, payload: DragPayload): DropPreview 
     payload.fromTeamId === cell.teamId &&
     payload.fromQuarterId === cell.quarterId;
 
-  // Only counted load moves the figures. Dragging an ON_HOLD block changes
-  // where it sits without changing what anything costs.
-  const arriving = movingWithin ? 0 : payload.units;
+  // A dependency changes nothing about capacity — it is a statement, not a
+  // placement — so the figures must not move while one is being drawn.
+  const arriving = movingWithin || payload.kind === 'LINK' ? 0 : payload.units;
   const projected = withCommittedLoad(summary, summary.committedLoad + arriving);
 
   const percentBefore = utilisationPercent(summary);
@@ -146,6 +159,16 @@ function refuse(
   payload: DragPayload,
   movingWithin: boolean,
 ): DropRefusal | undefined {
+  // A dependency points at work. A container is not work, and work cannot
+  // depend on itself.
+  if (payload.kind === 'LINK') {
+    const target = cell.blocks.find((block) => block.commitmentId !== payload.commitmentId);
+    if (cell.blocks.some((block) => block.commitmentId === payload.commitmentId) && !target) {
+      return 'LINK_TO_ITSELF';
+    }
+    return target ? undefined : 'LINK_NEEDS_WORK';
+  }
+
   if (cell.closed) return 'CLOSED_QUARTER';
   if (movingWithin) return 'ALREADY_HERE';
 
@@ -256,7 +279,7 @@ export type RemovalPreview = {
  * different decision with a different record.
  */
 export function previewRemoval(payload: DragPayload): RemovalPreview {
-  if (payload.kind === 'IDEA') {
+  if (payload.kind !== 'BLOCK') {
     // An Idea is already in the lane; there is nothing to take off the board.
     return { allowed: false, refusal: 'IDEA_NOT_PLACED', returnsToRail: false, units: 0 };
   }

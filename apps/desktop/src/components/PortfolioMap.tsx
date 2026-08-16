@@ -85,6 +85,7 @@ export type PortfolioMapProps = {
     event: ReactPointerEvent,
   ) => void;
   readonly resizing: { footprintId: string; units: number } | null;
+  readonly onLinkFrom: (commitmentId: string, event?: ReactPointerEvent) => void;
   /** Dependencies of the focused commitment, drawn over the grid. */
   readonly dependencyEdges: readonly DependencyEdge[];
   readonly onDropHere: () => void;
@@ -110,6 +111,7 @@ export function PortfolioMap({
   onResizeBlock,
   onResizeStart,
   resizing,
+  onLinkFrom,
   dependencyEdges,
   onDropHere,
 }: PortfolioMapProps) {
@@ -339,6 +341,7 @@ export function PortfolioMap({
                         onRemove={(footprintId: string) =>
                           onRemoveBlock(footprintId, cell.teamId, cell.quarterId)
                         }
+                        onLink={onLinkFrom}
                         onResize={(footprintId, units, via) =>
                           onResizeBlock(footprintId, cell.teamId, cell.quarterId, units, via)
                         }

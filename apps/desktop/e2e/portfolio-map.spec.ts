@@ -1108,3 +1108,78 @@ test('unplanned work is captured, placed and committed in one action', async ({ 
   // And it is not left sitting in the demand lane as well.
   await expect(page.locator('.fm-idea').filter({ hasText: 'Incident follow-up' })).toHaveCount(0);
 });
+
+/**
+ * Drawing a dependency (M2-COM-9, and the keyboard half of M2-A11Y-3). The
+ * gesture is the same as moving work — pick up, pass over, release — because a
+ * dependency is the same question asked of two pieces of work instead of one.
+ */
+test('shift-dragging between two blocks draws a dependency', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const source = page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^SEPA instant payments/ });
+  const target = page
+    .getByRole('gridcell', { name: /^Platform\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^Container platform upgrade/ });
+
+  await source.scrollIntoViewIfNeeded();
+  const a = await source.boundingBox();
+  const b = await target.boundingBox();
+  if (!a || !b) throw new Error('missing geometry');
+
+  await page.keyboard.down('Shift');
+  await page.mouse.move(a.x + 60, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + 100, a.y + a.height / 2 + 20, { steps: 3 });
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+
+  // Visual creation defaults to REQUIRES, and the panel now lists it.
+  await source.click();
+  const panel = page.getByRole('complementary');
+  await expect(panel.getByRole('heading', { name: 'Dependencies' })).toBeVisible();
+  await expect(panel).toContainText('Container platform upgrade');
+
+  // And it is drawn on the board, since the source is now focused.
+  await expect(page.locator('.fm-deps__edge').first()).toBeVisible();
+});
+
+test('work cannot be made to depend on itself', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const block = page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q4/ })
+    .getByRole('gridcell', { name: /^Instant payments regulation/ });
+  await block.scrollIntoViewIfNeeded();
+
+  // This work already has dependencies, so the question is whether the count
+  // grows — an empty-section check would prove nothing here.
+  await block.click();
+  const rows = page.getByRole('complementary').locator('.fm-panel__list li');
+  const before = await rows.count();
+  await page.getByRole('button', { name: 'Close' }).click();
+
+  const box = await block.boundingBox();
+  if (!box) throw new Error('missing geometry');
+
+  await page.keyboard.down('Shift');
+  await page.mouse.move(box.x + 60, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 100, box.y + box.height / 2 + 10, { steps: 4 });
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+
+  // Press-and-release on one block also selects it, so the panel reopens on
+  // the very work the link was refused for.
+  await expect(page.getByRole('complementary')).toBeVisible();
+  expect(await rows.count(), 'a self-dependency was created').toBe(before);
+});

@@ -31,7 +31,13 @@ import type { DragPayload } from '@flowmap/visual-model';
  * taking work off the board is the same gesture as putting it on, run backwards.
  */
 export type DropTarget =
-  | { readonly kind: 'CELL'; readonly teamId: string; readonly quarterId: string }
+  | {
+      readonly kind: 'CELL';
+      readonly teamId: string;
+      readonly quarterId: string;
+      /** The block under the pointer, when there is one. Dependencies need it. */
+      readonly commitmentId?: string;
+    }
   | { readonly kind: 'RAIL' };
 
 export type PlacementState = {
@@ -51,7 +57,9 @@ const EDGE_SCROLL_PX = 14;
 /** Identity of a target, for deciding whether anything a component draws moved. */
 function describeTarget(target: DropTarget | null | undefined): string {
   if (!target) return '';
-  return target.kind === 'RAIL' ? 'rail' : `${target.teamId}:${target.quarterId}`;
+  return target.kind === 'RAIL'
+    ? 'rail'
+    : `${target.teamId}:${target.quarterId}:${target.commitmentId ?? ''}`;
 }
 
 export type UsePlacementOptions = {
@@ -102,7 +110,12 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
     if (!cell) return null;
     const teamId = cell.dataset['dropTeam'];
     const quarterId = cell.dataset['dropQuarter'];
-    return teamId && quarterId ? { kind: 'CELL', teamId, quarterId } : null;
+    if (!teamId || !quarterId) return null;
+
+    // A dependency points at work, not at a container, so the block under the
+    // pointer matters as well as the cell it sits in.
+    const commitmentId = under.closest<SVGGElement>('[data-commitment]')?.dataset['commitment'];
+    return { kind: 'CELL', teamId, quarterId, ...(commitmentId ? { commitmentId } : {}) };
   }, []);
 
   const cancel = useCallback(() => {

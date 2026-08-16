@@ -70,6 +70,8 @@ export type CapacityVesselProps = {
    * on the top edge; the keyboard sends an absolute value straight through.
    */
   readonly onResize?: (footprintId: string, units: number, via: 'pointer' | 'keyboard') => void;
+  /** Start drawing a dependency from this block. Shift-drag, or `d`. */
+  readonly onLink?: (commitmentId: string, event?: ReactPointerEvent) => void;
   /** Units per pixel, so the caller can turn pointer movement into units. */
   readonly onResizeStart?: (footprintId: string, event: ReactPointerEvent, unitPx: number) => void;
   /** While a resize is in flight, draw this block at that size instead. */
@@ -100,6 +102,7 @@ export function CapacityVessel({
   onRemove,
   onResize,
   onResizeStart,
+  onLink,
   resizing,
 }: CapacityVesselProps) {
   const patternPrefix = useId().replace(/:/g, '');
@@ -326,11 +329,17 @@ export function CapacityVessel({
                   aria-label={blockLabel(block, isOverflow, carried)}
                   aria-selected={selected}
                   className="fm-block"
+                  data-commitment={block.commitment.id}
                   data-mandatory={block.commitment.class === 'MANDATORY' || undefined}
                   data-selected={selected || undefined}
                   data-counted={block.counted || undefined}
                   data-dimmed={dimmed || undefined}
-                  onPointerDown={(e) => onPickUp?.(block.footprint.id, e)}
+                  onPointerDown={(e) => {
+                    // Shift turns the move gesture into a link gesture: same
+                    // pick-up, pass-over, release, different statement.
+                    if (e.shiftKey) onLink?.(block.commitment.id, e);
+                    else onPickUp?.(block.footprint.id, e);
+                  }}
                   onClick={() => onSelect?.(block.footprint.id)}
                   onKeyDown={(e) => {
                     // Enter inspects, Space picks up — the WAI-ARIA drag idiom,
