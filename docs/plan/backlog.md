@@ -11,7 +11,24 @@ capability**, not by technical layer — each ticket should leave the product me
 > This file is kept current as work lands. A ticket is ✅ only when its acceptance criteria pass and
 > the [`AGENTS.md`](../../AGENTS.md) definition of done is met — not when the code merely exists.
 
-**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 28/28 — complete** · M6-WSP-2 pulled forward · M3–M9 not started
+**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 20/28 done, 8 partial** · M6-WSP-2 pulled forward · M3–M9 not started
+
+> **Carried out of M2.** Eight items work but do not meet every line of their
+> acceptance criteria. Each is listed below with the specific gap rather than
+> left as a tick; none blocks M3.
+>
+> - **M2-MAP-2** — no Planner row-reorder UI; `displayOrder` is stored but not editable
+> - **M2-MAP-4** — the refinement reserve tooltip does not list its linked Ideas
+> - **M2-MAP-6** — focus emphasises footprints, teams, quarters and dependencies — not products or milestones
+> - **M2-MAP-9** — budgets asserted on CI as a trend; the reference device is the gate and has not been measured
+> - **M2-COM-2** — Planning lacks timing and scope confidence; Outcome lacks value drivers and themes
+> - **M2-COM-5** — no way to split one commitment across quarters — a placed footprint can move, not divide
+> - **M2-COM-7** — the six cap is enforced, but milestones do not render on blocks
+> - **M2-COM-8** — https and typing are enforced; `tauri-plugin-opener` is a dependency but links still open via `target="_blank"`
+>
+> Two M0 rows are in the same position: **M0-FIX-2** (no dependencies or
+> history in the scale fixtures) and **M0-SPK-7** (no `pnpm bench`, no
+> reference-device baselines). Both feed M9-PRF-1.
 
 > M2-MAP-1's 60 fps figure is asserted only as a trend on CI. Spec 11 §6.1 makes
 > the reference device the gate, and that measurement is owed per release.
@@ -31,9 +48,9 @@ criteria below are the _additional_, ticket-specific ones.
 | ⬜  | M0-SPK-4 | Dependency-graph library bake-off                              |  M   | M0-FIX-1 | 500 nodes / 600 edges: layout ms, interaction p95, DOM accessibility, bundle size. Written recommendation + ADR-0010   |
 | ⬜  | M0-SPK-5 | Portfolio Map layout alternatives                              |  M   | M0-FIX-1 | Two clickable low-fi prototypes tested with both pilot leads; chosen layout + rejected alternative + evidence recorded |
 | ⬜  | M0-SPK-6 | Keyboard interaction model                                     |  S   | M0-SPK-5 | A lead completes select → move → resize → inspect by keyboard alone; timings recorded                                  |
-| ⬜  | M0-SPK-7 | Benchmark harness + reference hardware                         |  S   | M0-FIX-2 | `pnpm bench` runs; reference device named; naive-render baselines recorded                                             |
+| 🔵  | M0-SPK-7 | Benchmark harness + reference hardware                         |  S   | M0-FIX-2 | `pnpm bench` runs; reference device named; naive-render baselines recorded                                             |
 | ✅  | M0-FIX-1 | Validation fixture                                             |  M   | —        | Exactly the counts in spec 11 §5.1; deterministic ULIDs and dates; loads in under 200 ms                               |
-| ⬜  | M0-FIX-2 | Scale fixtures 25/100/500                                      |  S   | M0-FIX-1 | Deterministic generation; proportional footprints/dependencies/history                                                 |
+| 🔵  | M0-FIX-2 | Scale fixtures 25/100/500                                      |  S   | M0-FIX-1 | Deterministic generation; proportional footprints/dependencies/history                                                 |
 | ⬜  | M0-FIX-3 | Edge + import fixtures                                         |  S   | M0-FIX-1 | Every case in spec 11 §5.3–5.4, including the malicious ZIP                                                            |
 | ⏸   | M0-DEC-1 | Glossary validation with a business lead and a technology lead |  S   | —        | Every glossary term either survives or is changed; changes propagated to the spec                                      |
 | ⏸   | M0-DEC-2 | Current-state QBR observation                                  |  S   | —        | Baseline recorded: prep time, source artifact count, reconciliation time, missed attention items                       |
@@ -107,27 +124,27 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 | St  | ID       | Title                                                  | Size | Dep      | Acceptance                                                                                              |
 | --- | -------- | ------------------------------------------------------ | :--: | -------- | ------------------------------------------------------------------------------------------------------- |
 | ✅  | M2-MAP-1 | Canvas primitives: viewport, pan, zoom, hit-testing    |  M   | M1-VS-3  | 60 fps pan/zoom at 500 commitments; hit areas ≥ 24 px even for XS blocks                                |
-| ✅  | M2-MAP-2 | Quarter columns + team rows + current-quarter centring |  M   | M2-MAP-1 | Alphabetical default order; Planner reorder persists; pressure never reorders rows                      |
+| 🔵  | M2-MAP-2 | Quarter columns + team rows + current-quarter centring |  M   | M2-MAP-1 | Alphabetical default order; Planner reorder persists; pressure never reorders rows                      |
 | ✅  | M2-MAP-3 | Semantic zoom L1/L2/L3 + explicit level control        |  L   | M2-MAP-2 | Level thresholds per spec 06 §3.3; level changes announced; ≤ 250 ms                                    |
-| ✅  | M2-MAP-4 | Reserve plinth with per-type segments and labels       |  S   | M2-MAP-2 | Each reserve type uses its own pattern token; tooltip lists linked Ideas for refinement                 |
+| 🔵  | M2-MAP-4 | Reserve plinth with per-type segments and labels       |  S   | M2-MAP-2 | Each reserve type uses its own pattern token; tooltip lists linked Ideas for refinement                 |
 | ✅  | M2-MAP-5 | Overflow spill + units/percent/glyph label             |  S   | M2-MAP-4 | Never colour alone; matches the projection exactly                                                      |
-| ✅  | M2-MAP-6 | Focus mode                                             |  M   | M2-MAP-3 | Unrelated content to 25 %; related footprints, products, dependencies, milestones emphasised; announced |
+| 🔵  | M2-MAP-6 | Focus mode                                             |  M   | M2-MAP-3 | Unrelated content to 25 %; related footprints, products, dependencies, milestones emphasised; announced |
 | ✅  | M2-MAP-7 | Ideas/Demand lane + refinement links                   |  M   | M2-MAP-2 | Ideas never occupy capacity blocks; links render as connector markers; links change no total            |
 | ✅  | M2-MAP-8 | Lens switcher + filter chips (fade, not remove)        |  M   | M2-MAP-3 | Filtering preserves spatial context; "hide filtered" toggle available                                   |
-| ✅  | M2-MAP-9 | Scale rendering tests 25/100/500                       |  S   | M2-MAP-3 | Budgets from spec 11 §6.2 met on reference hardware                                                     |
+| 🔵  | M2-MAP-9 | Scale rendering tests 25/100/500                       |  S   | M2-MAP-3 | Budgets from spec 11 §6.2 met on reference hardware                                                     |
 
 ### Epic: Commitment model in the UI
 
 | St  | ID        | Title                                               | Size | Dep       | Acceptance                                                                                                             |
 | --- | --------- | --------------------------------------------------- | :--: | --------- | ---------------------------------------------------------------------------------------------------------------------- |
 | ✅  | M2-COM-1  | Quick Capture (inline, title only)                  |  S   | M2-MAP-7  | Idea created in < 5 s, keyboard only, no modal                                                                         |
-| ✅  | M2-COM-2  | Progressive detail panel                            |  L   | M2-COM-1  | All sections from spec 06 §8; empty sections show an "Add…" affordance                                                 |
+| 🔵  | M2-COM-2  | Progressive detail panel                            |  L   | M2-COM-1  | All sections from spec 06 §8; empty sections show an "Add…" affordance                                                 |
 | ✅  | M2-COM-3  | Three-part tooltips for every domain concept        |  M   | M2-COM-2  | Definition · what it is not · example, on every capacity/lifecycle/impact/dependency/health/attention/confidence field |
 | ✅  | M2-COM-4  | Visual quarter strip for target selection           |  S   | M2-COM-2  | No target-quarter dropdown in any primary flow; direct date entry derives the quarter                                  |
-| ✅  | M2-COM-5  | Multi-team / multi-quarter footprint editing        |  M   | M2-MAP-1  | Drag between cells; split across quarters; primary-footprint invariant enforced                                        |
+| 🔵  | M2-COM-5  | Multi-team / multi-quarter footprint editing        |  M   | M2-MAP-1  | Drag between cells; split across quarters; primary-footprint invariant enforced                                        |
 | ✅  | M2-COM-6  | Product impacts + themes                            |  M   | M2-COM-2  | Single-`PRIMARY` invariant enforced with a clear error                                                                 |
-| ✅  | M2-COM-7  | Milestones (≤ 6)                                    |  S   | M2-COM-2  | Cap enforced; milestones render on blocks                                                                              |
-| ✅  | M2-COM-8  | Typed external links                                |  S   | M2-COM-2  | HTTPS only; opens in the system browser; never embedded                                                                |
+| 🔵  | M2-COM-7  | Milestones (≤ 6)                                    |  S   | M2-COM-2  | Cap enforced; milestones render on blocks                                                                              |
+| 🔵  | M2-COM-8  | Typed external links                                |  S   | M2-COM-2  | HTTPS only; opens in the system browser; never embedded                                                                |
 | ✅  | M2-COM-9  | Dependencies: draw, retype, retarget                |  M   | M2-MAP-6  | Visual creation defaults to `REQUIRES`; direction never flips; cycles allowed                                          |
 | ✅  | M2-COM-10 | Commit Gate: hard + advisory guardrails             |  M   | M2-COM-5  | Hard checks block with specific errors; advisory checks render as a dismissible checklist                              |
 | ✅  | M2-COM-11 | Capture unplanned work (batched three-command path) |  S   | M2-COM-10 | Single action; never creates directly in `IN_DELIVERY`                                                                 |
