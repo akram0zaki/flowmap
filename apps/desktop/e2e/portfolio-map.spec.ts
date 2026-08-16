@@ -575,6 +575,9 @@ test('an Idea can be dropped on a team that does not already own it', async ({ p
   const platformRow = page.locator('.fm-grid [role="row"]').filter({ hasText: 'Platform' });
   const target = platformRow.locator('[data-drop-quarter="2026-Q4"]').first();
 
+  // Detail is a real zoom now, so the second row can sit below the fold — and a
+  // hit test only sees what is on screen.
+  await target.scrollIntoViewIfNeeded();
   const from = await idea.boundingBox();
   const to = await target.boundingBox();
   if (!from || !to) throw new Error('missing geometry');

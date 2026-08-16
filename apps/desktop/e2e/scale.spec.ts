@@ -162,3 +162,85 @@ test('every interactive block offers a usable hit area', async ({ page }) => {
   // blocks exist by design and the keyboard path is how they are reached.
   expect(tooSmall).toBeGreaterThanOrEqual(0);
 });
+
+/**
+ * Zoom (M2-MAP-1). Spec 06 §3.3: continuous scale, driven by Ctrl/Cmd+scroll,
+ * pinch and `+`/`−`, with the level read off it — and the explicit Level
+ * control so zoom never *requires* a precise pointer.
+ */
+test.describe('zoom', () => {
+  test('is continuous, and the level follows it', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 950 });
+    await loadScale(page, 25);
+
+    const figure = page.locator('.fm-zoom__figure');
+    await expect(figure).toHaveText('100%');
+    await expect(page.getByRole('button', { name: 'Areas', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    // Zooming in far enough crosses the L3 threshold on its own.
+    for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Zoom in' }).click();
+    await expect(page.getByRole('button', { name: 'Detail', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    // And out again, to L1.
+    for (let i = 0; i < 8; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
+    await expect(page.getByRole('button', { name: 'Overview', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  test('Ctrl+scroll zooms, and plain scroll still scrolls', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 950 });
+    await loadScale(page, 25);
+
+    const scroller = page.locator('.fm-map__scroll');
+    const box = await scroller.boundingBox();
+    if (!box) throw new Error('missing geometry');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+
+    // Playwright's `mouse.wheel` carries no modifier state, so the ctrl-wheel
+    // is dispatched directly. The listener under test is the native,
+    // non-passive one — React's `onWheel` is passive and cannot preventDefault,
+    // which is why the browser used to zoom the page instead of the board.
+    await scroller.dispatchEvent('wheel', { deltaY: -240, ctrlKey: true });
+    await expect(page.locator('.fm-zoom__figure')).not.toHaveText('100%');
+
+    // Plain scrolling must stay scrolling. The board is wider and taller than
+    // the window, and taking the wheel away from panning would cost more than
+    // the zoom is worth.
+    const zoomed = (await page.locator('.fm-zoom__figure').textContent()) ?? '';
+    await scroller.dispatchEvent('wheel', { deltaY: 200 });
+    await page.mouse.wheel(0, 200);
+    await expect(page.locator('.fm-zoom__figure')).toHaveText(zoomed);
+  });
+
+  /**
+   * The target-size half of M2-MAP-1. A block's height *is* its size, so a
+   * five-unit block is small by design — zoom is what makes it hittable, which
+   * is precisely why viewport, zoom and hit-testing are one item.
+   */
+  test('zooming in brings the smallest blocks up to a 24 px target', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 950 });
+    await loadScale(page, 100);
+    await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+    const smallest = () =>
+      page
+        .locator('.fm-block')
+        .evaluateAll((blocks) =>
+          Math.min(...blocks.map((b) => b.getBoundingClientRect().height).filter((h) => h > 0)),
+        );
+
+    expect(await smallest(), 'thin blocks exist at default zoom, by design').toBeLessThan(24);
+
+    // Zoom to the top of the range and they clear the target.
+    for (let i = 0; i < 8; i++) await page.getByRole('button', { name: 'Zoom in' }).click();
+    expect(await smallest()).toBeGreaterThanOrEqual(24);
+  });
+});

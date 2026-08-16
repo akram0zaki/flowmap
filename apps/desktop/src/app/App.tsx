@@ -33,6 +33,9 @@ import {
   previewRemoval,
   previewResize,
   readinessForIdeas,
+  clampScale,
+  levelForScale,
+  scaleForLevel,
   toggleFilterValue,
   type CellModel,
   type DragPayload,
@@ -74,7 +77,15 @@ export function App() {
     passGate,
   } = useWorkspace.getState();
 
-  const [level, setLevelState] = useState<ZoomLevel>(2);
+  /**
+   * Zoom is a continuous scale; the level is read off it (spec 06 §3.3). Held
+   * this way round because Ctrl/Cmd+scroll and pinch move the scale smoothly
+   * and the level has to follow, not the other way about — a level that owned
+   * the scale would snap the board back the moment you nudged the wheel.
+   */
+  const [scale, setScale] = useState(() => scaleForLevel(2));
+  const level = levelForScale(scale);
+  const setLevelState = useCallback((next: ZoomLevel) => setScale(scaleForLevel(next)), []);
   const [filter, setFilter] = useState<FilterState>(NO_FILTER);
   const [focusedCommitmentId, setFocusedCommitmentId] = useState<string | null>(null);
   const [showList, setShowList] = useState(true);
@@ -110,6 +121,21 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo, select]);
+
+  /**
+   * Ctrl/Cmd + wheel, and pinch — which the browser also reports as a wheel
+   * event with `ctrlKey` set. Plain scrolling stays scrolling: the board is
+   * wider than the window and taking the wheel away from panning would cost
+   * more than the zoom is worth.
+   */
+  const onWheelZoom = useCallback((deltaY: number) => {
+    // Multiplicative, so a step feels the same at every scale.
+    setScale((current) => clampScale(current * Math.exp(-deltaY / 400)));
+  }, []);
+
+  const nudgeZoom = useCallback((factor: number) => {
+    setScale((current) => clampScale(current * factor));
+  }, []);
 
   const board = useMemo(
     () =>
@@ -675,6 +701,8 @@ export function App() {
           level={level}
           filter={filter}
           focusedName={focusedName}
+          scale={scale}
+          onZoomBy={nudgeZoom}
           onLevel={setLevelState}
           onRemoveChip={(key) => setFilter((f) => removeChip(f, key))}
           onClearFilters={() => setFilter(NO_FILTER)}
@@ -749,6 +777,8 @@ export function App() {
           resizing={resizing ? { footprintId: resizing.footprintId, units: resizing.units } : null}
           onAimDrag={(teamId, quarterId) => aim({ kind: 'CELL', teamId, quarterId })}
           onLinkFrom={linkFrom}
+          scale={scale}
+          onWheelZoom={onWheelZoom}
           onDropHere={drop}
           dependencyEdges={dependencyEdges}
         />

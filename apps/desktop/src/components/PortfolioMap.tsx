@@ -86,6 +86,9 @@ export type PortfolioMapProps = {
   ) => void;
   readonly resizing: { footprintId: string; units: number } | null;
   readonly onLinkFrom: (commitmentId: string, event?: ReactPointerEvent) => void;
+  /** Continuous zoom. Blocks scale with it, so a thin one can be made hittable. */
+  readonly scale: number;
+  readonly onWheelZoom: (deltaY: number) => void;
   /** Dependencies of the focused commitment, drawn over the grid. */
   readonly dependencyEdges: readonly DependencyEdge[];
   readonly onDropHere: () => void;
@@ -112,6 +115,8 @@ export function PortfolioMap({
   onResizeStart,
   resizing,
   onLinkFrom,
+  scale,
+  onWheelZoom,
   dependencyEdges,
   onDropHere,
 }: PortfolioMapProps) {
@@ -182,6 +187,29 @@ export function PortfolioMap({
     },
     [board, cursor, move, onSelectCell, dragging, onDropHere],
   );
+
+  /**
+   * Zoom on Ctrl/Cmd + wheel, and on pinch — which the browser also reports as
+   * a wheel event with `ctrlKey` set.
+   *
+   * Attached natively rather than through `onWheel` because React registers
+   * wheel listeners as passive, so `preventDefault` there is ignored and the
+   * *browser* zooms the whole page instead of the board. That is not a nuance;
+   * it is the difference between the feature working and the page scaling.
+   */
+  useEffect(() => {
+    const node = gridRef.current;
+    if (!node) return undefined;
+
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      onWheelZoom(event.deltaY);
+    };
+
+    node.addEventListener('wheel', onWheel, { passive: false });
+    return () => node.removeEventListener('wheel', onWheel);
+  }, [onWheelZoom]);
 
   // Centre the current quarter on first render, as the spec requires.
   useEffect(() => {
@@ -319,6 +347,7 @@ export function PortfolioMap({
                         summary={cell.summary}
                         blocks={vesselBlocksFor(cell)}
                         compact={level === 2}
+                        zoom={scale}
                         dimmedFootprintIds={dimmedIds(cell, focus, filter)}
                         {...(selectedFootprintId !== null ? { selectedFootprintId } : {})}
                         {...(aimedHere && preview
