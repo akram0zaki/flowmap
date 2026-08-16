@@ -14,6 +14,8 @@
 
 import {
   DOMAIN_ERROR_CODES,
+  GATE_ADVISORIES,
+  GATE_BLOCKERS,
   RELATIVE_SIZES,
   CONFIDENCE_VALUES,
 } from '../packages/domain/src/index.js';
@@ -61,6 +63,10 @@ const CHANGE_LOADS = ['LOW', 'MEDIUM', 'HIGH'];
 
 const COVERAGE: readonly (readonly [string, string, readonly string[]])[] = [
   ['errors', '', DOMAIN_ERROR_CODES],
+  // The gate's checklist is user-facing text; these were a type-only union, so
+  // nothing checked they had messages at all and every one rendered as its code.
+  ['errors', '', GATE_BLOCKERS],
+  ['errors', '', GATE_ADVISORIES],
   ['common', 'lifecycle.', LIFECYCLES],
   ['common', 'class.', CLASSES],
   ['common', 'importance.', IMPORTANCES],

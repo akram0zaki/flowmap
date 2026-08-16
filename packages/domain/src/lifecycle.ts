@@ -82,25 +82,31 @@ export function legalTransitions(): Array<{ from: Lifecycle; name: TransitionNam
 
 // ── Commit Gate readiness ──────────────────────────────────────────────────
 
-export type GateBlocker =
-  | 'COMMIT_GATE_PRIMARY_TEAM_REQUIRED'
-  | 'COMMIT_GATE_FOOTPRINT_REQUIRED'
-  | 'COMMIT_GATE_PRIMARY_FOOTPRINT_MISMATCH'
-  | 'MANDATORY_TARGET_DATE_REQUIRED';
+export const GATE_BLOCKERS = [
+  'COMMIT_GATE_PRIMARY_TEAM_REQUIRED',
+  'COMMIT_GATE_FOOTPRINT_REQUIRED',
+  'COMMIT_GATE_PRIMARY_FOOTPRINT_MISMATCH',
+  'MANDATORY_TARGET_DATE_REQUIRED',
+] as const;
+
+export type GateBlocker = (typeof GATE_BLOCKERS)[number];
 
 /**
  * Advisory readiness gaps. These never block — a Planner may commit past all of
  * them, and the checklist exists so the decision is informed, not prevented.
  * See docs/spec/03-commands-permissions.md §6.2.
  */
-export type GateAdvisory =
-  | 'RDY_NO_OWNER'
-  | 'RDY_NO_TARGET'
-  | 'RDY_NO_OUTCOME'
-  | 'RDY_NO_PRODUCT_IMPACT'
-  | 'RDY_NO_DEPENDENCIES_REVIEWED'
-  | 'RDY_LOW_CONFIDENCE_LARGE'
-  | 'RDY_SPANS_MANY_QUARTERS';
+export const GATE_ADVISORIES = [
+  'RDY_NO_OWNER',
+  'RDY_NO_TARGET',
+  'RDY_NO_OUTCOME',
+  'RDY_NO_PRODUCT_IMPACT',
+  'RDY_NO_DEPENDENCIES_REVIEWED',
+  'RDY_LOW_CONFIDENCE_LARGE',
+  'RDY_SPANS_MANY_QUARTERS',
+] as const;
+
+export type GateAdvisory = (typeof GATE_ADVISORIES)[number];
 
 export type GateReadiness = {
   readonly blockers: readonly GateBlocker[];

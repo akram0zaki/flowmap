@@ -33,9 +33,13 @@ export function CaptureBar({
   onRedo,
   onClearLocalData,
 }: CaptureBarProps) {
-  const { captureIdea, addTeam, placeFootprint, loadSample } = useWorkspace.getState();
+  const { captureIdea, addTeam, placeFootprint, loadSample, captureUnplanned } =
+    useWorkspace.getState();
 
   const [ideaName, setIdeaName] = useState('');
+  const [unplannedName, setUnplannedName] = useState('');
+  const [unplannedTeam, setUnplannedTeam] = useState('');
+  const [unplannedUnits, setUnplannedUnits] = useState(10);
   const [teamName, setTeamName] = useState('');
   const [commitmentId, setCommitmentId] = useState('');
   const [teamId, setTeamId] = useState('');
@@ -112,6 +116,59 @@ export function CaptureBar({
               {t('action.captureIdea')}
             </button>
           </form>
+
+          {/* Work that arrived mid-quarter and is already real. One action,
+              three commands, one undo — and it stops at COMMITTED, because
+              work created straight into delivery would be consuming capacity
+              nobody ever agreed to. */}
+          {teams.length > 0 && (
+            <form
+              className="fm-form"
+              aria-label={t('capture.unplanned')}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!unplannedName.trim()) return;
+                void captureUnplanned({
+                  name: unplannedName.trim(),
+                  teamId: unplannedTeam || teams[0]!.id,
+                  quarterId: currentQuarter,
+                  units: unplannedUnits,
+                }).then((ok) => ok && setUnplannedName(''));
+              }}
+            >
+              <label htmlFor="unplanned-name">{t('capture.unplanned')}</label>
+              <input
+                id="unplanned-name"
+                value={unplannedName}
+                onChange={(e) => setUnplannedName(e.target.value)}
+                placeholder={t('capture.unplannedHint')}
+              />
+
+              <label htmlFor="unplanned-team">{t('field.team')}</label>
+              <select
+                id="unplanned-team"
+                value={unplannedTeam || teams[0]!.id}
+                onChange={(e) => setUnplannedTeam(e.target.value)}
+              >
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+
+              <label htmlFor="unplanned-units">{t('fields.units.label')}</label>
+              <input
+                id="unplanned-units"
+                type="number"
+                min={1}
+                value={unplannedUnits}
+                onChange={(e) => setUnplannedUnits(Math.max(1, Number(e.target.value)))}
+              />
+
+              <button type="submit">{t('action.captureUnplanned')}</button>
+            </form>
+          )}
 
           {canPlace && (
             <form

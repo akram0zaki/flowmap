@@ -27,9 +27,11 @@ async function openEditor(page: Page) {
 
 async function seed(page: Page) {
   await openEditor(page);
-  await page.getByLabel('Team', { exact: true }).fill('Payments');
+  // Scoped by id: several forms in the bar have a "Team" field, and the one
+  // that creates a team is not the one that places work.
+  await page.locator('#team-name').fill('Payments');
   await page.getByRole('button', { name: 'Add team' }).click();
-  await page.getByLabel('Team', { exact: true }).fill('Platform');
+  await page.locator('#team-name').fill('Platform');
   await page.getByRole('button', { name: 'Add team' }).click();
 
   await page.getByLabel('What is it?').fill('SEPA instant');
@@ -1032,4 +1034,77 @@ test('a focused commitment draws its dependencies on the board', async ({ page }
   await expect(edges.first()).toBeVisible();
   // Never colour alone: the type is written along the line.
   await expect(page.locator('.fm-deps')).toContainText(/Requires|Needs|Blocked|Depends/);
+});
+
+/**
+ * The Commit Gate, shown rather than merely enforced (M2-COM-10). Blockers
+ * stop the transition and name the specific missing thing; advisories never
+ * stop anything. Overflow is in neither list.
+ */
+test('the gate names what is blocking, and what is merely worth asking', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+
+  // An Idea, which by definition has not been placed.
+  await page.locator('.fm-idea').filter({ hasText: 'FX pricing transparency' }).click();
+
+  const gate = page.getByRole('region', { name: /Commit Gate for FX pricing/ });
+  await expect(gate).toBeVisible();
+
+  // A blocker names the specific missing thing, never "not ready".
+  await expect(gate).toContainText('needs at least one capacity footprint');
+  await expect(gate.getByRole('button', { name: 'Commit' })).toBeDisabled();
+
+  // Advisories are listed and do not block.
+  await expect(gate).toContainText('none of these will stop you');
+  await expect(gate).toContainText('No outcome is stated');
+});
+
+test('the gate stops blocking once the work is placed', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const idea = page.locator('.fm-idea').filter({ hasText: 'Request to pay' });
+  const cell = page.locator('[data-drop-team][data-drop-quarter="2026-Q4"]').first();
+  const from = await idea.boundingBox();
+  const to = await cell.boundingBox();
+  if (!from || !to) throw new Error('missing geometry');
+
+  await page.mouse.move(from.x + 40, from.y + 15);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 });
+  await page.mouse.up();
+
+  // Dropping it takes it through the gate, so it is committed and the gate is
+  // no longer the question.
+  await expect(cell).toContainText('Request to pay');
+  await expect(page.getByRole('region', { name: /Commit Gate/ })).toHaveCount(0);
+});
+
+/**
+ * Unplanned work (M2-COM-11): one action, and never straight into delivery —
+ * work created in IN_DELIVERY would be consuming capacity nobody agreed to.
+ */
+test('unplanned work is captured, placed and committed in one action', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+  await openEditor(page);
+
+  const form = page.getByRole('form', { name: 'Capture unplanned work' });
+  await form.getByLabel('Capture unplanned work').fill('Incident follow-up');
+  await form.getByRole('button', { name: 'Capture and commit' }).click();
+
+  const block = page
+    .getByRole('gridcell', { name: /^Payments\. 2026-Q3/ })
+    .getByRole('gridcell', { name: /^Incident follow-up/ });
+  await expect(block).toBeVisible();
+  // Committed, not in delivery.
+  await expect(block).toHaveAttribute('aria-label', /Committed/);
+  // And it is not left sitting in the demand lane as well.
+  await expect(page.locator('.fm-idea').filter({ hasText: 'Incident follow-up' })).toHaveCount(0);
 });

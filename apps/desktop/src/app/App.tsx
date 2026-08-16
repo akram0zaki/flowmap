@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addExternalLink,
   addMilestone,
+  assessCommitGate,
   isCounted,
   removeDependency,
   removeExternalLink,
@@ -69,6 +70,7 @@ export function App() {
     resizeFootprint,
     editCommitment,
     relate,
+    passGate,
   } = useWorkspace.getState();
 
   const [level, setLevelState] = useState<ZoomLevel>(2);
@@ -435,6 +437,36 @@ export function App() {
       });
   }, [state, board, panelCommitment]);
 
+  /**
+   * The gate, for work that has not passed it. Uses the same pure assessment
+   * the handler runs, so the checklist and the refusal cannot disagree.
+   */
+  const panelGate = useMemo(() => {
+    if (!state || !board || !panelCommitment || panelCommitment.lifecycle !== 'IDEA') return null;
+
+    const footprints = [...state.footprints.values()];
+    const readiness = assessCommitGate({
+      commitment: panelCommitment,
+      footprints,
+      hasProductImpact: [...(state.productImpacts?.values() ?? [])].some(
+        (impact) => impact.commitmentId === panelCommitment.id && impact.archivedAt === undefined,
+      ),
+      dependenciesReviewed: false,
+      largeThreshold: state.workspace.settings.capacity.sizeMapping.L,
+    });
+
+    // What committing would do to capacity. Stated, never used to block.
+    const own = footprints.filter(
+      (f) => f.commitmentId === panelCommitment.id && f.archivedAt === undefined,
+    );
+    const overflow = own.reduce((worst, footprint) => {
+      const cell = findCell(board, footprint.teamId, footprint.quarterId);
+      return Math.max(worst, cell?.summary?.overflow ?? 0);
+    }, 0);
+
+    return { readiness, overflow };
+  }, [state, board, panelCommitment]);
+
   /** The relations that belong to whatever the panel is showing. */
   const panelRelations = useMemo(() => {
     const id = panelCommitment?.id;
@@ -727,6 +759,14 @@ export function App() {
               void relate('RemoveDependency', (rs, cmd, ctx) =>
                 removeDependency(rs, { dependencyId }, cmd, ctx),
               )
+            }
+            gate={
+              panelGate
+                ? {
+                    ...panelGate,
+                    onCommit: () => void passGate(panelCommitment.id),
+                  }
+                : null
             }
             onClose={() => setFocusedCommitmentId(null)}
           />

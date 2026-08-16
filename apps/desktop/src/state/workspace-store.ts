@@ -181,6 +181,22 @@ type StoreState = {
     name: string,
     run: (state: RelationState, cmd: Command, ctx: CommandContext) => CommandResult,
   ): Promise<boolean>;
+  /** Take an Idea through the Commit Gate from the panel. */
+  passGate(commitmentId: EntityId): Promise<boolean>;
+  /**
+   * Work that arrived mid-quarter and is already real.
+   *
+   * Captured, placed and committed as one step — three commands, one undo. It
+   * stops at COMMITTED deliberately: creating straight into IN_DELIVERY would
+   * mean work that was never committed to anything, and the capacity it is
+   * consuming would have no record of having been agreed.
+   */
+  captureUnplanned(input: {
+    name: string;
+    teamId: EntityId;
+    quarterId: string;
+    units: number;
+  }): Promise<boolean>;
   select(footprintId: string | null): void;
   clearStatus(): void;
   clearLocalData(): Promise<void>;
@@ -515,6 +531,33 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     return (
       (await get().dispatch(name, (state, cmd, ctx) => run(relationView(state), cmd, ctx))) !==
       false
+    );
+  },
+
+  async captureUnplanned(input) {
+    return runAsStep(async () => {
+      const before = new Set(get().state?.commitments.keys() ?? []);
+      if (!(await get().captureIdea(input.name))) return false;
+
+      const created = [...(get().state?.commitments.values() ?? [])].find(
+        (commitment) => !before.has(commitment.id) && commitment.name === input.name,
+      );
+      if (!created) return false;
+
+      return get().commitIdeaInto({
+        commitmentId: created.id,
+        teamId: input.teamId,
+        quarterId: input.quarterId,
+        units: input.units,
+      });
+    });
+  },
+
+  async passGate(commitmentId) {
+    return (
+      (await get().dispatch('PassCommitGate', (state, cmd, ctx) =>
+        applyTransition('PassCommitGate', state, { commitmentId }, cmd, ctx),
+      )) !== false
     );
   },
 

@@ -20,6 +20,7 @@ import type {
   DependencyType,
   ExternalLink,
   ExternalLinkType,
+  GateReadiness,
   Milestone,
   Person,
   ProductImpact,
@@ -29,6 +30,7 @@ import type {
   Team,
 } from '@flowmap/domain';
 
+import { CommitGate } from './CommitGate.jsx';
 import { Field, Section } from './Field.jsx';
 import { QuarterStrip } from './QuarterStrip.jsx';
 import { t } from '../i18n/t.js';
@@ -62,6 +64,12 @@ export type DetailPanelProps = {
   readonly onRemoveLink: (linkId: string) => void;
   readonly onSetDependencyType: (dependencyId: string, type: DependencyType) => void;
   readonly onRemoveDependency: (dependencyId: string) => void;
+  /** The gate, for work that has not passed it yet. */
+  readonly gate: {
+    readonly readiness: GateReadiness;
+    readonly overflow: number;
+    readonly onCommit: () => void;
+  } | null;
   readonly onClose: () => void;
 };
 
@@ -109,6 +117,7 @@ export function DetailPanel({
   onRemoveLink,
   onSetDependencyType,
   onRemoveDependency,
+  gate,
   onClose,
 }: DetailPanelProps) {
   const owner = commitment.ownerRef;
@@ -128,6 +137,17 @@ export function DetailPanel({
       </header>
 
       <div className="fm-panel__body">
+        {/* First, because for an Idea it is the only question that matters. */}
+        {gate && (
+          <CommitGate
+            name={commitment.name}
+            readiness={gate.readiness}
+            overflow={gate.overflow}
+            onCommit={gate.onCommit}
+            onDismiss={onClose}
+          />
+        )}
+
         <Section title={t('panel.identity')}>
           <Field name="name">
             <TextInput value={commitment.name} onCommit={(name) => onChange({ name })} />
