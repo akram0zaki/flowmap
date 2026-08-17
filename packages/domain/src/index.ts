@@ -16,3 +16,4 @@ export * from './quarter-close.js';
 export * from './recurrence.js';
 export * from './saved-views.js';
 export * from './workspace-lifecycle.js';
+export * from './permissions.js';
