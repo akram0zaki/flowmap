@@ -15,8 +15,8 @@
   },
   "dependencies": {
     "@flowmap/domain": "workspace:*",
-    "fflate": "^0.8.3",
-    "xlsx": "^0.18.5"
+    "exceljs": "^4.4.0",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@flowmap/rules": "workspace:*"

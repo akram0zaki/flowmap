@@ -128,15 +128,15 @@ describe('import mapping', () => {
     ]);
   });
 
-  it('reads an XLSX sheet into the same tabular shape', () => {
-    const parsed = parseXlsx(toXlsx([{ Name: 'Payments', Units: 20 }], 'Teams'));
+  it('reads an XLSX sheet into the same tabular shape', async () => {
+    const parsed = await parseXlsx(await toXlsx([{ Name: 'Payments', Units: 20 }], 'Teams'));
 
     expect(parsed.sheets).toEqual([
       { name: 'Teams', columns: ['Name', 'Units'], rows: [{ Name: 'Payments', Units: '20' }] },
     ]);
   });
 
-  it('builds entity-aware plans and preserves the workspace export sheets', () => {
+  it('builds entity-aware plans and preserves the workspace export sheets', async () => {
     const mapped = mapRows(
       [{ Team: '', Quarter: '2026-Q3', Units: '20' }],
       [
@@ -152,12 +152,14 @@ describe('import mapping', () => {
       1,
     );
     expect(
-      parseXlsx(
-        toWorkbook([{ name: 'Rows', rows: [{ name: 'A' }] }], {
-          workspace: 'Portfolio',
-          exportedAt: NOW,
-          schemaVersion: 1,
-        }),
+      (
+        await parseXlsx(
+          await toWorkbook([{ name: 'Rows', rows: [{ name: 'A' }] }], {
+            workspace: 'Portfolio',
+            exportedAt: NOW,
+            schemaVersion: 1,
+          }),
+        )
       ).sheets.map((sheet) => sheet.name),
     ).toEqual(['_README', 'Rows']);
   });

@@ -7,7 +7,7 @@
  */
 
 import { strFromU8, unzipSync, zipSync } from 'fflate';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 import type { DomainEvent, WorkspaceState } from '@flowmap/domain';
 
@@ -236,26 +236,51 @@ export function parseJson(text: string): ParsedImport {
   return { format: 'JSON', sheets };
 }
 
-export function parseXlsx(bytes: ArrayBuffer | Uint8Array): ParsedImport {
-  const book = XLSX.read(bytes, { type: 'array', raw: false });
+export async function parseXlsx(bytes: ArrayBuffer | Uint8Array): Promise<ParsedImport> {
+  const book = new ExcelJS.Workbook();
+  const data =
+    bytes instanceof Uint8Array
+      ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+      : bytes;
+  // ExcelJS's published declarations describe Node's Buffer, while its
+  // browser bundle accepts the ArrayBuffer documented by the project.
+  await book.xlsx.load(data as never);
   return {
     format: 'XLSX',
-    sheets: book.SheetNames.map((name) => {
-      const values = XLSX.utils.sheet_to_json<Record<string, unknown>>(book.Sheets[name]!, {
-        defval: '',
-      });
-      return sheetFromRecords(name, values);
-    }),
+    sheets: book.worksheets.map(sheetFromWorkbook),
   };
 }
 
-export function parseImport(
+export async function parseImport(
   format: ImportFormat,
   input: string | ArrayBuffer | Uint8Array,
-): ParsedImport {
+): Promise<ParsedImport> {
   if (format === 'CSV') return { format, sheets: [parseCsv(String(input))] };
   if (format === 'JSON') return parseJson(String(input));
   return parseXlsx(input as ArrayBuffer | Uint8Array);
+}
+
+function sheetFromWorkbook(sheet: ExcelJS.Worksheet): TabularSheet {
+  const columns = (sheet.getRow(1).values as unknown[])
+    .slice(1)
+    .map((value) => String(value ?? '').trim());
+  const rows: Array<Readonly<Record<string, string>>> = [];
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const values = row.values as unknown[];
+    const record = Object.fromEntries(
+      columns.map((column, index) => [column, cellText(values[index + 1])]),
+    );
+    if (Object.values(record).some((value) => value.length > 0)) rows.push(record);
+  });
+  return { name: sheet.name, columns, rows };
+}
+
+function cellText(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'object' && 'text' in value) return String(value.text ?? '');
+  return String(value);
 }
 
 function sheetFromRecords(name: string, records: readonly unknown[]): TabularSheet {
@@ -440,18 +465,13 @@ export function toCsv(rows: readonly Readonly<Record<string, unknown>>[]): strin
 }
 
 /** A workbook export uses the same rows and columns as the list companion. */
-export function toXlsx(
+export async function toXlsx(
   rows: readonly Readonly<Record<string, unknown>>[],
   sheetName = 'Flowmap',
-): Uint8Array {
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet([...rows]), sheetName.slice(0, 31));
-  const output = XLSX.write(book, {
-    type: 'array',
-    bookType: 'xlsx',
-    compression: true,
-  }) as ArrayBuffer;
-  return new Uint8Array(output);
+): Promise<Uint8Array> {
+  const book = new ExcelJS.Workbook();
+  appendRows(book.addWorksheet(sheetName.slice(0, 31) || 'Flowmap'), rows);
+  return new Uint8Array(await book.xlsx.writeBuffer());
 }
 
 export type ExportSheet = {
@@ -464,35 +484,32 @@ export type ExportSheet = {
  * caller supplies only presentation rows, so current-view exports cannot
  * accidentally grow hidden columns that are not visible in the companion.
  */
-export function toWorkbook(
+export async function toWorkbook(
   sheets: readonly ExportSheet[],
   readme: {
     readonly workspace: string;
     readonly exportedAt: string;
     readonly schemaVersion: number;
   },
-): Uint8Array {
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(
-    book,
-    XLSX.utils.json_to_sheet([
-      { field: 'Workspace', value: readme.workspace },
-      { field: 'Exported at', value: readme.exportedAt },
-      { field: 'Schema version', value: readme.schemaVersion },
-      { field: 'Sensitivity', value: SENSITIVITY_WARNING },
-    ]),
-    '_README',
-  );
+): Promise<Uint8Array> {
+  const book = new ExcelJS.Workbook();
+  appendRows(book.addWorksheet('_README'), [
+    { field: 'Workspace', value: readme.workspace },
+    { field: 'Exported at', value: readme.exportedAt },
+    { field: 'Schema version', value: readme.schemaVersion },
+    { field: 'Sensitivity', value: SENSITIVITY_WARNING },
+  ]);
   for (const sheet of sheets) {
-    XLSX.utils.book_append_sheet(
-      book,
-      XLSX.utils.json_to_sheet([...sheet.rows]),
-      sheet.name.slice(0, 31) || 'Flowmap',
-    );
+    appendRows(book.addWorksheet(sheet.name.slice(0, 31) || 'Flowmap'), sheet.rows);
   }
-  return new Uint8Array(
-    XLSX.write(book, { type: 'array', bookType: 'xlsx', compression: true }) as ArrayBuffer,
-  );
+  return new Uint8Array(await book.xlsx.writeBuffer());
+}
+
+function appendRows(sheet: ExcelJS.Worksheet, rows: readonly Readonly<Record<string, unknown>>[]) {
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  sheet.addRow(columns);
+  for (const row of rows) sheet.addRow(columns.map((column) => row[column] ?? ''));
+  sheet.views = [{ state: 'frozen', ySplit: 1 }];
 }
 
 /** Rows for the all-entity workspace data export (one sheet/file per entity type). */

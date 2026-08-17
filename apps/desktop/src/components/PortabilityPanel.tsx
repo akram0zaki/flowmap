@@ -113,7 +113,7 @@ export function PortabilityPanel({
       const format = formatFor(file.name);
       const source =
         format === 'XLSX' ? new Uint8Array(await file.arrayBuffer()) : await file.text();
-      const parsed = parseImport(format, source);
+      const parsed = await parseImport(format, source);
       const sheet = parsed.sheets[0];
       if (!sheet) {
         setPreview({ creates: [], updates: [], possibleDuplicates: [], errors: [] });
@@ -191,7 +191,7 @@ export function PortabilityPanel({
           <button
             type="button"
             onClick={() =>
-              download(
+              void download(
                 'flowmap-view.xlsx',
                 toXlsx(
                   rows.map((row) => ({ ...row })),
@@ -208,7 +208,10 @@ export function PortabilityPanel({
           <button
             type="button"
             onClick={() =>
-              download('flowmap-radar.xlsx', toXlsx(radarRows, t('portability.radarSheetName')))
+              void download(
+                'flowmap-radar.xlsx',
+                toXlsx(radarRows, t('portability.radarSheetName')),
+              )
             }
           >
             {t('portability.exportRadarXlsx')}
@@ -216,7 +219,7 @@ export function PortabilityPanel({
           <button
             type="button"
             onClick={() =>
-              download(
+              void download(
                 `${safeName(state.workspace.name)}-data.xlsx`,
                 toWorkbook(workspaceDataSheets(state), {
                   workspace: state.workspace.name,
@@ -231,7 +234,7 @@ export function PortabilityPanel({
           <button
             type="button"
             onClick={() =>
-              download(
+              void download(
                 `${safeName(state.workspace.name)}-data.json`,
                 workspaceDataJson(state, now()),
               )
@@ -249,7 +252,7 @@ export function PortabilityPanel({
                   outcomes: JSON.stringify(event.facts['outcomes'] ?? []),
                   carryOver: JSON.stringify(event.facts['carryOver'] ?? []),
                 }));
-              download(
+              void download(
                 'flowmap-quarter-review.xlsx',
                 toWorkbook([{ name: t('portability.reviewSheetName'), rows: reviews }], {
                   workspace: state.workspace.name,
@@ -460,11 +463,12 @@ function safeName(name: string): string {
   );
 }
 
-function download(name: string, content: string | Uint8Array) {
-  const data = content instanceof Uint8Array ? new Uint8Array([...content]).buffer : content;
+async function download(name: string, content: string | Uint8Array | Promise<Uint8Array>) {
+  const resolved = await content;
+  const data = resolved instanceof Uint8Array ? new Uint8Array([...resolved]).buffer : resolved;
   const blob = new Blob([data], {
     type:
-      content instanceof Uint8Array
+      resolved instanceof Uint8Array
         ? 'application/octet-stream'
         : name.endsWith('.json')
           ? 'application/json;charset=utf-8'
