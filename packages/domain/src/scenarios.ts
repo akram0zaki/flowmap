@@ -14,8 +14,14 @@ import type {
   CommandResult,
   WorkspaceState,
 } from './command.js';
-import type { Scenario, ScenarioBaseField, ScenarioCommandRecord } from './entities.js';
+import {
+  isActive,
+  type Scenario,
+  type ScenarioBaseField,
+  type ScenarioCommandRecord,
+} from './entities.js';
 import type { EntityId } from './primitives.js';
+import type { EntityRef } from './refs.js';
 import { summariseCapacity } from './capacity.js';
 import {
   authorise,
@@ -68,13 +74,13 @@ export type ScenarioDiff = {
   }>;
   readonly newCommitments: readonly EntityId[];
   readonly gatePassages: readonly EntityId[];
-  readonly productImpact: readonly [];
-  readonly dependencies: readonly [];
-  readonly milestones: readonly [];
+  readonly productImpact: readonly ScenarioProductImpactDiff[];
+  readonly dependencies: readonly ScenarioDependencyDiff[];
+  readonly milestones: readonly ScenarioMilestoneDiff[];
   readonly attention: {
-    readonly added: readonly [];
-    readonly removed: readonly [];
-    readonly worsened: readonly [];
+    readonly added: readonly ScenarioAttentionSignal[];
+    readonly removed: readonly ScenarioAttentionSignal[];
+    readonly worsened: readonly ScenarioAttentionSignal[];
   };
   readonly summary: {
     readonly teamsAffected: number;
@@ -82,6 +88,43 @@ export type ScenarioDiff = {
     readonly netUnitsMoved: number;
     readonly newOverflows: number;
     readonly resolvedOverflows: number;
+  };
+};
+
+export type ScenarioProductImpactDiff = {
+  readonly productServiceId: EntityId;
+  readonly quarterId: string;
+  readonly changeLoadBefore: 'LOW' | 'MEDIUM' | 'HIGH';
+  readonly changeLoadAfter: 'LOW' | 'MEDIUM' | 'HIGH';
+  readonly scoreBefore: number;
+  readonly scoreAfter: number;
+};
+
+export type ScenarioDependencyDiff = {
+  readonly dependencyId: EntityId;
+  readonly effect: 'ADDED' | 'REMOVED' | 'AT_RISK' | 'RESOLVED_EARLIER' | 'TARGET_MOVED';
+};
+
+export type ScenarioMilestoneDiff = {
+  readonly milestoneId: EntityId;
+  readonly conflict: 'AFTER_TARGET' | 'BEFORE_DEPENDENCY';
+};
+
+/** A rule finding reduced to stable, boundary-safe fields for a domain diff. */
+export type ScenarioAttentionSignal = {
+  readonly signalKey: string;
+  readonly ruleCode: string;
+  readonly severity: 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH';
+  readonly entityRef: EntityRef;
+};
+
+/** Rule projections are injected by @flowmap/rules, keeping domain dependency-free. */
+export type ScenarioComparisonAdditions = {
+  readonly productImpact?: readonly ScenarioProductImpactDiff[];
+  readonly attention?: {
+    readonly added: readonly ScenarioAttentionSignal[];
+    readonly removed: readonly ScenarioAttentionSignal[];
+    readonly worsened: readonly ScenarioAttentionSignal[];
   };
 };
 
@@ -164,6 +207,7 @@ export function projectScenario(
 export function compareScenario(
   base: BaselineProjection,
   projected: ScenarioProjection,
+  additions: ScenarioComparisonAdditions = {},
 ): ScenarioDiff {
   const capacity: ScenarioCapacityDiff[] = [];
   const cellKeys = new Set([
@@ -225,7 +269,16 @@ export function compareScenario(
       newCommitments.push(id);
       continue;
     }
-    const fields = ['name', 'lifecycle', 'primaryTeamId', 'targetQuarterId', 'targetDate'].filter(
+    const fields = [
+      'name',
+      'lifecycle',
+      'primaryTeamId',
+      'targetQuarterId',
+      'targetDate',
+      'attentionDate',
+      'ownerRef',
+      'valueDrivers',
+    ].filter(
       (field) => before[field as keyof typeof before] !== after[field as keyof typeof after],
     );
     if (fields.length > 0) commitments.push({ commitmentId: id, changedFields: fields });
@@ -236,6 +289,8 @@ export function compareScenario(
   const resolvedOverflows = capacity.filter(
     (item) => item.overflowBefore > 0 && item.overflowAfter === 0,
   ).length;
+  const dependencies = compareDependencies(base, projected);
+  const milestones = compareMilestones(base, projected);
   return {
     capacity: capacity.sort(
       (a, b) => a.teamId.localeCompare(b.teamId) || a.quarterId.localeCompare(b.quarterId),
@@ -245,10 +300,10 @@ export function compareScenario(
     gatePassages: commitments
       .filter((item) => item.changedFields.includes('lifecycle'))
       .map((item) => item.commitmentId),
-    productImpact: [],
-    dependencies: [],
-    milestones: [],
-    attention: { added: [], removed: [], worsened: [] },
+    productImpact: additions.productImpact ?? [],
+    dependencies,
+    milestones,
+    attention: additions.attention ?? { added: [], removed: [], worsened: [] },
     summary: {
       teamsAffected: new Set(capacity.map((item) => item.teamId)).size,
       quartersAffected: new Set(capacity.map((item) => item.quarterId)).size,
@@ -260,6 +315,62 @@ export function compareScenario(
       resolvedOverflows,
     },
   };
+}
+
+function compareDependencies(
+  base: BaselineProjection,
+  projected: ScenarioProjection,
+): ScenarioDependencyDiff[] {
+  const ids = new Set([
+    ...[...(base.dependencies?.keys() ?? [])],
+    ...[...(projected.dependencies?.keys() ?? [])],
+  ]);
+  const changes: ScenarioDependencyDiff[] = [];
+  for (const id of ids) {
+    const before = base.dependencies?.get(id);
+    const after = projected.dependencies?.get(id);
+    if (!before && after && isActive(after)) changes.push({ dependencyId: id, effect: 'ADDED' });
+    else if (before && isActive(before) && (!after || !isActive(after)))
+      changes.push({ dependencyId: id, effect: 'REMOVED' });
+    else if (before && after && isActive(after)) {
+      if (before.target.kind !== after.target.kind || before.target.id !== after.target.id)
+        changes.push({ dependencyId: id, effect: 'TARGET_MOVED' });
+      else if (before.status !== 'AT_RISK' && after.status === 'AT_RISK')
+        changes.push({ dependencyId: id, effect: 'AT_RISK' });
+      else if (before.status !== 'RESOLVED' && after.status === 'RESOLVED')
+        changes.push({ dependencyId: id, effect: 'RESOLVED_EARLIER' });
+    }
+  }
+  return changes.sort((left, right) => left.dependencyId.localeCompare(right.dependencyId));
+}
+
+function compareMilestones(
+  base: BaselineProjection,
+  projected: ScenarioProjection,
+): ScenarioMilestoneDiff[] {
+  const changes: ScenarioMilestoneDiff[] = [];
+  for (const milestone of projected.milestones?.values() ?? []) {
+    if (!isActive(milestone) || milestone.targetDate === undefined) continue;
+    const targetDate = milestone.targetDate;
+    const before = base.milestones?.get(milestone.id);
+    if (before && before.targetDate === milestone.targetDate && before.status === milestone.status)
+      continue;
+    const commitment = projected.commitments.get(milestone.commitmentId);
+    if (commitment?.targetDate && targetDate > commitment.targetDate) {
+      changes.push({ milestoneId: milestone.id, conflict: 'AFTER_TARGET' });
+      continue;
+    }
+    const hasLaterDependency = [...(projected.dependencies?.values() ?? [])].some(
+      (dependency) =>
+        isActive(dependency) &&
+        dependency.sourceCommitmentId === milestone.commitmentId &&
+        dependency.target.kind === 'COMMITMENT' &&
+        (projected.commitments.get(dependency.target.id)?.targetDate ?? '') > targetDate,
+    );
+    if (hasLaterDependency)
+      changes.push({ milestoneId: milestone.id, conflict: 'BEFORE_DEPENDENCY' });
+  }
+  return changes.sort((left, right) => left.milestoneId.localeCompare(right.milestoneId));
 }
 
 /**

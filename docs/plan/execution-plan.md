@@ -195,9 +195,9 @@ Deliverables:
 **Gate E — exit criteria**
 
 - [ ] A lead runs the agreed QBR exercise end to end: intake → place → compare → selectively apply
-- [ ] Scenario edits cannot mutate baseline before apply (property-tested)
+- [x] Scenario edits cannot mutate baseline before apply (property-tested)
 - [x] A stale scenario cannot silently overwrite a newer baseline
-- [ ] Capacity, product impacts, dependency effects, and attention changes all appear in the diff
+- [x] Capacity, product impacts, dependency effects, and attention changes all appear in the diff
 
 **► Product Validation Alpha complete. Continue only if observed use validates the product thesis.**
 

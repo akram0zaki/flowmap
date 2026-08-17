@@ -13,6 +13,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import {
+  baselineProjection,
+  compareScenario,
+  type ScenarioProjection,
+  type WorkspaceState,
+} from '@flowmap/domain';
 import { scaleFixture } from '@flowmap/fixtures';
 import { buildBoard, previewDrop, type DragPayload } from '@flowmap/visual-model';
 
@@ -29,6 +35,17 @@ function boardAt(size: 25 | 100 | 500) {
     commitments: byId(fixture.commitments),
     footprints: byId(fixture.footprints),
   });
+}
+
+function stateAt(size: 25 | 100 | 500): WorkspaceState {
+  const fixture = scaleFixture(size);
+  return {
+    workspace: fixture.workspace,
+    teams: byId(fixture.teams),
+    teamQuarters: byId(fixture.teamQuarters),
+    commitments: byId(fixture.commitments),
+    footprints: byId(fixture.footprints),
+  };
 }
 
 /** Median of several runs: one run on a shared CI box measures the weather. */
@@ -85,6 +102,14 @@ describe('board projection at scale', () => {
     expect(elapsed, `previewDrop across the board took ${elapsed.toFixed(2)} ms`).toBeLessThan(
       16.7,
     );
+  });
+
+  it('compares a 500-commitment scenario well inside the M4 budget', () => {
+    const base = baselineProjection(stateAt(500));
+    const scenario = { ...base, base, scenario: {} } as unknown as ScenarioProjection;
+    const elapsed = medianMs(() => compareScenario(base, scenario));
+
+    expect(elapsed, `scenario diff at 500 took ${elapsed.toFixed(1)} ms`).toBeLessThan(500);
   });
 
   it('aggregates every cell, so Level 1 has the numbers without the blocks', () => {

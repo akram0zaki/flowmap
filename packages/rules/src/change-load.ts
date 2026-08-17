@@ -53,10 +53,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+export type ChangeLoadOptions = { readonly includeScenarioIdeas?: boolean };
+
 export function changeLoadFor(
   state: WorkspaceState,
   productServiceId: EntityId,
   quarterId: QuarterId,
+  options: ChangeLoadOptions = {},
 ): ChangeLoad {
   const settings = state.workspace.settings.changeLoad;
   const product = state.products?.get(productServiceId);
@@ -70,10 +73,10 @@ export function changeLoadFor(
     const impact = byCommitment.get(commitment.id);
     if (!impact) continue;
 
-    const lifecycleFactor = lifecycleWeight(commitment);
+    const lifecycleFactor = lifecycleWeight(commitment, options.includeScenarioIdeas ?? false);
     if (lifecycleFactor === 0) continue;
 
-    const units = unitsFor(state, commitment, quarterId);
+    const units = unitsFor(state, commitment, quarterId, options.includeScenarioIdeas ?? false);
     if (units === null) continue;
 
     const impactBase = settings.impactBase[impact.type];
@@ -125,7 +128,19 @@ function unitsFor(
   state: WorkspaceState,
   commitment: Commitment,
   quarterId: QuarterId,
+  includeScenarioIdeas: boolean,
 ): number | null {
+  if (includeScenarioIdeas && commitment.lifecycle === 'IDEA') {
+    const ghostUnits = [...state.footprints.values()]
+      .filter(
+        (footprint) =>
+          footprint.archivedAt === undefined &&
+          footprint.commitmentId === commitment.id &&
+          footprint.quarterId === quarterId,
+      )
+      .reduce((sum, footprint) => sum + footprint.units, 0);
+    if (ghostUnits > 0) return ghostUnits;
+  }
   const placed = unitsInQuarter(state, commitment, quarterId);
   if (placed > 0) return placed;
 
@@ -137,17 +152,25 @@ function unitsFor(
   return commitment.targetQuarterId === quarterId ? 0 : null;
 }
 
-function lifecycleWeight(commitment: Commitment): number {
-  return commitment.lifecycle === 'COMMITTED' || commitment.lifecycle === 'IN_DELIVERY' ? 1.0 : 0.0;
+function lifecycleWeight(commitment: Commitment, includeScenarioIdeas: boolean): number {
+  return commitment.lifecycle === 'COMMITTED' ||
+    commitment.lifecycle === 'IN_DELIVERY' ||
+    (includeScenarioIdeas && commitment.lifecycle === 'IDEA')
+    ? 1.0
+    : 0.0;
 }
 
 /** Every (product, quarter) pair that has any change landing on it. */
-export function allChangeLoads(state: WorkspaceState): ChangeLoad[] {
+export function allChangeLoads(
+  state: WorkspaceState,
+  options: ChangeLoadOptions = {},
+): ChangeLoad[] {
   const pairs = new Set<string>();
 
   for (const impact of impacts(state)) {
     const commitment = state.commitments.get(impact.commitmentId);
-    if (!commitment || lifecycleWeight(commitment) === 0) continue;
+    if (!commitment || lifecycleWeight(commitment, options.includeScenarioIdeas ?? false) === 0)
+      continue;
 
     const quarters = new Set<QuarterId>();
     for (const footprint of state.footprints.values()) {
@@ -163,7 +186,7 @@ export function allChangeLoads(state: WorkspaceState): ChangeLoad[] {
     .sort()
     .map((pair) => {
       const [productServiceId, quarterId] = pair.split('|') as [EntityId, QuarterId];
-      return changeLoadFor(state, productServiceId, quarterId);
+      return changeLoadFor(state, productServiceId, quarterId, options);
     })
     .filter((load) => load.contributors.length > 0);
 }

@@ -15,6 +15,7 @@ export type DemandFlowProps = {
   readonly ideas: readonly DemandIdea[];
   readonly teams: readonly DemandTeam[];
   readonly quarters: readonly string[];
+  readonly currentQuarter: string;
   readonly scenarioId: string | null;
   readonly defaultUnits: number;
   readonly headroomFor: (teamId: string, quarterId: string) => number;
@@ -30,6 +31,7 @@ export function DemandFlow({
   ideas,
   teams,
   quarters,
+  currentQuarter,
   scenarioId,
   defaultUnits,
   headroomFor,
@@ -37,7 +39,9 @@ export function DemandFlow({
 }: DemandFlowProps) {
   const [ideaId, setIdeaId] = useState<string | null>(ideas[0]?.id ?? null);
   const [teamId, setTeamId] = useState<string | null>(teams[0]?.id ?? null);
-  const [quarterId, setQuarterId] = useState<string | null>(quarters[0] ?? null);
+  const [quarterId, setQuarterId] = useState<string | null>(
+    quarters.includes(currentQuarter) ? currentQuarter : (quarters[0] ?? null),
+  );
   const [units, setUnits] = useState(defaultUnits);
   const [moveMode, setMoveMode] = useState(false);
   const selected = useMemo(() => ideas.find((idea) => idea.id === ideaId) ?? null, [ideas, ideaId]);
@@ -67,72 +71,74 @@ export function DemandFlow({
 
   return (
     <section className="fm-demand-flow" aria-label={t('qbr.label')}>
-      <div
-        className="fm-demand-flow__lane"
-        role="listbox"
-        aria-label={t('qbr.ideas')}
-        onKeyDown={(event) => {
-          if (!moveMode && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-            event.preventDefault();
-            const current = Math.max(
-              0,
-              ideas.findIndex((idea) => idea.id === ideaId),
-            );
-            const next = Math.max(
-              0,
-              Math.min(ideas.length - 1, current + (event.key === 'ArrowUp' ? -1 : 1)),
-            );
-            setIdeaId(ideas[next]?.id ?? null);
-            return;
-          }
-          if (event.key === 'm') {
-            event.preventDefault();
-            setMoveMode(true);
-            return;
-          }
-          if (event.key === 'Escape') {
-            setMoveMode(false);
-            return;
-          }
-          if (moveMode && event.key === 'ArrowLeft') {
-            event.preventDefault();
-            moveTarget('quarter', -1);
-            return;
-          }
-          if (moveMode && event.key === 'ArrowRight') {
-            event.preventDefault();
-            moveTarget('quarter', 1);
-            return;
-          }
-          if (moveMode && event.key === 'ArrowUp') {
-            event.preventDefault();
-            moveTarget('team', -1);
-            return;
-          }
-          if (moveMode && event.key === 'ArrowDown') {
-            event.preventDefault();
-            moveTarget('team', 1);
-            return;
-          }
-          if (moveMode && event.key === 'Enter') {
-            event.preventDefault();
-            place();
-          }
-        }}
-      >
-        <h2>{t('qbr.ideas')}</h2>
-        {ideas.map((idea) => (
-          <button
-            key={idea.id}
-            type="button"
-            role="option"
-            aria-selected={idea.id === ideaId}
-            onClick={() => setIdeaId(idea.id)}
-          >
-            {idea.name}
-          </button>
-        ))}
-      </div>
+      <section className="fm-demand-flow__lane">
+        <h2 id="demand-flow-ideas">{t('qbr.ideas')}</h2>
+        <div
+          role="listbox"
+          aria-labelledby="demand-flow-ideas"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (!moveMode && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+              event.preventDefault();
+              const current = Math.max(
+                0,
+                ideas.findIndex((idea) => idea.id === ideaId),
+              );
+              const next = Math.max(
+                0,
+                Math.min(ideas.length - 1, current + (event.key === 'ArrowUp' ? -1 : 1)),
+              );
+              setIdeaId(ideas[next]?.id ?? null);
+              return;
+            }
+            if (event.key === 'm') {
+              event.preventDefault();
+              setMoveMode(true);
+              return;
+            }
+            if (event.key === 'Escape') {
+              setMoveMode(false);
+              return;
+            }
+            if (moveMode && event.key === 'ArrowLeft') {
+              event.preventDefault();
+              moveTarget('quarter', -1);
+              return;
+            }
+            if (moveMode && event.key === 'ArrowRight') {
+              event.preventDefault();
+              moveTarget('quarter', 1);
+              return;
+            }
+            if (moveMode && event.key === 'ArrowUp') {
+              event.preventDefault();
+              moveTarget('team', -1);
+              return;
+            }
+            if (moveMode && event.key === 'ArrowDown') {
+              event.preventDefault();
+              moveTarget('team', 1);
+              return;
+            }
+            if (moveMode && event.key === 'Enter') {
+              event.preventDefault();
+              place();
+            }
+          }}
+        >
+          {ideas.map((idea) => (
+            <button
+              key={idea.id}
+              type="button"
+              role="option"
+              aria-selected={idea.id === ideaId}
+              onClick={() => setIdeaId(idea.id)}
+            >
+              {idea.name}
+            </button>
+          ))}
+        </div>
+      </section>
 
       <section className="fm-demand-flow__pipe" aria-label={t('qbr.pipe')}>
         <h2>{t('qbr.pipe')}</h2>

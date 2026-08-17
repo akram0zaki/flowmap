@@ -98,6 +98,12 @@ export type DetailPanelProps = {
         units: number;
         earliestAlternativeQuarter?: string;
       }[];
+      readonly crossTeam: readonly { name: string; team: string; quarter: string }[];
+      readonly products: readonly { product: string; impact: string }[];
+      readonly dependencies: readonly {
+        commitment: string;
+        direction: 'INBOUND' | 'OUTBOUND';
+      }[];
     };
     readonly onCommit: () => void;
   } | null;
