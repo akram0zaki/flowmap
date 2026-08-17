@@ -11,7 +11,7 @@ capability**, not by technical layer — each ticket should leave the product me
 > This file is kept current as work lands. A ticket is ✅ only when its acceptance criteria pass and
 > the [`AGENTS.md`](../../AGENTS.md) definition of done is met — not when the code merely exists.
 
-**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · **M3 13/14 done, 1 partial** · **M6 9/17 done, 6 in progress, 2 not started** · M7–M9 not started
+**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · **M3 13/14 done, 1 partial** · **M6 17/17 — complete** · M7–M9 not started
 
 > **Closed out of M2.** The seven code-side gaps carried out of the first pass
 > are done, each with unit and Playwright coverage and verified in a browser:
@@ -269,12 +269,12 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 | St  | ID       | Title                                                 | Size | Dep       |
 | --- | -------- | ----------------------------------------------------- | :--: | --------- |
 | ✅  | M6-IMP-1 | Parsers: XLSX, CSV, JSON                              |  M   | M1-DOM-3  |
-| 🔵  | M6-IMP-2 | Guided mapping + saved mappings + enum value tables   |  L   | M6-IMP-1  |
-| 🔵  | M6-IMP-3 | External-key matching + duplicate preview             |  M   | M6-IMP-2  |
-| 🔵  | M6-IMP-4 | Validation + transactional apply + error CSV          |  M   | M6-IMP-3  |
-| 🔵  | M6-EXP-1 | Exports: view, workspace, Radar, quarter review       |  M   | M2-A11Y-5 |
+| ✅  | M6-IMP-2 | Guided mapping + saved mappings + enum value tables   |  L   | M6-IMP-1  |
+| ✅  | M6-IMP-3 | External-key matching + duplicate preview             |  M   | M6-IMP-2  |
+| ✅  | M6-IMP-4 | Validation + transactional apply + error CSV          |  M   | M6-IMP-3  |
+| ✅  | M6-EXP-1 | Exports: view, workspace, Radar, quarter review       |  M   | M2-A11Y-5 |
 | ✅  | M6-POR-1 | `.flowmap` package + hash + sensitivity warning       |  M   | M6-EXP-1  |
-| ⬜  | M6-POR-2 | Round-trip property test (projection + rule equality) |  S   | M6-POR-1  |
+| ✅  | M6-POR-2 | Round-trip property test (projection + rule equality) |  S   | M6-POR-1  |
 | ✅  | M6-SNP-1 | Snapshots: manual + automatic-before-barrier          |  M   | M6-POR-1  |
 | ✅  | M6-SNP-2 | Restore with `RestoreReport` and typed confirmation   |  M   | M6-SNP-1  |
 | ✅  | M6-WSP-1 | Multiple workspaces + switcher + smart defaults       |  M   | M1-DOM-4  |
@@ -282,9 +282,9 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 | ✅  | M6-WSP-3 | Archive/restore + referential-integrity policy        |  M   | M1-DOM-5  |
 | ✅  | M6-WSP-4 | Saved views                                           |  S   | M2-MAP-8  |
 | ✅  | M6-WSP-5 | First-run guidance tooltips                           |  M   | M6-WSP-2  |
-| 🔵  | M6-OPS-1 | Corrupted-cache recovery + rollback tests             |  M   | M1-STO-6  |
-| ⬜  | M6-NOT-1 | Foreground notifications, coalesced and configurable  |  M   | M3-RUL-10 |
-| ⬜  | M6-SEC-1 | Command-level permission harness                      |  M   | M1-DOM-3  |
+| ✅  | M6-OPS-1 | Corrupted-cache recovery + rollback tests             |  M   | M1-STO-6  |
+| ✅  | M6-NOT-1 | Foreground notifications, coalesced and configurable  |  M   | M3-RUL-10 |
+| ✅  | M6-SEC-1 | Command-level permission harness                      |  M   | M1-DOM-3  |
 
 ## M7 — Desktop packaging
 

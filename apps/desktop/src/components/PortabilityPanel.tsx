@@ -4,7 +4,12 @@
  */
 
 import { useRef, useState } from 'react';
-import type { DomainEvent, WorkspaceState } from '@flowmap/domain';
+import type {
+  DomainEvent,
+  NotificationSettings,
+  SavedImportMapping,
+  WorkspaceState,
+} from '@flowmap/domain';
 import {
   createPortableWorkspace,
   encodePortableWorkspace,
@@ -14,9 +19,14 @@ import {
   previewImport,
   suggestMappings,
   toCsv,
+  toWorkbook,
   toXlsx,
+  workspaceDataJson,
+  workspaceDataSheets,
   type ImportFormat,
+  type ImportEntity,
   type ImportPreview,
+  type ColumnMapping,
 } from '@flowmap/import-export';
 
 import { t } from '../i18n/t.js';
@@ -30,7 +40,17 @@ export type PortabilityPanelProps = {
   readonly now: () => string;
   readonly rows: readonly ExportRow[];
   readonly radarRows: readonly ExportRow[];
-  readonly onImportedIdeas: (names: readonly string[]) => Promise<boolean>;
+  readonly onImportedIdeas: (
+    rows: readonly {
+      readonly name: string;
+      readonly externalKey?: string;
+      readonly existingId?: string;
+    }[],
+  ) => Promise<boolean>;
+  readonly savedMappings?: readonly SavedImportMapping[];
+  readonly onSaveMapping: (mapping: Omit<SavedImportMapping, 'id'>) => Promise<boolean>;
+  readonly notificationSettings?: NotificationSettings;
+  readonly onNotificationSettings: (settings: NotificationSettings) => Promise<boolean>;
   readonly announce: (message: string) => void;
 };
 
@@ -42,11 +62,39 @@ export function PortabilityPanel({
   rows,
   radarRows,
   onImportedIdeas,
+  savedMappings,
+  onSaveMapping,
+  notificationSettings,
+  onNotificationSettings,
   announce,
 }: PortabilityPanelProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [importing, setImporting] = useState(false);
+  const [sourceRows, setSourceRows] = useState<readonly Readonly<Record<string, string>>[]>([]);
+  const [mappings, setMappings] = useState<readonly ColumnMapping[]>([]);
+  const [entity, setEntity] = useState<ImportEntity>('COMMITMENT');
+
+  function updatePreview(nextMappings: readonly ColumnMapping[], nextEntity = entity) {
+    const mapped = mapRows(sourceRows, nextMappings, {}, nextEntity);
+    setMappings(nextMappings);
+    setPreview(
+      previewImport(
+        mapped.rows,
+        mapped.errors,
+        [...state.commitments.values()].map((commitment) => {
+          const externalKey = Object.entries(
+            state.workspace.settings.externalKeys?.['COMMITMENT'] ?? {},
+          ).find(([, id]) => id === commitment.id)?.[0];
+          return {
+            id: commitment.id,
+            name: commitment.name,
+            ...(externalKey ? { externalKey } : {}),
+          };
+        }),
+      ),
+    );
+  }
 
   async function exportWorkspace() {
     const pkg = await createPortableWorkspace({
@@ -71,15 +119,24 @@ export function PortabilityPanel({
         setPreview({ creates: [], updates: [], possibleDuplicates: [], errors: [] });
         return;
       }
-      const mapped = mapRows(sheet.rows, suggestMappings(sheet.columns));
+      const proposed = suggestMappings(sheet.columns);
+      setSourceRows(sheet.rows);
+      setMappings(proposed);
+      const mapped = mapRows(sheet.rows, proposed, {}, entity);
       setPreview(
         previewImport(
           mapped.rows,
           mapped.errors,
-          [...state.commitments.values()].map((commitment) => ({
-            id: commitment.id,
-            name: commitment.name,
-          })),
+          [...state.commitments.values()].map((commitment) => {
+            const externalKey = Object.entries(
+              state.workspace.settings.externalKeys?.['COMMITMENT'] ?? {},
+            ).find(([, id]) => id === commitment.id)?.[0];
+            return {
+              id: commitment.id,
+              name: commitment.name,
+              ...(externalKey ? { externalKey } : {}),
+            };
+          }),
         ),
       );
     } catch {
@@ -94,15 +151,24 @@ export function PortabilityPanel({
 
   async function applyIdeas() {
     if (!preview || preview.errors.length > 0 || preview.possibleDuplicates.length > 0) return;
-    const names = preview.creates
-      .map((row) => row.values['name'])
-      .filter((name): name is string => Boolean(name));
-    if (names.length === 0) return;
+    if (entity !== 'COMMITMENT') return;
+    const importedRows = [
+      ...preview.creates.map((row) => ({
+        name: row.values['name'] ?? '',
+        ...(row.externalKey ? { externalKey: row.externalKey } : {}),
+      })),
+      ...preview.updates.map((row) => ({
+        name: row.values['name'] ?? '',
+        existingId: row.existingId,
+        ...(row.externalKey ? { externalKey: row.externalKey } : {}),
+      })),
+    ].filter((row) => row.name.length > 0);
+    if (importedRows.length === 0) return;
     setImporting(true);
-    const imported = await onImportedIdeas(names);
+    const imported = await onImportedIdeas(importedRows);
     setImporting(false);
     if (imported) {
-      announce(t('portability.importedIdeas', { count: names.length }));
+      announce(t('portability.importedIdeas', { count: importedRows.length }));
       setPreview(null);
     }
   }
@@ -139,6 +205,62 @@ export function PortabilityPanel({
           <button type="button" onClick={() => download('flowmap-radar.csv', toCsv(radarRows))}>
             {t('portability.exportRadar')}
           </button>
+          <button
+            type="button"
+            onClick={() =>
+              download('flowmap-radar.xlsx', toXlsx(radarRows, t('portability.radarSheetName')))
+            }
+          >
+            {t('portability.exportRadarXlsx')}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              download(
+                `${safeName(state.workspace.name)}-data.xlsx`,
+                toWorkbook(workspaceDataSheets(state), {
+                  workspace: state.workspace.name,
+                  exportedAt: now(),
+                  schemaVersion: state.workspace.schemaVersion,
+                }),
+              )
+            }
+          >
+            {t('portability.exportDataXlsx')}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              download(
+                `${safeName(state.workspace.name)}-data.json`,
+                workspaceDataJson(state, now()),
+              )
+            }
+          >
+            {t('portability.exportDataJson')}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const reviews = events
+                .filter((event) => event.eventType === 'QUARTER_CLOSED')
+                .map((event) => ({
+                  quarter: String(event.facts['quarterId'] ?? ''),
+                  outcomes: JSON.stringify(event.facts['outcomes'] ?? []),
+                  carryOver: JSON.stringify(event.facts['carryOver'] ?? []),
+                }));
+              download(
+                'flowmap-quarter-review.xlsx',
+                toWorkbook([{ name: t('portability.reviewSheetName'), rows: reviews }], {
+                  workspace: state.workspace.name,
+                  exportedAt: now(),
+                  schemaVersion: state.workspace.schemaVersion,
+                }),
+              );
+            }}
+          >
+            {t('portability.exportQuarterReview')}
+          </button>
           <button type="button" className="fm-primary" onClick={() => void exportWorkspace()}>
             {t('portability.exportWorkspace')}
           </button>
@@ -157,8 +279,131 @@ export function PortabilityPanel({
             }}
           />
         </div>
+        <label className="fm-portability__notifications">
+          {t('notifications.preference')}
+          <select
+            value={notificationSettings?.mode ?? 'MY_ACTIONS'}
+            onChange={(event) => {
+              const mode = event.target.value as NotificationSettings['mode'];
+              if (
+                mode !== 'OFF' &&
+                typeof Notification !== 'undefined' &&
+                Notification.permission === 'default'
+              ) {
+                void Notification.requestPermission();
+              }
+              void onNotificationSettings({ mode });
+            }}
+          >
+            {(
+              ['MY_ACTIONS', 'URGENT_ONLY', 'PORTFOLIO_WARNINGS', 'STALE_ITEMS', 'OFF'] as const
+            ).map((mode) => (
+              <option key={mode} value={mode}>
+                {t(`notifications.${mode}`)}
+              </option>
+            ))}
+          </select>
+          {typeof Notification !== 'undefined' && Notification.permission === 'denied' && (
+            <span>{t('notifications.blocked')}</span>
+          )}
+        </label>
         {preview && (
           <div className="fm-portability__preview" aria-live="polite">
+            <label>
+              {t('portability.entity')}
+              <select
+                value={entity}
+                onChange={(event) => {
+                  const next = event.target.value as ImportEntity;
+                  setEntity(next);
+                  updatePreview(mappings, next);
+                }}
+              >
+                {(
+                  [
+                    'COMMITMENT',
+                    'TEAM',
+                    'PRODUCT_SERVICE',
+                    'PERSON',
+                    'CAPACITY_FOOTPRINT',
+                    'DEPENDENCY',
+                    'MILESTONE',
+                    'THEME',
+                    'EXTERNAL_LINK',
+                    'TEAM_QUARTER',
+                  ] as const
+                ).map((item) => (
+                  <option key={item} value={item}>
+                    {t(`portability.entity.${item}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {mappings.map((mapping, index) => (
+              <label key={`${mapping.field}:${index}`}>
+                {t(`portability.field.${mapping.field}`)}
+                <select
+                  value={mapping.column}
+                  onChange={(event) =>
+                    updatePreview(
+                      mappings.map((item, current) =>
+                        current === index
+                          ? { ...item, column: event.target.value, confidence: 'LOW' }
+                          : item,
+                      ),
+                    )
+                  }
+                >
+                  {[...new Set(sourceRows.flatMap((row) => Object.keys(row)))].map((column) => (
+                    <option key={column} value={column}>
+                      {column}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                const name = window.prompt(t('portability.mappingName'));
+                if (name)
+                  void onSaveMapping({
+                    name,
+                    entity,
+                    mappings: mappings.map(({ field, column }) => ({ field, column })),
+                    enumValues: {},
+                  });
+              }}
+            >
+              {t('portability.saveMapping')}
+            </button>
+            {savedMappings && savedMappings.length > 0 && (
+              <label>
+                {t('portability.useMapping')}
+                <select
+                  defaultValue=""
+                  onChange={(event) => {
+                    const selected = savedMappings.find((item) => item.id === event.target.value);
+                    if (selected)
+                      updatePreview(
+                        selected.mappings.map((item) => ({
+                          field: item.field as ColumnMapping['field'],
+                          column: item.column,
+                          confidence: 'LOW' as const,
+                        })),
+                        selected.entity as ImportEntity,
+                      );
+                  }}
+                >
+                  <option value="">{t('portability.chooseMapping')}</option>
+                  {savedMappings.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <p>
               {t('portability.previewSummary', {
                 creates: preview.creates.length,
@@ -185,7 +430,8 @@ export function PortabilityPanel({
                 importing ||
                 preview.errors.length > 0 ||
                 preview.possibleDuplicates.length > 0 ||
-                preview.creates.length === 0
+                preview.creates.length + preview.updates.length === 0 ||
+                entity !== 'COMMITMENT'
               }
               onClick={() => void applyIdeas()}
             >
@@ -217,7 +463,12 @@ function safeName(name: string): string {
 function download(name: string, content: string | Uint8Array) {
   const data = content instanceof Uint8Array ? new Uint8Array([...content]).buffer : content;
   const blob = new Blob([data], {
-    type: content instanceof Uint8Array ? 'application/octet-stream' : 'text/csv;charset=utf-8',
+    type:
+      content instanceof Uint8Array
+        ? 'application/octet-stream'
+        : name.endsWith('.json')
+          ? 'application/json;charset=utf-8'
+          : 'text/csv;charset=utf-8',
   });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

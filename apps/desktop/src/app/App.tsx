@@ -86,6 +86,7 @@ import {
   TimelineView,
 } from '../components/M5Views.jsx';
 import { useSignals } from '../state/use-signals.js';
+import { notificationMessages } from '../state/notifications.js';
 import type { VesselBlock } from '../components/CapacityVessel.jsx';
 import { t } from '../i18n/t.js';
 
@@ -114,6 +115,8 @@ export function App() {
     restoreSnapshot,
     saveView,
     removeSavedView,
+    saveImportMapping,
+    setNotificationSettings,
     clearLocalData,
     commitIdeaInto,
     moveFootprint,
@@ -277,6 +280,23 @@ export function App() {
     now: runtime?.now ?? (() => new Date().toISOString()),
     events,
   });
+  const notifiedSignals = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (!state || typeof Notification === 'undefined') return;
+    const now = new Date(runtime?.now() ?? new Date().toISOString());
+    const messages = notificationMessages(
+      signals.visible,
+      state.workspace.settings.notifications,
+      now,
+      notifiedSignals.current,
+      t,
+    );
+    if (messages.length === 0 || Notification.permission !== 'granted') return;
+    for (const message of messages) {
+      new Notification(message.title, { body: message.body });
+      for (const key of message.key.split('|')) notifiedSignals.current.set(key, now.getTime());
+    }
+  }, [runtime, signals.visible, state]);
   const scenarioSignals = useSignals(scenarioState, {
     actorId: `local:local-profile`,
     settings: ruleSettings,
@@ -1101,6 +1121,10 @@ export function App() {
               due: signal.dueOn ?? '',
             }))}
             onImportedIdeas={importIdeas}
+            savedMappings={state.workspace.settings.importMappings ?? []}
+            onSaveMapping={saveImportMapping}
+            notificationSettings={state.workspace.settings.notifications ?? { mode: 'MY_ACTIONS' }}
+            onNotificationSettings={setNotificationSettings}
             announce={announce}
           />
         )}

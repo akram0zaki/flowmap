@@ -36,6 +36,8 @@ import {
   reopenQuarter,
   renewCommitment,
   setRecurrence,
+  setNotificationSettings,
+  saveImportMapping,
   saveView,
   removeSavedView,
   restoreCapacityFootprint,
@@ -61,6 +63,9 @@ import {
   type CarryOverDecision,
   type QuarterOutcome,
   type Recurrence,
+  type NotificationSettings,
+  type SavedImportMapping,
+  domainError,
 } from '@flowmap/domain';
 import {
   clearSignalDisposition,
@@ -133,6 +138,7 @@ export type Runtime = {
   /** Where this instance keeps its data. Surfaced in Settings; absent in browser mode. */
   readonly dataDir?: string;
   readonly portable?: boolean;
+  readonly recoveryNotice?: 'CORRUPT_CACHE_RECOVERED';
   /**
    * Hands an https link to the operating system.
    *
@@ -193,7 +199,13 @@ type StoreState = {
   ): Promise<Command | null | false>;
   captureIdea(name: string): Promise<boolean>;
   /** CSV/XLSX/JSON imports are validated first, then written in one command transaction. */
-  importIdeas(names: readonly string[]): Promise<boolean>;
+  importIdeas(
+    rows: readonly {
+      readonly name: string;
+      readonly externalKey?: string;
+      readonly existingId?: string;
+    }[],
+  ): Promise<boolean>;
   createSnapshot(): Promise<boolean>;
   restoreSnapshot(snapshotId: string, confirmation: string): Promise<boolean>;
   saveView(input: {
@@ -202,6 +214,8 @@ type StoreState = {
     filters: Record<string, readonly string[]>;
   }): Promise<boolean>;
   removeSavedView(viewId: string): Promise<boolean>;
+  saveImportMapping(mapping: Omit<SavedImportMapping, 'id'>): Promise<boolean>;
+  setNotificationSettings(settings: NotificationSettings): Promise<boolean>;
   addTeam(name: string): Promise<boolean>;
   placeFootprint(input: {
     commitmentId: EntityId;
@@ -410,7 +424,8 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       ),
       events: await runtime.repository.listEvents(activeWorkspaceId, 500),
       snapshots: await runtime.repository.listSnapshots(activeWorkspaceId),
-      ...(runtime.repository.getRecoveryNotice?.() === 'CORRUPT_CACHE_RECOVERED'
+      ...(runtime.recoveryNotice === 'CORRUPT_CACHE_RECOVERED' ||
+      runtime.repository.getRecoveryNotice?.() === 'CORRUPT_CACHE_RECOVERED'
         ? { status: { tone: 'warning' as const, message: t('recovery.corruptCache') } }
         : {}),
     });
@@ -626,8 +641,35 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       const changes: EntityChange[] = [];
       const events = [] as DomainEvent[];
       const affectedProjections: ProjectionKey[] = [];
-      for (const name of names) {
-        const imported = createIdea({ name }, cmd, {
+      const keys: Record<string, string> = {};
+      for (const row of names) {
+        if (row.existingId) {
+          const existing = _state.commitments.get(row.existingId);
+          if (!existing) {
+            return {
+              ok: false as const,
+              error: domainError('ENTITY_NOT_FOUND', {
+                entityRef: { kind: 'COMMITMENT', id: row.existingId },
+              }),
+            };
+          }
+          const updated = updateCommitment(
+            _state,
+            { commitmentId: row.existingId, name: row.name },
+            cmd,
+            {
+              ...ctx,
+              nextSequence: ctx.nextSequence + events.length,
+            },
+          );
+          if (!updated.ok) return updated;
+          changes.push(...updated.effects.changes);
+          events.push(...updated.effects.events);
+          affectedProjections.push(...updated.effects.affectedProjections);
+          if (row.externalKey) keys[row.externalKey] = row.existingId;
+          continue;
+        }
+        const imported = createIdea({ name: row.name }, cmd, {
           ...ctx,
           nextSequence: ctx.nextSequence + events.length,
         });
@@ -635,8 +677,57 @@ export const useWorkspace = create<StoreState>((set, get) => ({
         changes.push(...imported.effects.changes);
         events.push(...imported.effects.events);
         affectedProjections.push(...imported.effects.affectedProjections);
+        const created = imported.effects.changes[0]?.after as { id?: string } | undefined;
+        if (row.externalKey && created?.id) keys[row.externalKey] = created.id;
       }
-      return { ok: true, effects: { changes, events, affectedProjections } };
+      if (Object.keys(keys).length > 0) {
+        const after = {
+          ..._state.workspace,
+          entityVersion: _state.workspace.entityVersion + 1,
+          updatedAt: ctx.clock.now(),
+          updatedBy: ctx.actorId,
+          settings: {
+            ..._state.workspace.settings,
+            externalKeys: {
+              ..._state.workspace.settings.externalKeys,
+              COMMITMENT: { ..._state.workspace.settings.externalKeys?.['COMMITMENT'], ...keys },
+            },
+          },
+        };
+        changes.push({
+          ref: { kind: 'WORKSPACE', id: _state.workspace.id },
+          op: 'UPDATE',
+          fromVersion: _state.workspace.entityVersion,
+          toVersion: after.entityVersion,
+          before: _state.workspace,
+          after,
+          changedFields: ['settings'],
+        });
+      }
+      events.push({
+        id: ctx.ids.next(),
+        workspaceId: cmd.workspaceId,
+        sequence: ctx.nextSequence + events.length,
+        occurredAt: ctx.clock.now(),
+        actorId: ctx.actorId,
+        commandName: cmd.name,
+        eventType: 'IMPORT_APPLIED',
+        entityRefs: changes.map((change) => change.ref),
+        summaryKey: 'event.IMPORT_APPLIED',
+        facts: {
+          creates: names.filter((row) => row.existingId === undefined).length,
+          updates: names.filter((row) => row.existingId !== undefined).length,
+        },
+      });
+      return {
+        ok: true,
+        effects: {
+          changes,
+          events,
+          affectedProjections,
+          consequences: [{ kind: 'IRREVERSIBLE', noteKey: 'import.appliedBarrier' }],
+        },
+      };
     });
     return Boolean(result);
   },
@@ -737,6 +828,20 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   async removeSavedView(viewId) {
     const result = await get().dispatch('RemoveSavedView', (state, cmd, ctx) =>
       removeSavedView(state, { viewId }, cmd, ctx),
+    );
+    return Boolean(result);
+  },
+
+  async saveImportMapping(mapping) {
+    const result = await get().dispatch('SaveImportMapping', (state, cmd, ctx) =>
+      saveImportMapping(state, mapping, cmd, ctx),
+    );
+    return Boolean(result);
+  },
+
+  async setNotificationSettings(settings) {
+    const result = await get().dispatch('SetNotificationSettings', (state, cmd, ctx) =>
+      setNotificationSettings(state, settings, cmd, ctx),
     );
     return Boolean(result);
   },

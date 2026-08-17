@@ -13,6 +13,9 @@ export const COMMAND_PERMISSIONS: Readonly<Record<string, WorkspaceRole>> = {
   RestoreSnapshot: 'PLANNER',
   SaveView: 'PLANNER',
   RemoveSavedView: 'PLANNER',
+  SaveImportMapping: 'PLANNER',
+  RemoveImportMapping: 'PLANNER',
+  SetNotificationSettings: 'PLANNER',
 };
 
 export function mayRunCommand(role: WorkspaceRole, commandName: string): boolean {

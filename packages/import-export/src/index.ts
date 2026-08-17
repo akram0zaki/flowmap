@@ -111,6 +111,41 @@ export type ImportPreview = {
   readonly errors: readonly ImportIssue[];
 };
 
+/**
+ * A mapped import is intentionally still data, rather than a repository write.
+ * The application turns this plan into domain commands and submits the complete
+ * batch in one transaction. Keeping this boundary here makes it impossible for
+ * a parser to smuggle a partial write past command validation.
+ */
+export type ImportPlan = {
+  readonly entity: ImportEntity;
+  readonly creates: readonly MappedRow[];
+  readonly updates: readonly (MappedRow & { readonly existingId: string })[];
+  readonly possibleDuplicates: readonly DuplicateCandidate[];
+  readonly errors: readonly ImportIssue[];
+};
+
+const ENTITY_SHEET_NAMES: Readonly<Record<string, ImportEntity>> = {
+  teams: 'TEAM',
+  team: 'TEAM',
+  products: 'PRODUCT_SERVICE',
+  productservices: 'PRODUCT_SERVICE',
+  people: 'PERSON',
+  commitments: 'COMMITMENT',
+  capacityfootprints: 'CAPACITY_FOOTPRINT',
+  footprints: 'CAPACITY_FOOTPRINT',
+  dependencies: 'DEPENDENCY',
+  milestones: 'MILESTONE',
+  themes: 'THEME',
+  externallinks: 'EXTERNAL_LINK',
+  teamquarters: 'TEAM_QUARTER',
+};
+
+/** Proposes an entity from an export sheet name; users can always override it. */
+export function suggestEntity(sheetName: string): ImportEntity | undefined {
+  return ENTITY_SHEET_NAMES[normaliseHeader(sheetName)];
+}
+
 const HEADER_FIELDS: Readonly<Record<string, MappingField>> = {
   externalid: 'externalKey',
   externalkey: 'externalKey',
@@ -244,6 +279,7 @@ export function mapRows(
   rows: readonly Readonly<Record<string, string>>[],
   mappings: readonly ColumnMapping[],
   enumValues: Readonly<Record<string, Readonly<Record<string, string>>>> = {},
+  entity?: ImportEntity,
 ): { readonly rows: readonly MappedRow[]; readonly errors: readonly ImportIssue[] } {
   const mapped: MappedRow[] = [];
   const errors: ImportIssue[] = [];
@@ -263,7 +299,7 @@ export function mapRows(
       }
       values[mapping.field] = converted;
     }
-    validateMappedRow(index + 2, values, errors);
+    validateMappedRow(index + 2, values, errors, entity);
     const externalKey = values['externalKey'];
     mapped.push({ row: index + 2, values, ...(externalKey ? { externalKey } : {}) });
   }
@@ -274,8 +310,10 @@ function validateMappedRow(
   row: number,
   values: Readonly<Record<string, string>>,
   errors: ImportIssue[],
+  entity?: ImportEntity,
 ) {
-  if (!values['name'] && !values['externalKey']) {
+  const requiresName = entity !== 'CAPACITY_FOOTPRINT' && entity !== 'TEAM_QUARTER';
+  if (requiresName && !values['name'] && !values['externalKey']) {
     errors.push({
       row,
       code: 'REQUIRED',
@@ -298,6 +336,20 @@ function validateMappedRow(
       column: 'quarter',
       code: 'INVALID_QUARTER',
       message: `“${quarter}” is not a recognised quarter.`,
+    });
+  }
+  if (entity === 'CAPACITY_FOOTPRINT' && (!values['team'] || !values['quarter'])) {
+    errors.push({
+      row,
+      code: 'REQUIRED',
+      message: 'Capacity footprints require a team and quarter.',
+    });
+  }
+  if (entity === 'TEAM_QUARTER' && (!values['team'] || !values['quarter'])) {
+    errors.push({
+      row,
+      code: 'REQUIRED',
+      message: 'Team-quarter capacity requires a team and quarter.',
     });
   }
 }
@@ -351,6 +403,22 @@ export function previewImport(
   return { creates, updates, possibleDuplicates, errors };
 }
 
+/** Builds one entity plan, preserving every row-level issue for the error CSV. */
+export function createImportPlan(
+  entity: ImportEntity,
+  rows: readonly Readonly<Record<string, string>>[],
+  mappings: readonly ColumnMapping[],
+  existing: readonly {
+    readonly id: string;
+    readonly name?: string;
+    readonly externalKey?: string;
+  }[],
+  enumValues: Readonly<Record<string, Readonly<Record<string, string>>>> = {},
+): ImportPlan {
+  const mapped = mapRows(rows, mappings, enumValues, entity);
+  return { entity, ...previewImport(mapped.rows, mapped.errors, existing) };
+}
+
 export function errorCsv(errors: readonly ImportIssue[]): string {
   return toCsv(
     errors.map((error) => ({
@@ -384,6 +452,72 @@ export function toXlsx(
     compression: true,
   }) as ArrayBuffer;
   return new Uint8Array(output);
+}
+
+export type ExportSheet = {
+  readonly name: string;
+  readonly rows: readonly Readonly<Record<string, unknown>>[];
+};
+
+/**
+ * Workbook exports always carry the same sensitivity/readme information. The
+ * caller supplies only presentation rows, so current-view exports cannot
+ * accidentally grow hidden columns that are not visible in the companion.
+ */
+export function toWorkbook(
+  sheets: readonly ExportSheet[],
+  readme: {
+    readonly workspace: string;
+    readonly exportedAt: string;
+    readonly schemaVersion: number;
+  },
+): Uint8Array {
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    book,
+    XLSX.utils.json_to_sheet([
+      { field: 'Workspace', value: readme.workspace },
+      { field: 'Exported at', value: readme.exportedAt },
+      { field: 'Schema version', value: readme.schemaVersion },
+      { field: 'Sensitivity', value: SENSITIVITY_WARNING },
+    ]),
+    '_README',
+  );
+  for (const sheet of sheets) {
+    XLSX.utils.book_append_sheet(
+      book,
+      XLSX.utils.json_to_sheet([...sheet.rows]),
+      sheet.name.slice(0, 31) || 'Flowmap',
+    );
+  }
+  return new Uint8Array(
+    XLSX.write(book, { type: 'array', bookType: 'xlsx', compression: true }) as ArrayBuffer,
+  );
+}
+
+/** Rows for the all-entity workspace data export (one sheet/file per entity type). */
+export function workspaceDataSheets(state: WorkspaceState): readonly ExportSheet[] {
+  return Object.entries(entitiesFromState(state)).map(([name, rows]) => ({
+    name,
+    rows: rows as readonly Readonly<Record<string, unknown>>[],
+  }));
+}
+
+export function workspaceDataJson(state: WorkspaceState, exportedAt: string): string {
+  return JSON.stringify(
+    {
+      _README: {
+        workspace: state.workspace.name,
+        exportedAt,
+        schemaVersion: state.workspace.schemaVersion,
+        sensitivity: SENSITIVITY_WARNING,
+      },
+      workspace: state.workspace,
+      entities: entitiesFromState(state),
+    },
+    null,
+    2,
+  );
 }
 
 export type PortableManifest = {
@@ -469,6 +603,9 @@ export async function decodePortableWorkspace(bytes: Uint8Array): Promise<Portab
     throw new Error('The .flowmap package exceeds the supported file size.');
   }
   const files = unzipSync(bytes);
+  if (Object.keys(files).some((name) => name.startsWith('/') || name.split('/').includes('..'))) {
+    throw new Error('The .flowmap package contains an unsafe file path.');
+  }
   const unpackedBytes = Object.values(files).reduce((total, file) => total + file.byteLength, 0);
   if (unpackedBytes > MAX_PORTABLE_UNPACKED_BYTES) {
     throw new Error('The .flowmap package expands beyond the supported file size.');
@@ -501,22 +638,54 @@ export async function decodePortableWorkspace(bytes: Uint8Array): Promise<Portab
   return { manifest, workspace, entities, events, savedViews };
 }
 
+/** Restores the portable record collections to the immutable domain projection shape. */
+export function rehydratePortableWorkspace(pkg: PortableWorkspace): WorkspaceState {
+  const map = <T>(name: string) =>
+    new Map(
+      (pkg.entities[name] ?? []).flatMap((value) => {
+        const record = value as { id?: string };
+        return typeof record.id === 'string' ? [[record.id, value as T] as const] : [];
+      }),
+    );
+  return {
+    workspace: pkg.workspace,
+    teams: map('teams'),
+    teamQuarters: map('team-quarters'),
+    commitments: map('commitments'),
+    footprints: map('footprints'),
+    ...(Object.hasOwn(pkg.entities, 'products') ? { products: map('products') } : {}),
+    ...(Object.hasOwn(pkg.entities, 'impacts') ? { productImpacts: map('impacts') } : {}),
+    ...(Object.hasOwn(pkg.entities, 'dependencies') ? { dependencies: map('dependencies') } : {}),
+    ...(Object.hasOwn(pkg.entities, 'decisions') ? { decisions: map('decisions') } : {}),
+    ...(Object.hasOwn(pkg.entities, 'milestones') ? { milestones: map('milestones') } : {}),
+    ...(Object.hasOwn(pkg.entities, 'themes') ? { themes: map('themes') } : {}),
+    ...(Object.hasOwn(pkg.entities, 'commitment-themes')
+      ? { commitmentThemes: map('commitment-themes') }
+      : {}),
+    ...(Object.hasOwn(pkg.entities, 'links') ? { externalLinks: map('links') } : {}),
+    ...(Object.hasOwn(pkg.entities, 'people') ? { people: map('people') } : {}),
+    ...(Object.hasOwn(pkg.entities, 'scenarios') ? { scenarios: map('scenarios') } : {}),
+  } as WorkspaceState;
+}
+
 function entitiesFromState(state: WorkspaceState): Record<string, readonly unknown[]> {
   return {
     teams: [...state.teams.values()],
     'team-quarters': [...state.teamQuarters.values()],
     commitments: [...state.commitments.values()],
     footprints: [...state.footprints.values()],
-    products: [...(state.products?.values() ?? [])],
-    impacts: [...(state.productImpacts?.values() ?? [])],
-    dependencies: [...(state.dependencies?.values() ?? [])],
-    decisions: [...(state.decisions?.values() ?? [])],
-    milestones: [...(state.milestones?.values() ?? [])],
-    themes: [...(state.themes?.values() ?? [])],
-    'commitment-themes': [...(state.commitmentThemes?.values() ?? [])],
-    links: [...(state.externalLinks?.values() ?? [])],
-    people: [...(state.people?.values() ?? [])],
-    scenarios: [...(state.scenarios?.values() ?? [])],
+    ...(state.products ? { products: [...state.products.values()] } : {}),
+    ...(state.productImpacts ? { impacts: [...state.productImpacts.values()] } : {}),
+    ...(state.dependencies ? { dependencies: [...state.dependencies.values()] } : {}),
+    ...(state.decisions ? { decisions: [...state.decisions.values()] } : {}),
+    ...(state.milestones ? { milestones: [...state.milestones.values()] } : {}),
+    ...(state.themes ? { themes: [...state.themes.values()] } : {}),
+    ...(state.commitmentThemes
+      ? { 'commitment-themes': [...state.commitmentThemes.values()] }
+      : {}),
+    ...(state.externalLinks ? { links: [...state.externalLinks.values()] } : {}),
+    ...(state.people ? { people: [...state.people.values()] } : {}),
+    ...(state.scenarios ? { scenarios: [...state.scenarios.values()] } : {}),
   };
 }
 
