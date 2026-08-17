@@ -11,7 +11,7 @@ capability**, not by technical layer — each ticket should leave the product me
 > This file is kept current as work lands. A ticket is ✅ only when its acceptance criteria pass and
 > the [`AGENTS.md`](../../AGENTS.md) definition of done is met — not when the code merely exists.
 
-**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · **M3 13/14 done, 1 partial** · **M6 6/17 done, 6 in progress** · M7–M9 not started
+**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · **M3 13/14 done, 1 partial** · **M6 7/17 done, 5 in progress** · M7–M9 not started
 
 > **Closed out of M2.** The seven code-side gaps carried out of the first pass
 > are done, each with unit and Playwright coverage and verified in a browser:
@@ -276,7 +276,7 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 | ✅  | M6-POR-1 | `.flowmap` package + hash + sensitivity warning       |  M   | M6-EXP-1  |
 | ⬜  | M6-POR-2 | Round-trip property test (projection + rule equality) |  S   | M6-POR-1  |
 | ✅  | M6-SNP-1 | Snapshots: manual + automatic-before-barrier          |  M   | M6-POR-1  |
-| ⬜  | M6-SNP-2 | Restore with `RestoreReport` and typed confirmation   |  M   | M6-SNP-1  |
+| ✅  | M6-SNP-2 | Restore with `RestoreReport` and typed confirmation   |  M   | M6-SNP-1  |
 | ✅  | M6-WSP-1 | Multiple workspaces + switcher + smart defaults       |  M   | M1-DOM-4  |
 | ✅  | M6-WSP-2 | Sample workspace, marked and resettable               |  S   | M6-WSP-1  |
 | 🔵  | M6-WSP-3 | Archive/restore + referential-integrity policy        |  M   | M1-DOM-5  |
