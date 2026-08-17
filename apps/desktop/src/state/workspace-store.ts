@@ -12,6 +12,7 @@
 import { create } from 'zustand';
 import {
   applyTransition,
+  archiveWorkspace,
   applyScenario as applyScenarioBatch,
   assignCapacityFootprint,
   baselineProjection,
@@ -39,6 +40,7 @@ import {
   removeSavedView,
   restoreCapacityFootprint,
   restoreWorkspaceSnapshot,
+  restoreWorkspace,
   setPrimaryTeam,
   splitCapacityFootprint,
   unlinkIdeaFromRefinementReserve,
@@ -157,6 +159,12 @@ type StoreState = {
   state: WorkspaceState | null;
   activeWorkspaceId: EntityId | null;
   workspaces: readonly { id: EntityId; name: string; updatedAt: string }[];
+  archivedWorkspaces: readonly {
+    id: EntityId;
+    name: string;
+    updatedAt: string;
+    archivedAt: string;
+  }[];
   profileName: string;
   selectedFootprintId: string | null;
   status: Status;
@@ -176,6 +184,8 @@ type StoreState = {
   init(runtime: Runtime, profileName: string): Promise<void>;
   createWorkspace(name: string, timezone: string): Promise<boolean>;
   switchWorkspace(workspaceId: EntityId): Promise<boolean>;
+  archiveActiveWorkspace(): Promise<boolean>;
+  restoreArchivedWorkspace(workspaceId: EntityId): Promise<boolean>;
   dispatch(
     name: string,
     run: (state: WorkspaceState, cmd: Command, ctx: CommandContext) => CommandResult,
@@ -343,6 +353,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   state: null,
   activeWorkspaceId: null,
   workspaces: [],
+  archivedWorkspaces: [],
   profileName: '',
   selectedFootprintId: null,
   status: null,
@@ -389,6 +400,14 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       state,
       activeWorkspaceId,
       workspaces: await runtime.repository.listWorkspaces(),
+      archivedWorkspaces: (
+        await runtime.repository.listWorkspaces({ includeArchived: true })
+      ).filter(
+        (
+          workspace,
+        ): workspace is { id: EntityId; name: string; updatedAt: string; archivedAt: string } =>
+          workspace.archivedAt !== undefined,
+      ),
       events: await runtime.repository.listEvents(activeWorkspaceId, 500),
       snapshots: await runtime.repository.listSnapshots(activeWorkspaceId),
       ...(runtime.repository.getRecoveryNotice?.() === 'CORRUPT_CACHE_RECOVERED'
@@ -444,6 +463,56 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     });
     await refreshPending(get, set);
     return true;
+  },
+
+  async archiveActiveWorkspace() {
+    const { state, workspaces } = get();
+    if (!state) return false;
+    const next = workspaces.find((workspace) => workspace.id !== state.workspace.id);
+    if (!next) {
+      set({ status: { tone: 'warning', message: t('workspace.archiveNeedsAnother') } });
+      return false;
+    }
+    const archived = await get().dispatch('ArchiveWorkspace', (current, cmd, ctx) =>
+      archiveWorkspace(current, {}, cmd, ctx),
+    );
+    if (!archived) return false;
+    const { runtime } = get();
+    if (runtime) {
+      set({
+        archivedWorkspaces: (
+          await runtime.repository.listWorkspaces({ includeArchived: true })
+        ).filter(
+          (
+            workspace,
+          ): workspace is { id: EntityId; name: string; updatedAt: string; archivedAt: string } =>
+            workspace.archivedAt !== undefined,
+        ),
+      });
+    }
+    return get().switchWorkspace(next.id);
+  },
+
+  async restoreArchivedWorkspace(workspaceId) {
+    const { runtime } = get();
+    if (!runtime) return false;
+    const archived = await runtime.repository.load(workspaceId);
+    if (!archived || archived.workspace.archivedAt === undefined) return false;
+    const cmd = makeCommand(runtime, 'RestoreWorkspace', workspaceId);
+    const result = restoreWorkspace(
+      archived,
+      {},
+      cmd,
+      makeContext(runtime, await runtime.repository.nextSequence(workspaceId)),
+    );
+    if (!result.ok) return false;
+    await runtime.repository.apply({
+      workspaceId,
+      changes: result.effects.changes,
+      events: result.effects.events,
+      command: cmd,
+    });
+    return get().switchWorkspace(workspaceId);
   },
 
   async dispatch(name, run, history = 'record') {

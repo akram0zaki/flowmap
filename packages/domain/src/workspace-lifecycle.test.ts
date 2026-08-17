@@ -53,7 +53,10 @@ describe('workspace archive', () => {
 
   it('reports restore changes before a command is applied', () => {
     const before = state();
-    const snapshot = { ...before, teams: new Map([['team', { id: 'team' }]]) } as WorkspaceState;
+    const snapshot = {
+      ...before,
+      teams: new Map([['team', { id: 'team' }]]),
+    } as unknown as WorkspaceState;
     expect(restoreReport(before, snapshot, 'Snapshot', now, 2)).toMatchObject({
       snapshot: { name: 'Snapshot', workspaceRevision: 1 },
       counts: { TEAM: { added: 1, removed: 0, changed: 0 } },

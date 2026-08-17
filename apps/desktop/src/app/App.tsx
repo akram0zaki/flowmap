@@ -77,6 +77,7 @@ import { WorkspaceSwitcher } from '../components/WorkspaceSwitcher.jsx';
 import { PortabilityPanel } from '../components/PortabilityPanel.jsx';
 import { SavedViews } from '../components/SavedViews.jsx';
 import { SnapshotsPanel } from '../components/SnapshotsPanel.jsx';
+import { FirstRunGuide } from '../components/FirstRunGuide.jsx';
 import {
   DependencyMapView,
   HistoryView,
@@ -95,6 +96,7 @@ export function App() {
   const status = useWorkspace((s) => s.status);
   const profileName = useWorkspace((s) => s.profileName);
   const workspaces = useWorkspace((s) => s.workspaces);
+  const archivedWorkspaces = useWorkspace((s) => s.archivedWorkspaces);
   const activeWorkspaceId = useWorkspace((s) => s.activeWorkspaceId);
   const selectedFootprintId = useWorkspace((s) => s.selectedFootprintId);
   const presentationMode = useWorkspace((s) => s.presentationMode);
@@ -105,6 +107,8 @@ export function App() {
     clearStatus,
     createWorkspace,
     switchWorkspace,
+    archiveActiveWorkspace,
+    restoreArchivedWorkspace,
     importIdeas,
     createSnapshot,
     restoreSnapshot,
@@ -1075,10 +1079,13 @@ export function App() {
         <h1 className="fm-header__brand">{t('app.name')}</h1>
         <WorkspaceSwitcher
           workspaces={workspaces}
+          archivedWorkspaces={archivedWorkspaces}
           activeWorkspaceId={activeWorkspaceId}
           timezone={state.workspace.timezone}
           onSwitch={(workspaceId) => void switchWorkspace(workspaceId)}
           onCreate={(name) => void createWorkspace(name, state.workspace.timezone)}
+          onArchive={() => void archiveActiveWorkspace()}
+          onRestore={(workspaceId) => void restoreArchivedWorkspace(workspaceId)}
         />
         {runtime && (
           <PortabilityPanel
@@ -1144,6 +1151,7 @@ export function App() {
           </button>
         </div>
       )}
+      {state.teams.size === 0 && state.commitments.size === 0 && <FirstRunGuide />}
 
       <div className="fm-controlbar fm-editing-chrome">
         <nav className="fm-lens-nav" aria-label={t('lens.switch')}>

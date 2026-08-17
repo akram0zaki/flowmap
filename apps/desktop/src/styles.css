@@ -261,6 +261,25 @@ body {
   color: var(--ink-subtle);
 }
 
+.fm-first-run {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-7);
+  border-block-end: var(--border-width) solid var(--border);
+  background: var(--surface-raised);
+}
+
+.fm-first-run h2,
+.fm-first-run p {
+  margin: 0;
+}
+
+.fm-first-run p + p {
+  margin-block-start: var(--space-2);
+}
+
 /* ── Control row ───────────────────────────────────────────────────────── */
 
 .fm-controlbar {

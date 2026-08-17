@@ -12,18 +12,24 @@ export type WorkspaceOption = {
 
 export type WorkspaceSwitcherProps = {
   readonly workspaces: readonly WorkspaceOption[];
+  readonly archivedWorkspaces: readonly (WorkspaceOption & { readonly archivedAt: string })[];
   readonly activeWorkspaceId: string | null;
   readonly timezone: string;
   readonly onSwitch: (workspaceId: string) => void;
   readonly onCreate: (name: string) => void;
+  readonly onArchive: () => void;
+  readonly onRestore: (workspaceId: string) => void;
 };
 
 export function WorkspaceSwitcher({
   workspaces,
+  archivedWorkspaces,
   activeWorkspaceId,
   timezone,
   onSwitch,
   onCreate,
+  onArchive,
+  onRestore,
 }: WorkspaceSwitcherProps) {
   const [name, setName] = useState('');
   const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
@@ -46,6 +52,20 @@ export function WorkspaceSwitcher({
             </div>
           ))}
         </div>
+        <button type="button" onClick={onArchive} disabled={workspaces.length < 2}>
+          {t('workspace.archive')}
+        </button>
+        {archivedWorkspaces.length > 0 && (
+          <div role="list" className="fm-workspace-switcher__list">
+            {archivedWorkspaces.map((workspace) => (
+              <div key={workspace.id} role="listitem">
+                <button type="button" onClick={() => onRestore(workspace.id)}>
+                  {t('workspace.restore', { name: workspace.name })}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <form
           className="fm-workspace-switcher__create"
           onSubmit={(event) => {
