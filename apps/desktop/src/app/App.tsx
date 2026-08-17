@@ -938,7 +938,15 @@ export function App() {
         scenarios={scenarios}
         selectedId={selectedScenarioId}
         onSelect={setSelectedScenarioId}
-        onCreate={() => void createScenario()}
+        onCreate={() => {
+          void createScenario().then((created) => {
+            if (!created) return;
+            const newest = [...(useWorkspace.getState().state?.scenarios?.values() ?? [])]
+              .filter((scenario) => scenario.status === 'DRAFT' || scenario.status === 'SHARED')
+              .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+            if (newest) setSelectedScenarioId(newest.id);
+          });
+        }}
         onDiscard={(scenarioId) => {
           void discardScenario(scenarioId).then((discarded) => {
             if (discarded) setSelectedScenarioId(null);
