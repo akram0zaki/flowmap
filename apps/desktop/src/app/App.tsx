@@ -691,7 +691,33 @@ export function App() {
       return Math.max(worst, cell?.summary?.overflow ?? 0);
     }, 0);
 
-    return { readiness, overflow };
+    const overflowingCells = new Set(
+      own.filter((footprint) => (findCell(board, footprint.teamId, footprint.quarterId)?.summary?.overflow ?? 0) > 0)
+        .map((footprint) => `${footprint.teamId}:${footprint.quarterId}`),
+    );
+    const candidates = [...state.footprints.values()].filter((footprint) =>
+      footprint.archivedAt === undefined && overflowingCells.has(`${footprint.teamId}:${footprint.quarterId}`),
+    );
+    const constrained: { name: string; reason: 'MANDATORY' | 'IN_DELIVERY' | 'HARD_DEPENDENCY' }[] = [];
+    const movable: { name: string; units: number; earliestAlternativeQuarter?: string }[] = [];
+    for (const footprint of candidates) {
+      const commitment = state.commitments.get(footprint.commitmentId);
+      if (!commitment || commitment.id === panelCommitment.id) continue;
+      const hardDependency = [...(state.dependencies?.values() ?? [])].some((dependency) =>
+        dependency.sourceCommitmentId === commitment.id && dependency.isHard && dependency.status === 'OPEN' && dependency.archivedAt === undefined,
+      );
+      const reason = commitment.class === 'MANDATORY' ? 'MANDATORY' as const
+        : commitment.lifecycle === 'IN_DELIVERY' ? 'IN_DELIVERY' as const
+        : hardDependency ? 'HARD_DEPENDENCY' as const : null;
+      if (reason) constrained.push({ name: commitment.name, reason });
+      else if (commitment.lifecycle === 'COMMITTED') {
+        const earliestAlternativeQuarter = board.quarters
+          .slice(board.quarters.indexOf(footprint.quarterId) + 1)
+          .find((quarterId) => (findCell(board, footprint.teamId, quarterId)?.summary?.headroom ?? 0) >= footprint.units);
+        movable.push({ name: commitment.name, units: footprint.units, ...(earliestAlternativeQuarter ? { earliestAlternativeQuarter } : {}) });
+      }
+    }
+    return { readiness, overflow, tradeoff: { constrained, movable } };
   }, [state, board, panelCommitment]);
 
   /** The relations that belong to whatever the panel is showing. */
