@@ -86,6 +86,17 @@ export type DetailPanelProps = {
   readonly gate: {
     readonly readiness: GateReadiness;
     readonly overflow: number;
+    readonly tradeoff?: {
+      readonly constrained: readonly {
+        name: string;
+        reason: 'MANDATORY' | 'IN_DELIVERY' | 'HARD_DEPENDENCY';
+      }[];
+      readonly movable: readonly {
+        name: string;
+        units: number;
+        earliestAlternativeQuarter?: string;
+      }[];
+    };
     readonly onCommit: () => void;
   } | null;
   readonly onClose: () => void;
@@ -184,6 +195,7 @@ export function DetailPanel({
             name={commitment.name}
             readiness={gate.readiness}
             overflow={gate.overflow}
+            {...(gate.tradeoff ? { tradeoff: gate.tradeoff } : {})}
             onCommit={gate.onCommit}
             onDismiss={onClose}
           />

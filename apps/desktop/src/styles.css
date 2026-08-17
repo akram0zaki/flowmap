@@ -88,6 +88,287 @@ body {
   flex: 1;
 }
 
+/* ── Scenario workspace ───────────────────────────────────────────────── */
+
+.fm-scenarios {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3) var(--space-6);
+  align-items: center;
+  padding: var(--space-4) var(--space-7);
+  background: var(--info-surface);
+  border-bottom: 1px solid var(--info-line);
+}
+
+.fm-scenarios__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.fm-scenarios__head h2,
+.fm-scenarios__eyebrow,
+.fm-scenarios__status {
+  margin: 0;
+}
+
+.fm-scenarios__head h2 {
+  color: var(--info-fg);
+  font-size: var(--text-sm);
+}
+
+.fm-scenarios__eyebrow,
+.fm-scenarios__meta {
+  color: var(--ink-subtle);
+  font-size: var(--text-2xs);
+}
+
+.fm-scenarios__status {
+  grid-column: 1 / -1;
+  max-width: 78ch;
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+}
+
+.fm-scenarios__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  grid-column: 1 / -1;
+}
+
+.fm-scenarios__choice {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-height: var(--row-compact);
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.fm-scenarios__choice[aria-pressed='true'] {
+  color: var(--info-fg);
+  background: var(--surface);
+  border-color: var(--info-line);
+  font-weight: var(--weight-medium);
+}
+
+.fm-scenarios__footer {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  color: var(--ink-muted);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+}
+
+.fm-scenarios__diff {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.fm-scenarios__diff div {
+  display: grid;
+  gap: var(--space-1);
+}
+.fm-scenarios__diff dt {
+  color: var(--ink-subtle);
+  font-size: var(--text-2xs);
+}
+.fm-scenarios__diff dd {
+  margin: 0;
+  color: var(--info-fg);
+  font-family: var(--font-data);
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+}
+.fm-scenario-diff {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.fm-scenario-diff h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.fm-scenario-diff ul {
+  display: grid;
+  gap: var(--space-2);
+  max-block-size: var(--space-10);
+  margin: var(--space-3) 0 0;
+  overflow: auto;
+  padding-inline-start: var(--space-5);
+}
+.fm-scenario-diff p {
+  margin: var(--space-3) 0 0;
+  color: var(--ink-subtle);
+}
+.fm-scenario-rebase {
+  display: grid;
+  gap: var(--space-3);
+  grid-column: 1 / -1;
+}
+.fm-scenario-rebase h3,
+.fm-scenario-rebase p {
+  margin: 0;
+}
+.fm-scenario-rebase p {
+  color: var(--ink-subtle);
+}
+.fm-scenario-rebase ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-inline-start: var(--space-5);
+}
+.fm-scenario-rebase label {
+  display: grid;
+  gap: var(--space-2);
+}
+.fm-scenario-selective {
+  display: grid;
+  gap: var(--space-3);
+  grid-column: 1 / -1;
+}
+.fm-scenario-selective summary {
+  cursor: pointer;
+  color: var(--info-fg);
+}
+.fm-scenario-selective p,
+.fm-scenario-selective ul {
+  margin: 0;
+}
+.fm-scenario-selective ul {
+  display: grid;
+  gap: var(--space-2);
+  padding-inline-start: var(--space-5);
+}
+.fm-scenario-selective label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.fm-tradeoff {
+  display: grid;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+  padding: var(--space-4);
+  border-inline-start: var(--focus-width) solid var(--warning-line);
+  background: var(--warning-surface);
+}
+.fm-tradeoff h4,
+.fm-tradeoff h5,
+.fm-tradeoff p,
+.fm-tradeoff ul {
+  margin: 0;
+}
+.fm-tradeoff h5 {
+  font-size: var(--text-xs);
+}
+.fm-tradeoff ul {
+  display: grid;
+  gap: var(--space-2);
+  padding-inline-start: var(--space-5);
+}
+.fm-consequence-preview {
+  position: fixed;
+  inset: var(--space-7);
+  z-index: var(--z-toast);
+  display: grid;
+  align-content: center;
+  gap: var(--space-5);
+  max-inline-size: min(100%, calc(var(--space-10) * 12));
+  max-block-size: calc(100dvb - var(--space-9));
+  margin: auto;
+  overflow: auto;
+  padding: var(--space-7);
+  border: var(--border-width) solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+}
+.fm-consequence-preview h3,
+.fm-consequence-preview p,
+.fm-consequence-preview ul {
+  margin: 0;
+}
+.fm-consequence-preview__actions {
+  position: sticky;
+  inset-block-end: 0;
+  display: flex;
+  justify-content: end;
+  gap: var(--space-3);
+  padding-block-start: var(--space-4);
+  background: var(--surface);
+}
+
+.fm-demand-flow {
+  display: grid;
+  grid-template-columns: minmax(var(--space-10), 1fr) minmax(var(--space-10), 2fr) minmax(
+      var(--space-10),
+      1fr
+    );
+  gap: var(--space-6);
+  min-width: 0;
+  padding: var(--space-6);
+}
+.fm-demand-flow__lane,
+.fm-demand-flow__pipe,
+.fm-demand-flow__gate {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5);
+  border: var(--border-width) solid var(--border);
+  background: var(--surface);
+}
+.fm-demand-flow h2,
+.fm-demand-flow p {
+  margin: 0;
+}
+.fm-demand-flow__lane button,
+.fm-demand-flow__quarters button,
+.fm-demand-flow__teams button {
+  justify-content: start;
+}
+.fm-demand-flow__lane button[aria-selected='true'],
+.fm-demand-flow button[aria-pressed='true'] {
+  border-color: var(--info-line);
+  color: var(--info-fg);
+}
+.fm-demand-flow fieldset {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--border);
+}
+.fm-demand-flow__quarters,
+.fm-demand-flow__teams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+@media (max-width: 64rem) {
+  .fm-demand-flow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fm-shell[data-presentation] .fm-editing-chrome,
+.fm-shell[data-presentation] .fm-scenarios__head button,
+.fm-shell[data-presentation] .fm-scenarios__footer button,
+.fm-shell[data-presentation] .fm-header__status {
+  display: none;
+}
+
+.fm-shell[data-presentation] .fm-header {
+  padding-block: var(--space-6);
+}
+
 /* Segmented control: one outline, dividers inside, no gaps. */
 .fm-levels {
   display: inline-flex;
@@ -707,6 +988,14 @@ label {
   stroke-dasharray: 3 3;
 }
 
+.fm-block[data-scenario-ghost] .fm-block__fill {
+  fill: var(--info-surface);
+  fill-opacity: 0.55;
+  stroke: var(--info-line);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
 /* The part of a block past the rule. A flat tint with a firm edge: the reader
    has to be able to read the name printed on it, which stripes prevented. */
 .fm-block__over {
@@ -747,6 +1036,15 @@ label {
 
 .fm-block__label[data-over] {
   font-weight: var(--weight-medium);
+}
+
+.fm-block__scenario-badge {
+  fill: var(--info-fg);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  paint-order: stroke fill;
+  stroke: var(--surface);
+  stroke-width: var(--focus-width);
 }
 
 /* ── Milestones on a block ─────────────────────────────────────────────────

@@ -19,6 +19,7 @@ import type {
   EntityRef,
   ExternalLink,
   SignalDisposition,
+  Scenario,
   Milestone,
   Person,
   ProductImpact,
@@ -30,7 +31,7 @@ import type {
   WorkspaceId,
   WorkspaceState,
 } from '@flowmap/domain';
-import { refKey } from '@flowmap/domain';
+import { DomainErrorException, domainError, refKey } from '@flowmap/domain';
 import {
   runMigrations,
   type ApplyInput,
@@ -39,6 +40,7 @@ import {
   type MigrationReport,
   type OutboxEntry,
   type OutboxState,
+  type SnapshotRecord,
   type WorkspaceRepository,
 } from '@flowmap/storage';
 
@@ -80,6 +82,7 @@ const TABLE_BY_KIND: Partial<Record<EntityRef['kind'], string>> = {
   EXTERNAL_LINK: 'external_link',
   SIGNAL_DISPOSITION: 'signal_disposition',
   PERSON: 'person',
+  SCENARIO: 'scenario',
 };
 
 export class SqliteWorkspaceRepository implements WorkspaceRepository {
@@ -185,6 +188,7 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
         this.#toDisposition(r),
       ),
       people: await this.#loadMap('person', workspaceId, (r) => this.#toPerson(r)),
+      scenarios: await this.#loadMap('scenario', workspaceId, (r) => this.#toScenario(r)),
     };
   }
 
@@ -193,13 +197,18 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
    * together or not at all.
    */
   async apply(input: ApplyInput): Promise<void> {
+    if (input.command.scenarioId !== undefined) {
+      throw new DomainErrorException(
+        domainError('SCENARIO_CANNOT_MUTATE_BASELINE', {
+          params: { scenarioId: input.command.scenarioId },
+        }),
+      );
+    }
     await this.db.transaction(async () => {
+      if (input.preSnapshot) await this.#writeSnapshot(input.preSnapshot);
       for (const change of input.changes) await this.#writeChange(input.workspaceId, change);
       for (const event of input.events) await this.#writeEvent(event);
-      // Scenario commands never reach a provider; they are replayed on apply.
-      if (input.command.scenarioId === undefined) {
-        for (const change of input.changes) await this.#writeOutbox(input, change);
-      }
+      for (const change of input.changes) await this.#writeOutbox(input, change);
     });
   }
 
@@ -226,6 +235,22 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
           scenarioId: s(row['scenario_id']),
         }) as DomainEvent,
     );
+  }
+
+  async listSnapshots(workspaceId: WorkspaceId, limit = 50): Promise<SnapshotRecord[]> {
+    return (
+      await this.db.all(
+        'SELECT * FROM snapshot WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?',
+        [workspaceId, limit],
+      )
+    ).map((row) => ({
+      id: String(row['id']),
+      workspaceId: String(row['workspace_id']),
+      workspaceRevision: Number(row['workspace_revision']),
+      createdAt: String(row['created_at']),
+      commandName: String(row['command_name']),
+      content: p(row['content_json']) ?? {},
+    }));
   }
 
   async listOutbox(workspaceId: WorkspaceId, state?: OutboxState): Promise<OutboxEntry[]> {
@@ -284,6 +309,7 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
       'domain_event',
       'outbox',
       'sync_state',
+      'scenario',
       'workspace',
     ];
     await this.db.transaction(async () => {
@@ -329,6 +355,26 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
   }
 
   // ── Writers ──────────────────────────────────────────────────────────────
+
+  async #writeSnapshot(snapshot: NonNullable<ApplyInput['preSnapshot']>): Promise<void> {
+    const content = Object.fromEntries(
+      Object.entries(snapshot.state).map(([key, value]) => [
+        key,
+        value instanceof Map ? Object.fromEntries(value) : value,
+      ]),
+    );
+    await this.db.run(
+      'INSERT INTO snapshot (id, workspace_id, workspace_revision, created_at, command_name, content_json) VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        snapshot.id,
+        snapshot.workspaceId,
+        snapshot.workspaceRevision,
+        snapshot.createdAt,
+        snapshot.commandName,
+        JSON.stringify(content),
+      ],
+    );
+  }
 
   async #writeChange(workspaceId: WorkspaceId, change: EntityChange): Promise<void> {
     const table = TABLE_BY_KIND[change.ref.kind];
@@ -531,6 +577,19 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
           actor_id: String(e['actorId']),
           note: (e['note'] as string) ?? null,
         };
+      case 'scenario':
+        return {
+          ...envelope,
+          owner_user_id: String(e['ownerUserId']),
+          name: String(e['name']),
+          visibility: String(e['visibility']),
+          base_revision: Number(e['baseRevision']),
+          commands_json: j(e['commands'] ?? [])!,
+          status: String(e['status']),
+          applied_at: (e['appliedAt'] as string) ?? null,
+          applied_by: (e['appliedBy'] as string) ?? null,
+          applied_command_ids_json: j(e['appliedCommandIds']),
+        };
       case 'capacity_footprint':
         return {
           ...envelope,
@@ -650,6 +709,21 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
       displayOrder: Number(row['display_order']),
       active: Number(row['active']) === 1,
     }) as Team;
+  }
+
+  #toScenario(row: Record<string, SqlValue>): Scenario {
+    return defined({
+      ...this.#envelope(row),
+      name: String(row['name']),
+      ownerUserId: String(row['owner_user_id']),
+      visibility: String(row['visibility']) as Scenario['visibility'],
+      baseRevision: Number(row['base_revision']),
+      commands: p<Scenario['commands']>(row['commands_json']) ?? [],
+      status: String(row['status']) as Scenario['status'],
+      appliedAt: s(row['applied_at']),
+      appliedBy: s(row['applied_by']),
+      appliedCommandIds: p<Scenario['appliedCommandIds']>(row['applied_command_ids_json']),
+    }) as Scenario;
   }
 
   #toTeamQuarter(row: Record<string, SqlValue>): TeamQuarter {

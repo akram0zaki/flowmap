@@ -43,7 +43,21 @@ export type ApplyInput = {
   readonly changes: readonly EntityChange[];
   readonly events: readonly DomainEvent[];
   readonly command: Command;
+  /** Written in the same transaction immediately before an undo barrier. */
+  readonly preSnapshot?: SnapshotWrite;
 };
+
+export type SnapshotWrite = {
+  readonly id: EntityId;
+  readonly workspaceId: WorkspaceId;
+  readonly workspaceRevision: number;
+  readonly createdAt: string;
+  readonly commandName: string;
+  /** The live baseline immediately before the barrier command. */
+  readonly state: WorkspaceState;
+};
+
+export type SnapshotRecord = Omit<SnapshotWrite, 'state'> & { readonly content: unknown };
 
 /**
  * The single transactional boundary.
@@ -57,6 +71,7 @@ export interface WorkspaceRepository {
   load(workspaceId: WorkspaceId): Promise<WorkspaceState | null>;
   apply(input: ApplyInput): Promise<void>;
   listEvents(workspaceId: WorkspaceId, limit?: number): Promise<DomainEvent[]>;
+  listSnapshots(workspaceId: WorkspaceId, limit?: number): Promise<SnapshotRecord[]>;
   listOutbox(workspaceId: WorkspaceId, state?: OutboxState): Promise<OutboxEntry[]>;
   markOutbox(ids: readonly EntityId[], state: OutboxState, error?: string): Promise<void>;
   nextSequence(workspaceId: WorkspaceId): Promise<number>;

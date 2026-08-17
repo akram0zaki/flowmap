@@ -375,3 +375,51 @@ export type SignalDisposition = EntityEnvelope & {
   readonly actorId: ActorId;
   readonly note?: string;
 };
+
+// ── Scenarios ─────────────────────────────────────────────────────────────
+
+/**
+ * A scenario is an ordered overlay, never a second copy of the workspace.
+ * The commands are replayed against `baseRevision` for comparison and apply.
+ * See docs/spec/05-scenarios-qbr.md §1.
+ */
+export type ScenarioStatus = 'DRAFT' | 'SHARED' | 'APPLIED' | 'DISCARDED';
+
+export type ScenarioVisibility = 'PRIVATE' | 'SHARED';
+
+export type ScenarioCommandRecord = {
+  readonly id: EntityId;
+  readonly sequence: number;
+  /** Kept structural here to avoid entities depending on command.ts. */
+  readonly command: Readonly<Record<string, unknown>>;
+  readonly recordedAt: IsoDateTime;
+  /** I18n summary key, never user-authored prose. */
+  readonly label: string;
+  /**
+   * Values read when the intent was recorded. They are deliberately small,
+   * field-level snapshots rather than a copy of the workspace: rebase uses
+   * them to distinguish a genuinely overlapping change from a clean replay.
+   */
+  readonly baseFields?: readonly ScenarioBaseField[];
+};
+
+export type ScenarioBaseField = {
+  readonly kind: string;
+  readonly id: EntityId;
+  readonly field: string;
+  readonly value: unknown;
+  readonly changedBy: ActorId;
+  readonly changedAt: IsoDateTime;
+};
+
+export type Scenario = EntityEnvelope & {
+  readonly name: string;
+  readonly ownerUserId: EntityId;
+  readonly visibility: ScenarioVisibility;
+  readonly baseRevision: number;
+  readonly commands: readonly ScenarioCommandRecord[];
+  readonly status: ScenarioStatus;
+  readonly appliedAt?: IsoDateTime;
+  readonly appliedBy?: ActorId;
+  readonly appliedCommandIds?: readonly EntityId[];
+};

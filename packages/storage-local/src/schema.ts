@@ -422,6 +422,51 @@ CREATE INDEX IF NOT EXISTS ix_disposition_key
   ON signal_disposition(workspace_id, signal_key, actor_id);
 `;
 
+/** Scenario command logs are local overlays, not baseline history. */
+const V4_SQL = `
+CREATE TABLE IF NOT EXISTS scenario (
+  id                          TEXT PRIMARY KEY,
+  workspace_id                TEXT NOT NULL,
+  name                        TEXT NOT NULL,
+  owner_user_id               TEXT NOT NULL,
+  visibility                  TEXT NOT NULL CHECK (visibility IN ('PRIVATE', 'SHARED')),
+  base_revision               INTEGER NOT NULL,
+  commands_json               TEXT NOT NULL DEFAULT '[]',
+  status                      TEXT NOT NULL CHECK (status IN ('DRAFT', 'SHARED', 'APPLIED', 'DISCARDED')),
+  applied_at                  TEXT,
+  applied_by                  TEXT,
+  applied_command_ids_json    TEXT,
+  schema_version              INTEGER NOT NULL,
+  entity_version              INTEGER NOT NULL,
+  created_at                  TEXT NOT NULL,
+  created_by                  TEXT NOT NULL,
+  updated_at                  TEXT NOT NULL,
+  updated_by                  TEXT NOT NULL,
+  archived_at                 TEXT,
+  archived_by                 TEXT,
+  deleted_at                  TEXT,
+  remote_version              TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_scenario_workspace_status
+  ON scenario(workspace_id, status, updated_at DESC);
+`;
+
+/** Barrier recovery points are local cache records, never synced artefacts. */
+const V5_SQL = `
+CREATE TABLE IF NOT EXISTS snapshot (
+  id                 TEXT PRIMARY KEY,
+  workspace_id       TEXT NOT NULL,
+  workspace_revision INTEGER NOT NULL,
+  created_at         TEXT NOT NULL,
+  command_name       TEXT NOT NULL,
+  content_json       TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_snapshot_workspace_created
+  ON snapshot(workspace_id, created_at DESC);
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
@@ -459,6 +504,28 @@ export const MIGRATIONS: readonly Migration[] = [
     checksumSource: V3_SQL,
     up: async (ctx) => {
       for (const statement of V3_SQL.split(';')) {
+        const trimmed = statement.trim();
+        if (trimmed.length > 0) await ctx.exec(trimmed);
+      }
+    },
+  },
+  {
+    version: 4,
+    name: 'scenario-overlays',
+    checksumSource: V4_SQL,
+    up: async (ctx) => {
+      for (const statement of V4_SQL.split(';')) {
+        const trimmed = statement.trim();
+        if (trimmed.length > 0) await ctx.exec(trimmed);
+      }
+    },
+  },
+  {
+    version: 5,
+    name: 'barrier-snapshots',
+    checksumSource: V5_SQL,
+    up: async (ctx) => {
+      for (const statement of V5_SQL.split(';')) {
         const trimmed = statement.trim();
         if (trimmed.length > 0) await ctx.exec(trimmed);
       }

@@ -21,6 +21,8 @@ import {
   setProductImpact,
   updateDependency,
   utilisationPercent,
+  baselineProjection,
+  compareScenario,
 } from '@flowmap/domain';
 import {
   NO_RULE_SETTINGS,
@@ -65,6 +67,8 @@ import type { DependencyEdge } from '../components/DependencyLayer.jsx';
 import { CaptureBar } from '../components/CaptureBar.jsx';
 import { Radar } from '../components/Radar.jsx';
 import { RuleSettings } from '../components/RuleSettings.jsx';
+import { ScenarioDock } from '../components/ScenarioDock.jsx';
+import { DemandFlow } from '../components/DemandFlow.jsx';
 import { useSignals } from '../state/use-signals.js';
 import type { VesselBlock } from '../components/CapacityVessel.jsx';
 import { t } from '../i18n/t.js';
@@ -74,6 +78,7 @@ export function App() {
   const status = useWorkspace((s) => s.status);
   const profileName = useWorkspace((s) => s.profileName);
   const selectedFootprintId = useWorkspace((s) => s.selectedFootprintId);
+  const presentationMode = useWorkspace((s) => s.presentationMode);
   const {
     undo,
     redo,
@@ -96,6 +101,16 @@ export function App() {
     reviewSignal,
     snoozeSignal,
     clearSignal,
+    createScenario,
+    discardScenario,
+    shareScenario,
+    cloneScenario,
+    applyScenario,
+    getScenarioRebase,
+    rebaseScenario,
+    setPresentationMode,
+    scenarioProjection,
+    placeScenarioIdea,
   } = useWorkspace.getState();
 
   /**
@@ -124,6 +139,18 @@ export function App() {
    * flagged so nobody mistakes it for the finished thing.
    */
   const [ruleSettings, setRuleSettings] = useState<Settings>(NO_RULE_SETTINGS);
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
+  const [showDemandFlow, setShowDemandFlow] = useState(false);
+  const scenarioState = selectedScenarioId === null ? null : scenarioProjection(selectedScenarioId);
+  const viewState = scenarioState ?? state;
+  const scenarioDiff =
+    state && scenarioState ? compareScenario(baselineProjection(state), scenarioState) : null;
+  const scenarioRebase =
+    state &&
+    selectedScenarioId !== null &&
+    state.scenarios?.get(selectedScenarioId)?.baseRevision !== state.workspace.revision
+      ? getScenarioRebase(selectedScenarioId)
+      : undefined;
 
   // Announcements are debounced through a ref so rapid arrow-key movement does
   // not queue a dozen utterances.
@@ -144,9 +171,18 @@ export function App() {
         e.preventDefault();
         setShowList((v) => !v);
       }
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        announce(presentationMode ? t('presentation.off') : t('presentation.on'));
+        setPresentationMode(!presentationMode);
+      }
       if (e.key === 'Escape') {
         setFocusedCommitmentId(null);
         select(null);
+        if (presentationMode) {
+          setPresentationMode(false);
+          announce(t('presentation.off'));
+        }
       }
       if (!mod && ['1', '2', '3'].includes(e.key) && e.target === document.body) {
         setLevelState(Number(e.key) as ZoomLevel);
@@ -154,7 +190,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, select]);
+  }, [undo, redo, select, announce, presentationMode]);
 
   /**
    * Ctrl/Cmd + wheel, and pinch — which the browser also reports as a wheel
@@ -173,16 +209,17 @@ export function App() {
 
   const board = useMemo(
     () =>
-      state
+      viewState
         ? buildBoard({
-            workspace: state.workspace,
-            teams: state.teams,
-            teamQuarters: state.teamQuarters,
-            commitments: state.commitments,
-            footprints: state.footprints,
+            workspace: viewState.workspace,
+            teams: viewState.teams,
+            teamQuarters: viewState.teamQuarters,
+            commitments: viewState.commitments,
+            footprints: viewState.footprints,
+            ...(selectedScenarioId !== null ? { scenario: true } : {}),
           })
         : null,
-    [state],
+    [viewState],
   );
 
   const events = useWorkspace((s) => s.events);
@@ -391,6 +428,14 @@ export function App() {
           teamId: target.teamId,
           quarterId: target.quarterId,
         });
+      } else if (selectedScenarioId !== null) {
+        void placeScenarioIdea({
+          scenarioId: selectedScenarioId,
+          commitmentId: payload.commitmentId,
+          teamId: target.teamId,
+          quarterId: target.quarterId,
+          units: payload.units,
+        });
       } else {
         void commitIdeaInto({
           commitmentId: payload.commitmentId,
@@ -403,7 +448,17 @@ export function App() {
         t('drop.placed', { name: payload.name, team: cell.teamName, quarter: cell.quarterId }),
       );
     },
-    [board, state, moveFootprint, commitIdeaInto, unplaceFootprint, relate, announce],
+    [
+      board,
+      state,
+      moveFootprint,
+      commitIdeaInto,
+      unplaceFootprint,
+      relate,
+      announce,
+      selectedScenarioId,
+      placeScenarioIdea,
+    ],
   );
 
   const { placement, carryRef, beginPointer, beginKeyboard, aim, drop, cancel } = usePlacement({
@@ -650,7 +705,57 @@ export function App() {
       return Math.max(worst, cell?.summary?.overflow ?? 0);
     }, 0);
 
-    return { readiness, overflow };
+    const overflowingCells = new Set(
+      own
+        .filter(
+          (footprint) =>
+            (findCell(board, footprint.teamId, footprint.quarterId)?.summary?.overflow ?? 0) > 0,
+        )
+        .map((footprint) => `${footprint.teamId}:${footprint.quarterId}`),
+    );
+    const candidates = [...state.footprints.values()].filter(
+      (footprint) =>
+        footprint.archivedAt === undefined &&
+        overflowingCells.has(`${footprint.teamId}:${footprint.quarterId}`),
+    );
+    const constrained: { name: string; reason: 'MANDATORY' | 'IN_DELIVERY' | 'HARD_DEPENDENCY' }[] =
+      [];
+    const movable: { name: string; units: number; earliestAlternativeQuarter?: string }[] = [];
+    for (const footprint of candidates) {
+      const commitment = state.commitments.get(footprint.commitmentId);
+      if (!commitment || commitment.id === panelCommitment.id) continue;
+      const hardDependency = [...(state.dependencies?.values() ?? [])].some(
+        (dependency) =>
+          dependency.sourceCommitmentId === commitment.id &&
+          dependency.isHard &&
+          dependency.status === 'OPEN' &&
+          dependency.archivedAt === undefined,
+      );
+      const reason =
+        commitment.class === 'MANDATORY'
+          ? ('MANDATORY' as const)
+          : commitment.lifecycle === 'IN_DELIVERY'
+            ? ('IN_DELIVERY' as const)
+            : hardDependency
+              ? ('HARD_DEPENDENCY' as const)
+              : null;
+      if (reason) constrained.push({ name: commitment.name, reason });
+      else if (commitment.lifecycle === 'COMMITTED') {
+        const earliestAlternativeQuarter = board.quarters
+          .slice(board.quarters.indexOf(footprint.quarterId) + 1)
+          .find(
+            (quarterId) =>
+              (findCell(board, footprint.teamId, quarterId)?.summary?.headroom ?? 0) >=
+              footprint.units,
+          );
+        movable.push({
+          name: commitment.name,
+          units: footprint.units,
+          ...(earliestAlternativeQuarter ? { earliestAlternativeQuarter } : {}),
+        });
+      }
+    }
+    return { readiness, overflow, tradeoff: { constrained, movable } };
   }, [state, board, panelCommitment]);
 
   /** The relations that belong to whatever the panel is showing. */
@@ -806,10 +911,10 @@ export function App() {
 
   const vesselBlocksFor = useCallback(
     (cell: CellModel): VesselBlock[] => {
-      if (!state) return [];
+      if (!viewState) return [];
       return cell.blocks.flatMap((block) => {
-        const footprint = state.footprints.get(block.footprintId);
-        const commitment = state.commitments.get(block.commitmentId);
+        const footprint = viewState.footprints.get(block.footprintId);
+        const commitment = viewState.commitments.get(block.commitmentId);
         if (!footprint || !commitment) return [];
         const milestones = milestonesByCommitment.get(commitment.id);
         const health = signals.health.get(commitment.id);
@@ -817,14 +922,17 @@ export function App() {
           {
             footprint,
             commitment,
-            counted: isCounted(footprint, commitment, state.workspace.currentQuarterId),
+            counted: isCounted(footprint, commitment, viewState.workspace.currentQuarterId),
+            ...(selectedScenarioId !== null && commitment.lifecycle === 'IDEA'
+              ? { scenarioGhost: true }
+              : {}),
             ...(milestones ? { milestones } : {}),
             ...(health ? { health } : {}),
           },
         ];
       });
     },
-    [state, milestonesByCommitment, signals.health],
+    [viewState, milestonesByCommitment, signals.health, selectedScenarioId],
   );
 
   if (!state || !board) {
@@ -839,9 +947,21 @@ export function App() {
   const ideas = [...state.commitments.values()].filter(
     (c) => c.archivedAt === undefined && c.lifecycle === 'IDEA',
   );
+  const scenarios = [...(state.scenarios?.values() ?? [])]
+    .filter((scenario) => scenario.archivedAt === undefined)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+  useEffect(() => {
+    if (
+      selectedScenarioId !== null &&
+      !scenarios.some((scenario) => scenario.id === selectedScenarioId)
+    ) {
+      setSelectedScenarioId(null);
+    }
+  }, [scenarios, selectedScenarioId]);
 
   return (
-    <div className="fm-shell">
+    <div className="fm-shell" data-presentation={presentationMode || undefined}>
       <header className="fm-header">
         <h1 className="fm-header__brand">{t('app.name')}</h1>
         <span className="fm-header__workspace">{state.workspace.name}</span>
@@ -867,7 +987,7 @@ export function App() {
         </div>
       )}
 
-      <div className="fm-controlbar">
+      <div className="fm-controlbar fm-editing-chrome">
         <LensStrip
           level={level}
           filter={filter}
@@ -880,238 +1000,309 @@ export function App() {
           onToggleHide={() => setFilter((f) => ({ ...f, hideFiltered: !f.hideFiltered }))}
           onClearFocus={() => setFocusedCommitmentId(null)}
         />
+        <button
+          type="button"
+          className="fm-quiet"
+          aria-pressed={showDemandFlow}
+          onClick={() => setShowDemandFlow((visible) => !visible)}
+        >
+          {t(showDemandFlow ? 'qbr.close' : 'qbr.open')}
+        </button>
       </div>
 
-      <CaptureBar
-        teams={teams.map((team) => ({ id: team.id, name: team.name }))}
-        ideas={ideas.map((c) => ({ id: c.id, name: c.name }))}
-        currentQuarter={state.workspace.currentQuarterId}
-        showList={showList}
-        onToggleList={() => setShowList((v) => !v)}
-        onUndo={() => void undo()}
-        onRedo={() => void redo()}
-        onClearLocalData={() => void clearLocalData()}
-        radarCount={signals.visible.length}
-        highCount={signals.visible.filter((signal) => signal.severity === 'HIGH').length}
-        showRadar={showRadar}
-        onToggleRadar={() => setShowRadar((v) => !v)}
-        onOpenRuleSettings={() => setShowRuleSettings(true)}
+      <ScenarioDock
+        scenarios={scenarios}
+        selectedId={selectedScenarioId}
+        onSelect={setSelectedScenarioId}
+        onCreate={() => {
+          void createScenario().then((created) => {
+            if (!created) return;
+            const newest = [...(useWorkspace.getState().state?.scenarios?.values() ?? [])]
+              .filter((scenario) => scenario.status === 'DRAFT' || scenario.status === 'SHARED')
+              .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+            if (newest) setSelectedScenarioId(newest.id);
+          });
+        }}
+        onDiscard={(scenarioId) => {
+          void discardScenario(scenarioId).then((discarded) => {
+            if (discarded) setSelectedScenarioId(null);
+          });
+        }}
+        onApply={(scenarioId, selectedCommandIds) => {
+          void applyScenario(scenarioId, selectedCommandIds).then((applied) => {
+            if (applied) setSelectedScenarioId(null);
+          });
+        }}
+        onShare={(scenarioId) => void shareScenario(scenarioId)}
+        onClone={(scenarioId) => {
+          void cloneScenario(scenarioId).then((cloned) => {
+            if (!cloned) return;
+            const newest = [...(useWorkspace.getState().state?.scenarios?.values() ?? [])]
+              .filter((scenario) => scenario.status === 'DRAFT')
+              .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+            if (newest) setSelectedScenarioId(newest.id);
+          });
+        }}
+        onRebase={(scenarioId, resolutions) => void rebaseScenario(scenarioId, resolutions)}
+        {...(scenarioDiff ? { summary: scenarioDiff.summary } : {})}
+        {...(scenarioDiff ? { diff: scenarioDiff } : {})}
+        {...(scenarioRebase ? { rebase: scenarioRebase } : {})}
       />
 
-      <div className="fm-workspace">
-        <IdeasLane
-          ideas={board.ideas}
-          readiness={readiness}
-          refinementReserves={refinementReserves}
-          onLinkRefinement={(reserveId, commitmentId) =>
-            void linkIdeaToRefinement(reserveId, commitmentId)
-          }
-          onUnlinkRefinement={(reserveId, commitmentId) =>
-            void unlinkIdeaFromRefinement(reserveId, commitmentId)
-          }
-          selectedCommitmentId={focusedCommitmentId}
-          draggingCommitmentId={placement?.payload.commitmentId ?? null}
-          dropState={
-            placement?.target?.kind === 'RAIL'
-              ? previewRemoval(placement.payload).allowed
-                ? 'ok'
-                : 'no'
-              : null
-          }
-          dropNote={
-            placement?.target?.kind === 'RAIL'
-              ? describeDrag(placement.payload, placement.target)
-              : null
-          }
-          onSelect={(commitmentId) =>
-            setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId))
-          }
-          onPickUp={pickUpIdea}
-          collapsed={railCollapsed}
-          onToggleCollapsed={() => setRailCollapsed((was) => !was)}
+      {!presentationMode && (
+        <CaptureBar
+          teams={teams.map((team) => ({ id: team.id, name: team.name }))}
+          ideas={ideas.map((c) => ({ id: c.id, name: c.name }))}
+          currentQuarter={state.workspace.currentQuarterId}
+          showList={showList}
+          onToggleList={() => setShowList((v) => !v)}
+          onUndo={() => void undo()}
+          onRedo={() => void redo()}
+          onClearLocalData={() => void clearLocalData()}
+          radarCount={signals.visible.length}
+          highCount={signals.visible.filter((signal) => signal.severity === 'HIGH').length}
+          showRadar={showRadar}
+          onToggleRadar={() => setShowRadar((v) => !v)}
+          onOpenRuleSettings={() => setShowRuleSettings(true)}
         />
+      )}
 
-        <PortfolioMap
-          board={board}
-          level={level}
-          focus={focus}
-          filter={filter}
-          selectedFootprintId={selectedFootprintId}
-          vesselBlocksFor={vesselBlocksFor}
-          onSelectBlock={(footprintId, commitmentId) => {
-            select(footprintId);
-            setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId));
+      {showDemandFlow && board && (
+        <DemandFlow
+          ideas={board.ideas.map((idea) => ({ id: idea.commitmentId, name: idea.name }))}
+          teams={teams.map((team) => ({ id: team.id, name: team.name }))}
+          quarters={board.quarters}
+          scenarioId={selectedScenarioId}
+          defaultUnits={defaultDropUnits(state.workspace.settings.capacity.sizeMapping)}
+          headroomFor={(teamId, quarterId) =>
+            findCell(board!, teamId, quarterId as QuarterId)?.summary?.headroom ?? 0
+          }
+          onPlace={(input) => {
+            if (selectedScenarioId !== null) {
+              void placeScenarioIdea({ scenarioId: selectedScenarioId, ...input });
+            }
           }}
-          // Selecting a cell used to toggle filters, which quietly stacked up
-          // until the board was unreadable. Until the detail panel exists
-          // (M2-COM-2), selecting a cell does nothing but move the cursor.
-          onSelectCell={() => undefined}
-          onFilterTeam={(teamId) => setFilter((f) => toggleFilterValue(f, 'teams', teamId))}
-          onFilterQuarter={(quarterId) =>
-            setFilter((f) => toggleFilterValue(f, 'quarters', quarterId))
-          }
-          onAnnounce={announce}
-          dragging={placement?.payload ?? null}
-          dragTarget={placement?.target ?? null}
-          onPickUpBlock={pickUpBlock}
-          onRemoveBlock={removeBlock}
-          onResizeBlock={(footprintId, teamId, quarterId, units) =>
-            commitResize(footprintId, teamId, quarterId, clampUnits(units))
-          }
-          onResizeStart={(input, event) => beginResize(input, event)}
-          resizing={resizing ? { footprintId: resizing.footprintId, units: resizing.units } : null}
-          onAimDrag={(teamId, quarterId) => aim({ kind: 'CELL', teamId, quarterId })}
-          onLinkFrom={linkFrom}
-          scale={scale}
-          onWheelZoom={onWheelZoom}
-          onDropHere={drop}
-          dependencyEdges={dependencyEdges}
-          onMoveRow={(teamId, direction) => void moveTeamRow(teamId, direction)}
-          ideaNames={ideaNames}
         />
+      )}
 
-        {showRadar && (
-          <Radar
-            signals={signals.visible}
-            allSignals={signals.all}
-            dispositions={signals.dispositions}
-            ownedRefs={signals.ownedRefs}
-            today={signals.today}
-            mode={radarMode}
-            onModeChange={setRadarMode}
-            onAct={actOnSignal}
-            onReview={(signal) =>
-              void reviewSignal({
-                signalKey: signal.signalKey,
-                atFingerprint: signal.conditionFingerprint,
-                atSeverity: signal.severity,
-              })
+      {!showDemandFlow && (
+        <div className="fm-workspace">
+          <IdeasLane
+            ideas={board.ideas}
+            readiness={readiness}
+            refinementReserves={refinementReserves}
+            onLinkRefinement={(reserveId, commitmentId) =>
+              void linkIdeaToRefinement(reserveId, commitmentId)
             }
-            onSnooze={(signal, until) =>
-              void snoozeSignal({
-                signalKey: signal.signalKey,
-                atFingerprint: signal.conditionFingerprint,
-                atSeverity: signal.severity,
-                snoozeUntil: until,
-              })
+            onUnlinkRefinement={(reserveId, commitmentId) =>
+              void unlinkIdeaFromRefinement(reserveId, commitmentId)
             }
-            onClear={(signal) => void clearSignal(signal.signalKey)}
-            onClose={() => setShowRadar(false)}
-          />
-        )}
-
-        {showRuleSettings && (
-          <RuleSettings
-            settings={ruleSettings}
-            counts={countByRule(signals.all)}
-            onChange={setRuleSettings}
-            onClose={() => setShowRuleSettings(false)}
-          />
-        )}
-
-        {/* Inside the workspace row, not floating over it: the board narrows
-            rather than being hidden. Editing a field and watching the figure
-            move is the point, and a panel covering the board defeats it. */}
-        {panelCommitment && state && (
-          <DetailPanel
-            commitment={panelCommitment}
-            health={signals.health.get(panelCommitment.id) ?? 'OK'}
-            healthSignals={signals.all.filter(
-              (signal) =>
-                signal.surfaces.includes('HEALTH') &&
-                signal.entityRef.kind === 'COMMITMENT' &&
-                signal.entityRef.id === panelCommitment.id,
-            )}
-            teams={teams}
-            products={[...(state.products?.values() ?? [])]}
-            people={[...(state.people?.values() ?? [])]}
-            footprints={panelFootprints}
-            quarters={board.quarters}
-            currentQuarterId={state.workspace.currentQuarterId}
-            impacts={panelRelations.impacts}
-            valueDrivers={state.workspace.settings.valueDrivers}
-            themes={panelThemes.all}
-            commitmentThemeIds={panelThemes.selected}
-            milestones={panelRelations.milestones}
-            links={panelRelations.links}
-            dependencies={panelRelations.dependencies}
-            nameOfTarget={nameOfTarget}
-            onChange={(patch) => void editCommitment(panelCommitment.id, patch)}
-            onSetImpact={(productServiceId, type) =>
-              void relate('SetProductImpact', (rs, cmd, ctx) =>
-                setProductImpact(
-                  rs,
-                  { commitmentId: panelCommitment.id, productServiceId, type },
-                  cmd,
-                  ctx,
-                ),
-              )
-            }
-            onRemoveImpact={(impactId) =>
-              void relate('RemoveProductImpact', (rs, cmd, ctx) =>
-                removeProductImpact(rs, { impactId }, cmd, ctx),
-              )
-            }
-            onAddMilestone={(name) =>
-              void relate('AddMilestone', (rs, cmd, ctx) =>
-                addMilestone(rs, { commitmentId: panelCommitment.id, name }, cmd, ctx),
-              )
-            }
-            onRemoveMilestone={(milestoneId) =>
-              void relate('RemoveMilestone', (rs, cmd, ctx) =>
-                removeMilestone(rs, { milestoneId }, cmd, ctx),
-              )
-            }
-            onAddLink={(type, url, label) =>
-              void relate('AddExternalLink', (rs, cmd, ctx) =>
-                addExternalLink(
-                  rs,
-                  {
-                    commitmentId: panelCommitment.id,
-                    type,
-                    url,
-                    ...(label ? { label } : {}),
-                  },
-                  cmd,
-                  ctx,
-                ),
-              )
-            }
-            onRemoveLink={(linkId) =>
-              void relate('RemoveExternalLink', (rs, cmd, ctx) =>
-                removeExternalLink(rs, { linkId }, cmd, ctx),
-              )
-            }
-            onSetDependencyType={(dependencyId, type) =>
-              void relate('UpdateDependency', (rs, cmd, ctx) =>
-                updateDependency(rs, { dependencyId, type }, cmd, ctx),
-              )
-            }
-            onRemoveDependency={(dependencyId) =>
-              void relate('RemoveDependency', (rs, cmd, ctx) =>
-                removeDependency(rs, { dependencyId }, cmd, ctx),
-              )
-            }
-            onSetThemes={(themeIds) => void setThemes(panelCommitment.id, themeIds)}
-            onCreateTheme={(name) =>
-              void relate('CreateTheme', (rs, cmd, ctx) => createTheme(rs, { name }, cmd, ctx))
-            }
-            onSplit={(footprintId, toQuarterId, units) =>
-              void splitFootprint(footprintId, toQuarterId, units)
-            }
-            onOpenLink={(url) => void openLink(url)}
-            gate={
-              panelGate
-                ? {
-                    ...panelGate,
-                    onCommit: () => void passGate(panelCommitment.id),
-                  }
+            selectedCommitmentId={focusedCommitmentId}
+            draggingCommitmentId={placement?.payload.commitmentId ?? null}
+            dropState={
+              placement?.target?.kind === 'RAIL'
+                ? previewRemoval(placement.payload).allowed
+                  ? 'ok'
+                  : 'no'
                 : null
             }
-            onClose={() => setFocusedCommitmentId(null)}
+            dropNote={
+              placement?.target?.kind === 'RAIL'
+                ? describeDrag(placement.payload, placement.target)
+                : null
+            }
+            onSelect={(commitmentId) =>
+              setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId))
+            }
+            onPickUp={pickUpIdea}
+            collapsed={railCollapsed}
+            onToggleCollapsed={() => setRailCollapsed((was) => !was)}
           />
-        )}
-      </div>
+
+          <PortfolioMap
+            board={board}
+            level={level}
+            focus={focus}
+            filter={filter}
+            selectedFootprintId={selectedFootprintId}
+            vesselBlocksFor={vesselBlocksFor}
+            onSelectBlock={(footprintId, commitmentId) => {
+              select(footprintId);
+              setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId));
+            }}
+            // Selecting a cell used to toggle filters, which quietly stacked up
+            // until the board was unreadable. Until the detail panel exists
+            // (M2-COM-2), selecting a cell does nothing but move the cursor.
+            onSelectCell={() => undefined}
+            onFilterTeam={(teamId) => setFilter((f) => toggleFilterValue(f, 'teams', teamId))}
+            onFilterQuarter={(quarterId) =>
+              setFilter((f) => toggleFilterValue(f, 'quarters', quarterId))
+            }
+            onAnnounce={announce}
+            dragging={placement?.payload ?? null}
+            dragTarget={placement?.target ?? null}
+            onPickUpBlock={pickUpBlock}
+            onRemoveBlock={removeBlock}
+            onResizeBlock={(footprintId, teamId, quarterId, units) =>
+              commitResize(footprintId, teamId, quarterId, clampUnits(units))
+            }
+            onResizeStart={(input, event) => beginResize(input, event)}
+            resizing={
+              resizing ? { footprintId: resizing.footprintId, units: resizing.units } : null
+            }
+            onAimDrag={(teamId, quarterId) => aim({ kind: 'CELL', teamId, quarterId })}
+            onLinkFrom={linkFrom}
+            scale={scale}
+            onWheelZoom={onWheelZoom}
+            onDropHere={drop}
+            dependencyEdges={dependencyEdges}
+            onMoveRow={(teamId, direction) => void moveTeamRow(teamId, direction)}
+            ideaNames={ideaNames}
+          />
+
+          {showRadar && (
+            <Radar
+              signals={signals.visible}
+              allSignals={signals.all}
+              dispositions={signals.dispositions}
+              ownedRefs={signals.ownedRefs}
+              today={signals.today}
+              mode={radarMode}
+              onModeChange={setRadarMode}
+              onAct={actOnSignal}
+              onReview={(signal) =>
+                void reviewSignal({
+                  signalKey: signal.signalKey,
+                  atFingerprint: signal.conditionFingerprint,
+                  atSeverity: signal.severity,
+                })
+              }
+              onSnooze={(signal, until) =>
+                void snoozeSignal({
+                  signalKey: signal.signalKey,
+                  atFingerprint: signal.conditionFingerprint,
+                  atSeverity: signal.severity,
+                  snoozeUntil: until,
+                })
+              }
+              onClear={(signal) => void clearSignal(signal.signalKey)}
+              onClose={() => setShowRadar(false)}
+            />
+          )}
+
+          {showRuleSettings && (
+            <RuleSettings
+              settings={ruleSettings}
+              counts={countByRule(signals.all)}
+              onChange={setRuleSettings}
+              onClose={() => setShowRuleSettings(false)}
+            />
+          )}
+
+          {/* Inside the workspace row, not floating over it: the board narrows
+            rather than being hidden. Editing a field and watching the figure
+            move is the point, and a panel covering the board defeats it. */}
+          {panelCommitment && state && !presentationMode && (
+            <DetailPanel
+              commitment={panelCommitment}
+              health={signals.health.get(panelCommitment.id) ?? 'OK'}
+              healthSignals={signals.all.filter(
+                (signal) =>
+                  signal.surfaces.includes('HEALTH') &&
+                  signal.entityRef.kind === 'COMMITMENT' &&
+                  signal.entityRef.id === panelCommitment.id,
+              )}
+              teams={teams}
+              products={[...(state.products?.values() ?? [])]}
+              people={[...(state.people?.values() ?? [])]}
+              footprints={panelFootprints}
+              quarters={board.quarters}
+              currentQuarterId={state.workspace.currentQuarterId}
+              impacts={panelRelations.impacts}
+              valueDrivers={state.workspace.settings.valueDrivers}
+              themes={panelThemes.all}
+              commitmentThemeIds={panelThemes.selected}
+              milestones={panelRelations.milestones}
+              links={panelRelations.links}
+              dependencies={panelRelations.dependencies}
+              nameOfTarget={nameOfTarget}
+              onChange={(patch) => void editCommitment(panelCommitment.id, patch)}
+              onSetImpact={(productServiceId, type) =>
+                void relate('SetProductImpact', (rs, cmd, ctx) =>
+                  setProductImpact(
+                    rs,
+                    { commitmentId: panelCommitment.id, productServiceId, type },
+                    cmd,
+                    ctx,
+                  ),
+                )
+              }
+              onRemoveImpact={(impactId) =>
+                void relate('RemoveProductImpact', (rs, cmd, ctx) =>
+                  removeProductImpact(rs, { impactId }, cmd, ctx),
+                )
+              }
+              onAddMilestone={(name) =>
+                void relate('AddMilestone', (rs, cmd, ctx) =>
+                  addMilestone(rs, { commitmentId: panelCommitment.id, name }, cmd, ctx),
+                )
+              }
+              onRemoveMilestone={(milestoneId) =>
+                void relate('RemoveMilestone', (rs, cmd, ctx) =>
+                  removeMilestone(rs, { milestoneId }, cmd, ctx),
+                )
+              }
+              onAddLink={(type, url, label) =>
+                void relate('AddExternalLink', (rs, cmd, ctx) =>
+                  addExternalLink(
+                    rs,
+                    {
+                      commitmentId: panelCommitment.id,
+                      type,
+                      url,
+                      ...(label ? { label } : {}),
+                    },
+                    cmd,
+                    ctx,
+                  ),
+                )
+              }
+              onRemoveLink={(linkId) =>
+                void relate('RemoveExternalLink', (rs, cmd, ctx) =>
+                  removeExternalLink(rs, { linkId }, cmd, ctx),
+                )
+              }
+              onSetDependencyType={(dependencyId, type) =>
+                void relate('UpdateDependency', (rs, cmd, ctx) =>
+                  updateDependency(rs, { dependencyId, type }, cmd, ctx),
+                )
+              }
+              onRemoveDependency={(dependencyId) =>
+                void relate('RemoveDependency', (rs, cmd, ctx) =>
+                  removeDependency(rs, { dependencyId }, cmd, ctx),
+                )
+              }
+              onSetThemes={(themeIds) => void setThemes(panelCommitment.id, themeIds)}
+              onCreateTheme={(name) =>
+                void relate('CreateTheme', (rs, cmd, ctx) => createTheme(rs, { name }, cmd, ctx))
+              }
+              onSplit={(footprintId, toQuarterId, units) =>
+                void splitFootprint(footprintId, toQuarterId, units)
+              }
+              onOpenLink={(url) => void openLink(url)}
+              gate={
+                panelGate
+                  ? {
+                      ...panelGate,
+                      onCommit: () => void passGate(panelCommitment.id),
+                    }
+                  : null
+              }
+              onClose={() => setFocusedCommitmentId(null)}
+            />
+          )}
+        </div>
+      )}
 
       {/* The piece that follows the cursor. Small and quiet — the answer is on
           the board, not under the pointer. Positioned by `usePlacement` writing

@@ -34,6 +34,7 @@ const STORED_KINDS: readonly EntityKind[] = [
   'COMMITMENT_THEME',
   'EXTERNAL_LINK',
   'PERSON',
+  'SCENARIO',
 ];
 
 function command(name: string): Command {
@@ -84,17 +85,29 @@ describe('MemoryWorkspaceRepository', () => {
     }
   });
 
-  it('refuses a kind it has nowhere to put, rather than dropping it silently', async () => {
+  it('refuses a derived projection kind it has nowhere to put, rather than dropping it silently', async () => {
     const repo = new MemoryWorkspaceRepository();
 
     await expect(
       repo.apply({
         workspaceId: WS,
-        changes: [change('SCENARIO', 's-1')],
+        changes: [change('PRODUCT_QUARTER' as EntityKind, 's-1')],
         events: [],
         command: command('Seed'),
       }),
-    ).rejects.toThrow(/SCENARIO/);
+    ).rejects.toThrow(/PRODUCT_QUARTER/);
+  });
+
+  it('refuses a scenario command at the baseline write boundary', async () => {
+    const repo = new MemoryWorkspaceRepository();
+    await expect(
+      repo.apply({
+        workspaceId: WS,
+        changes: [change('COMMITMENT', 'c-1')],
+        events: [],
+        command: { ...command('Draft move'), scenarioId: 'scenario-1' },
+      }),
+    ).rejects.toThrow('SCENARIO_CANNOT_MUTATE_BASELINE');
   });
 
   it('loads relations back into the workspace state', async () => {
@@ -115,6 +128,35 @@ describe('MemoryWorkspaceRepository', () => {
     expect(state?.products?.has('p-1')).toBe(true);
     expect(state?.milestones?.has('m-1')).toBe(true);
     expect(state?.externalLinks?.has('l-1')).toBe(true);
+  });
+
+  it('writes a recovery snapshot in the same apply boundary before a barrier change', async () => {
+    const repo = new MemoryWorkspaceRepository();
+    await repo.apply({
+      workspaceId: WS,
+      changes: [change('WORKSPACE', WS)],
+      events: [],
+      command: command('Seed'),
+    });
+    const before = await repo.load(WS);
+    if (!before) throw new Error('seeded workspace should load');
+    await repo.apply({
+      workspaceId: WS,
+      changes: [change('TEAM', 'team-1')],
+      events: [],
+      command: command('ApplyScenario'),
+      preSnapshot: {
+        id: 'snapshot-1',
+        workspaceId: WS,
+        workspaceRevision: 1,
+        createdAt: NOW,
+        commandName: 'ApplyScenario',
+        state: before,
+      },
+    });
+    const snapshots = await repo.listSnapshots(WS);
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]).toMatchObject({ id: 'snapshot-1', commandName: 'ApplyScenario' });
   });
 
   it('clears every bucket, leaving nothing behind from a previous sample', async () => {

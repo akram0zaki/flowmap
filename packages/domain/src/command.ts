@@ -29,6 +29,7 @@ import type {
   ProductImpact,
   ProductService,
   SignalDisposition,
+  Scenario,
   Team,
   TeamQuarter,
   Theme,
@@ -166,6 +167,8 @@ export type WorkspaceState = {
   readonly externalLinks?: ReadonlyMap<EntityId, ExternalLink>;
   readonly people?: ReadonlyMap<EntityId, Person>;
   readonly signalDispositions?: ReadonlyMap<EntityId, SignalDisposition>;
+  /** Scenario metadata is persisted beside the baseline, but is never part of it. */
+  readonly scenarios?: ReadonlyMap<EntityId, Scenario>;
 };
 
 export const ROLE_ORDER: readonly WorkspaceRole[] = ['VIEWER', 'CONTRIBUTOR', 'PLANNER', 'ADMIN'];

@@ -290,9 +290,9 @@ describe('apply is one transaction', () => {
         changes: [
           ...effects.changes,
           // An unmappable entity kind throws part-way through the transaction.
-          // Scenarios have no table until M4; THEME gained one in schema v2.
+          // PRODUCT_QUARTER is derived and has no persisted table.
           {
-            ref: { kind: 'SCENARIO', id: 'x' },
+            ref: { kind: 'PRODUCT_QUARTER', productServiceId: 'x', quarterId: '2026-Q3' },
             op: 'CREATE',
             toVersion: 1,
             after: {},
@@ -312,17 +312,17 @@ describe('apply is one transaction', () => {
     expect(await repo.listOutbox(WS)).toHaveLength(0);
   });
 
-  it('does not create outbox entries for scenario commands', async () => {
+  it('rejects scenario commands at the baseline write boundary', async () => {
     const cmd = { ...command('CreateIdea'), scenarioId: 'scn-1' };
     const effects = unwrap(createIdea({ name: 'Ghost' }, cmd, ctx()));
-    await repo.apply({
-      workspaceId: WS,
-      changes: effects.changes,
-      events: effects.events,
-      command: cmd,
-    });
-
-    expect(await repo.listOutbox(WS)).toHaveLength(0);
+    await expect(
+      repo.apply({
+        workspaceId: WS,
+        changes: effects.changes,
+        events: effects.events,
+        command: cmd,
+      }),
+    ).rejects.toThrow('SCENARIO_CANNOT_MUTATE_BASELINE');
   });
 
   it('assigns monotonic event sequences', async () => {

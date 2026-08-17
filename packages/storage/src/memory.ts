@@ -21,6 +21,7 @@ import type {
   EntityId,
   ExternalLink,
   SignalDisposition,
+  Scenario,
   Milestone,
   Person,
   ProductImpact,
@@ -32,9 +33,15 @@ import type {
   WorkspaceId,
   WorkspaceState,
 } from '@flowmap/domain';
-import { refKey } from '@flowmap/domain';
+import { DomainErrorException, domainError, refKey } from '@flowmap/domain';
 
-import type { ApplyInput, OutboxEntry, OutboxState, WorkspaceRepository } from './contracts.js';
+import type {
+  ApplyInput,
+  OutboxEntry,
+  OutboxState,
+  SnapshotRecord,
+  WorkspaceRepository,
+} from './contracts.js';
 
 type Snapshot = {
   workspaces: Record<string, Workspace>;
@@ -51,9 +58,11 @@ type Snapshot = {
   commitmentThemes: Record<string, CommitmentTheme>;
   externalLinks: Record<string, ExternalLink>;
   signalDispositions: Record<string, SignalDisposition>;
+  scenarios: Record<string, Scenario>;
   people: Record<string, Person>;
   events: DomainEvent[];
   outbox: OutboxEntry[];
+  snapshots: SnapshotRecord[];
   profile?: { id: string; displayName: string };
 };
 
@@ -111,9 +120,11 @@ function emptySnapshot(): Snapshot {
     commitmentThemes: {},
     externalLinks: {},
     signalDispositions: {},
+    scenarios: {},
     people: {},
     events: [],
     outbox: [],
+    snapshots: [],
   };
 }
 
@@ -132,6 +143,7 @@ const KIND_TO_BUCKET = {
   COMMITMENT_THEME: 'commitmentThemes',
   EXTERNAL_LINK: 'externalLinks',
   SIGNAL_DISPOSITION: 'signalDispositions',
+  SCENARIO: 'scenarios',
   PERSON: 'people',
 } as const;
 
@@ -150,6 +162,7 @@ const ENTITY_BUCKETS = [
   'commitmentThemes',
   'externalLinks',
   'signalDispositions',
+  'scenarios',
   'people',
 ] as const;
 
@@ -194,6 +207,7 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
       commitmentThemes: scoped(this.#data.commitmentThemes),
       externalLinks: scoped(this.#data.externalLinks),
       signalDispositions: scoped(this.#data.signalDispositions),
+      scenarios: scoped(this.#data.scenarios),
       people: scoped(this.#data.people),
     };
   }
@@ -203,7 +217,25 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
    * state untouched. Same guarantee as the SQLite transaction.
    */
   async apply(input: ApplyInput): Promise<void> {
+    if (input.command.scenarioId !== undefined) {
+      throw new DomainErrorException(
+        domainError('SCENARIO_CANNOT_MUTATE_BASELINE', {
+          params: { scenarioId: input.command.scenarioId },
+        }),
+      );
+    }
     const draft: Snapshot = structuredClone(this.#data);
+
+    if (input.preSnapshot) {
+      draft.snapshots.push({
+        id: input.preSnapshot.id,
+        workspaceId: input.preSnapshot.workspaceId,
+        workspaceRevision: input.preSnapshot.workspaceRevision,
+        createdAt: input.preSnapshot.createdAt,
+        commandName: input.preSnapshot.commandName,
+        content: structuredClone(this.#data),
+      });
+    }
 
     for (const change of input.changes) {
       const bucket = KIND_TO_BUCKET[change.ref.kind as keyof typeof KIND_TO_BUCKET];
@@ -219,23 +251,21 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
         };
       }
 
-      if (input.command.scenarioId === undefined) {
-        draft.outbox.push({
-          id: `${input.command.id}:${refKey(change.ref)}`,
-          workspaceId: input.workspaceId,
-          commandId: input.command.id,
-          entityRef: change.ref,
-          op: change.op,
-          changedFields: change.changedFields,
-          patch: change.after,
-          createdAt: input.command.issuedAt,
-          attempts: 0,
-          state: 'PENDING',
-          ...(input.command.batchId !== undefined ? { batchId: input.command.batchId } : {}),
-          ...(change.fromVersion !== undefined ? { baseVersion: change.fromVersion } : {}),
-          ...(change.before !== undefined ? { baseSnapshot: change.before } : {}),
-        });
-      }
+      draft.outbox.push({
+        id: `${input.command.id}:${refKey(change.ref)}`,
+        workspaceId: input.workspaceId,
+        commandId: input.command.id,
+        entityRef: change.ref,
+        op: change.op,
+        changedFields: change.changedFields,
+        patch: change.after,
+        createdAt: input.command.issuedAt,
+        attempts: 0,
+        state: 'PENDING',
+        ...(input.command.batchId !== undefined ? { batchId: input.command.batchId } : {}),
+        ...(change.fromVersion !== undefined ? { baseVersion: change.fromVersion } : {}),
+        ...(change.before !== undefined ? { baseSnapshot: change.before } : {}),
+      });
     }
 
     draft.events.push(...input.events);
@@ -247,6 +277,14 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
       .filter((e) => e.workspaceId === workspaceId)
       .sort((a, b) => b.sequence - a.sequence)
       .slice(0, limit);
+  }
+
+  async listSnapshots(workspaceId: WorkspaceId, limit = 50): Promise<SnapshotRecord[]> {
+    return this.#data.snapshots
+      .filter((snapshot) => snapshot.workspaceId === workspaceId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit)
+      .map((snapshot) => structuredClone(snapshot));
   }
 
   async listOutbox(workspaceId: WorkspaceId, state?: OutboxState): Promise<OutboxEntry[]> {
