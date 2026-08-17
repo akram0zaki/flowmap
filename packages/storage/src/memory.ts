@@ -39,6 +39,7 @@ import type {
   ApplyInput,
   OutboxEntry,
   OutboxState,
+  SearchHit,
   SnapshotRecord,
   WorkspaceRepository,
 } from './contracts.js';
@@ -285,6 +286,31 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit)
       .map((snapshot) => structuredClone(snapshot));
+  }
+
+  async search(workspaceId: WorkspaceId, query: string, limit = 30): Promise<SearchHit[]> {
+    const needle = query.trim().toLocaleLowerCase();
+    if (!needle) return [];
+    const state = await this.load(workspaceId);
+    if (!state) return [];
+    const hits: SearchHit[] = [];
+    const add = (kind: string, id: EntityId, label: string, detail?: string) => {
+      if (`${label} ${detail ?? ''}`.toLocaleLowerCase().includes(needle)) {
+        hits.push({ kind, id, label, ...(detail ? { detail } : {}) });
+      }
+    };
+    for (const item of state.commitments.values())
+      add('COMMITMENT', item.id, item.name, item.lifecycle);
+    for (const item of state.teams.values()) add('TEAM', item.id, item.name);
+    for (const item of state.products?.values() ?? []) add('PRODUCT_SERVICE', item.id, item.name);
+    for (const item of state.people?.values() ?? []) add('PERSON', item.id, item.displayName);
+    for (const item of state.themes?.values() ?? []) add('THEME', item.id, item.name);
+    for (const item of state.milestones?.values() ?? []) add('MILESTONE', item.id, item.name);
+    for (const item of state.externalLinks?.values() ?? [])
+      if (item.label) add('EXTERNAL_LINK', item.id, item.label);
+    return hits
+      .sort((a, b) => a.label.localeCompare(b.label) || a.kind.localeCompare(b.kind))
+      .slice(0, limit);
   }
 
   async listOutbox(workspaceId: WorkspaceId, state?: OutboxState): Promise<OutboxEntry[]> {

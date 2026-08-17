@@ -467,6 +467,48 @@ CREATE INDEX IF NOT EXISTS ix_snapshot_workspace_created
   ON snapshot(workspace_id, created_at DESC);
 `;
 
+/** Local FTS only — never synchronised, exported or treated as a source of truth. */
+const V6_SQL = `
+CREATE VIRTUAL TABLE IF NOT EXISTS workspace_search USING fts5(
+  workspace_id UNINDEXED,
+  entity_id UNINDEXED,
+  kind UNINDEXED,
+  label,
+  detail
+);
+`;
+
+const V6_REINDEX: readonly [string, string][] = [
+  [
+    'commitment',
+    "SELECT workspace_id, id, 'COMMITMENT', name, lifecycle FROM commitment WHERE archived_at IS NULL AND deleted_at IS NULL",
+  ],
+  [
+    'team',
+    "SELECT workspace_id, id, 'TEAM', name, description FROM team WHERE archived_at IS NULL AND deleted_at IS NULL",
+  ],
+  [
+    'product_service',
+    "SELECT workspace_id, id, 'PRODUCT_SERVICE', name, description FROM product_service WHERE archived_at IS NULL AND deleted_at IS NULL",
+  ],
+  [
+    'person',
+    "SELECT workspace_id, id, 'PERSON', display_name, role_label FROM person WHERE archived_at IS NULL AND deleted_at IS NULL",
+  ],
+  [
+    'theme',
+    "SELECT workspace_id, id, 'THEME', name, '' FROM theme WHERE archived_at IS NULL AND deleted_at IS NULL",
+  ],
+  [
+    'milestone',
+    "SELECT workspace_id, id, 'MILESTONE', name, status FROM milestone WHERE archived_at IS NULL AND deleted_at IS NULL",
+  ],
+  [
+    'external_link',
+    "SELECT workspace_id, id, 'EXTERNAL_LINK', label, type FROM external_link WHERE label IS NOT NULL AND archived_at IS NULL AND deleted_at IS NULL",
+  ],
+];
+
 export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
@@ -528,6 +570,30 @@ export const MIGRATIONS: readonly Migration[] = [
       for (const statement of V5_SQL.split(';')) {
         const trimmed = statement.trim();
         if (trimmed.length > 0) await ctx.exec(trimmed);
+      }
+    },
+  },
+  {
+    version: 6,
+    name: 'local-search-index',
+    checksumSource: V6_SQL,
+    up: async (ctx) => {
+      for (const statement of V6_SQL.split(';')) {
+        const trimmed = statement.trim();
+        if (trimmed.length > 0) await ctx.exec(trimmed);
+      }
+      // Each migration is independently idempotence-tested against an empty
+      // database. Backfill only the entity tables present at this point.
+      for (const [table, select] of V6_REINDEX) {
+        const exists = await ctx.get<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+          [table],
+        );
+        if (exists) {
+          await ctx.exec(
+            `INSERT INTO workspace_search (workspace_id, entity_id, kind, label, detail) ${select}`,
+          );
+        }
       }
     },
   },

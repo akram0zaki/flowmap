@@ -82,6 +82,8 @@ export type DetailPanelProps = {
   readonly onSplit: (footprintId: string, toQuarterId: QuarterId, units: number) => void;
   /** Hands the address to the operating system. Never navigated to in-app. */
   readonly onOpenLink: (url: string) => void;
+  readonly onSetRecurrence: (pattern: Commitment['recurrence']) => void;
+  readonly onRenew: () => void;
   /** The gate, for work that has not passed it yet. */
   readonly gate: {
     readonly readiness: GateReadiness;
@@ -155,6 +157,8 @@ export function DetailPanel({
   onCreateTheme,
   onSplit,
   onOpenLink,
+  onSetRecurrence,
+  onRenew,
   gate,
   onClose,
 }: DetailPanelProps) {
@@ -344,6 +348,32 @@ export function DetailPanel({
               onChange={(value) => onChange({ scopeConfidence: value })}
               clearable
             />
+          </Field>
+
+          <Field name="recurrence">
+            <Choice
+              options={['QUARTERLY', 'ANNUAL', 'CUSTOM'] as const}
+              value={commitment.recurrence?.pattern}
+              labelFor={(value) => t(`recurrence.${value}`)}
+              onChange={(pattern) =>
+                onSetRecurrence(
+                  pattern
+                    ? {
+                        pattern,
+                        ...(pattern === 'CUSTOM'
+                          ? { intervalQuarters: commitment.recurrence?.intervalQuarters ?? 1 }
+                          : {}),
+                      }
+                    : undefined,
+                )
+              }
+              clearable
+            />
+            {(commitment.lifecycle === 'DONE' || commitment.lifecycle === 'DROPPED') && (
+              <button type="button" className="fm-quiet" onClick={onRenew}>
+                {t('recurrence.renew')}
+              </button>
+            )}
           </Field>
         </Section>
 

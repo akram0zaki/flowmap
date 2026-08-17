@@ -59,6 +59,14 @@ export type SnapshotWrite = {
 
 export type SnapshotRecord = Omit<SnapshotWrite, 'state'> & { readonly content: unknown };
 
+/** Local-only index hit used by the deterministic command palette. */
+export type SearchHit = {
+  readonly kind: string;
+  readonly id: EntityId;
+  readonly label: string;
+  readonly detail?: string;
+};
+
 /**
  * The single transactional boundary.
  *
@@ -72,6 +80,7 @@ export interface WorkspaceRepository {
   apply(input: ApplyInput): Promise<void>;
   listEvents(workspaceId: WorkspaceId, limit?: number): Promise<DomainEvent[]>;
   listSnapshots(workspaceId: WorkspaceId, limit?: number): Promise<SnapshotRecord[]>;
+  search(workspaceId: WorkspaceId, query: string, limit?: number): Promise<SearchHit[]>;
   listOutbox(workspaceId: WorkspaceId, state?: OutboxState): Promise<OutboxEntry[]>;
   markOutbox(ids: readonly EntityId[], state: OutboxState, error?: string): Promise<void>;
   nextSequence(workspaceId: WorkspaceId): Promise<number>;

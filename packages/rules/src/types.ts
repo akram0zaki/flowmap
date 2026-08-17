@@ -114,6 +114,17 @@ export type RuleContext = {
    */
   readonly history?: {
     readonly quarterMovedLater: ReadonlyMap<EntityId, number>;
+    /** Closed-quarter facts are event-derived; no review state is duplicated onto teams. */
+    readonly closedQuarters?: readonly {
+      readonly quarterId: string;
+      readonly outcomes: readonly {
+        readonly teamId: EntityId;
+        readonly operationalLoad: 'BELOW' | 'ABOUT' | 'ABOVE';
+        readonly capacity: 'LOWER' | 'ABOUT' | 'HIGHER';
+      }[];
+      readonly carriedByTeam: Readonly<Record<string, number>>;
+      readonly sizeRatiosByTeam: Readonly<Record<string, readonly number[]>>;
+    }[];
   };
 };
 
@@ -267,6 +278,13 @@ export const RULE_CODES = [
   'PRD_CONCENTRATION',
   'PRD_MANDATORY_STACK',
   'PRD_NO_OWNER',
+
+  // history (closed-quarter reviews only)
+  'HST_RESERVE_EXCEEDED',
+  'HST_RESERVE_UNUSED',
+  'HST_CARRYOVER_PATTERN',
+  'HST_CAPACITY_OPTIMISTIC',
+  'HST_SIZE_DRIFT',
 
   // integrity
   'INT_DANGLING_REF',

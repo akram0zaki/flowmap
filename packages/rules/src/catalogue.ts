@@ -13,6 +13,7 @@ import { TIMING_RULES } from './rules/timing.js';
 import { HEALTH_RULES, READINESS_RULES } from './rules/readiness.js';
 import { PRODUCT_RULES } from './rules/product.js';
 import { INTEGRITY_RULES } from './rules/integrity.js';
+import { HISTORY_RULES } from './rules/history.js';
 import { RULE_CODES, type Rule, type RuleCode } from './types.js';
 
 export const ALL_RULES: readonly Rule[] = [
@@ -22,6 +23,7 @@ export const ALL_RULES: readonly Rule[] = [
   ...READINESS_RULES,
   ...HEALTH_RULES,
   ...PRODUCT_RULES,
+  ...HISTORY_RULES,
   ...INTEGRITY_RULES,
 ];
 
@@ -47,5 +49,6 @@ export {
   READINESS_RULES,
   HEALTH_RULES,
   PRODUCT_RULES,
+  HISTORY_RULES,
   INTEGRITY_RULES,
 };

@@ -41,6 +41,7 @@ import {
   type OutboxEntry,
   type OutboxState,
   type SnapshotRecord,
+  type SearchHit,
   type WorkspaceRepository,
 } from '@flowmap/storage';
 
@@ -253,6 +254,30 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
     }));
   }
 
+  async search(workspaceId: WorkspaceId, query: string, limit = 30): Promise<SearchHit[]> {
+    const terms = query
+      .trim()
+      .split(/\s+/)
+      .map((term) => term.replace(/[^\p{L}\p{N}_-]/gu, ''))
+      .filter(Boolean);
+    if (terms.length === 0) return [];
+    const expression = terms.map((term) => `${term}*`).join(' AND ');
+    return (
+      await this.db.all<{ entity_id: string; kind: string; label: string; detail: string | null }>(
+        'SELECT entity_id, kind, label, detail FROM workspace_search WHERE workspace_id = ? AND workspace_search MATCH ? ORDER BY rank LIMIT ?',
+        [workspaceId, expression, limit],
+      )
+    ).map(
+      (row) =>
+        defined({
+          kind: String(row.entity_id === undefined ? '' : row.kind),
+          id: String(row.entity_id),
+          label: String(row.label),
+          detail: s(row.detail),
+        }) as SearchHit,
+    );
+  }
+
   async listOutbox(workspaceId: WorkspaceId, state?: OutboxState): Promise<OutboxEntry[]> {
     const sql = state
       ? 'SELECT * FROM outbox WHERE workspace_id = ? AND state = ? ORDER BY created_at'
@@ -384,6 +409,7 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
         new Date(0).toISOString(),
         (change.ref as { id: string }).id,
       ]);
+      await this.#writeSearch(workspaceId, change.ref.kind, (change.ref as { id: string }).id);
       return;
     }
 
@@ -395,6 +421,33 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
     await this.db.run(
       `INSERT OR REPLACE INTO ${table} (${names.join(', ')}) VALUES (${placeholders})`,
       names.map((name) => columns[name] as SqlValue),
+    );
+    await this.#writeSearch(
+      workspaceId,
+      change.ref.kind,
+      (change.ref as { id: string }).id,
+      entity,
+    );
+  }
+
+  async #writeSearch(
+    workspaceId: WorkspaceId,
+    kind: EntityRef['kind'],
+    id: string,
+    entity?: Record<string, unknown>,
+  ): Promise<void> {
+    await this.db.run(
+      'DELETE FROM workspace_search WHERE workspace_id = ? AND entity_id = ? AND kind = ?',
+      [workspaceId, id, kind],
+    );
+    if (!entity || entity['archivedAt'] !== undefined || entity['deletedAt'] !== undefined) return;
+    const label = entity['name'] ?? entity['displayName'] ?? entity['label'];
+    if (typeof label !== 'string' || label.trim().length === 0) return;
+    const detail =
+      entity['lifecycle'] ?? entity['description'] ?? entity['roleLabel'] ?? entity['type'];
+    await this.db.run(
+      'INSERT INTO workspace_search (workspace_id, entity_id, kind, label, detail) VALUES (?, ?, ?, ?, ?)',
+      [workspaceId, id, kind, label, typeof detail === 'string' ? detail : null],
     );
   }
 
