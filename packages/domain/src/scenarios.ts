@@ -7,11 +7,27 @@
  * a draft projection where a baseline write is required.
  */
 
-import type { Command, CommandContext, CommandEffects, CommandResult, WorkspaceState } from './command.js';
+import type {
+  Command,
+  CommandContext,
+  CommandEffects,
+  CommandResult,
+  WorkspaceState,
+} from './command.js';
 import type { Scenario, ScenarioBaseField, ScenarioCommandRecord } from './entities.js';
 import type { EntityId } from './primitives.js';
 import { summariseCapacity } from './capacity.js';
-import { authorise, bumped, created, domainFail, event, newEnvelope, requireName, succeed, updated } from './handler-kit.js';
+import {
+  authorise,
+  bumped,
+  created,
+  domainFail,
+  event,
+  newEnvelope,
+  requireName,
+  succeed,
+  updated,
+} from './handler-kit.js';
 import { domainError, type DomainError } from './errors.js';
 
 const baselineBrand = Symbol('flowmap.baseline');
@@ -28,10 +44,7 @@ export function baselineProjection(state: WorkspaceState): BaselineProjection {
   return { ...state, [baselineBrand]: 'baseline' };
 }
 
-export type ScenarioReplay = (
-  state: WorkspaceState,
-  command: Command,
-) => CommandResult;
+export type ScenarioReplay = (state: WorkspaceState, command: Command) => CommandResult;
 
 export type ScenarioCapacityDiff = {
   readonly teamId: EntityId;
@@ -58,7 +71,11 @@ export type ScenarioDiff = {
   readonly productImpact: readonly [];
   readonly dependencies: readonly [];
   readonly milestones: readonly [];
-  readonly attention: { readonly added: readonly []; readonly removed: readonly []; readonly worsened: readonly [] };
+  readonly attention: {
+    readonly added: readonly [];
+    readonly removed: readonly [];
+    readonly worsened: readonly [];
+  };
   readonly summary: {
     readonly teamsAffected: number;
     readonly quartersAffected: number;
@@ -97,12 +114,26 @@ export type RebaseResolution = {
 };
 
 const SCENARIO_COMMANDS = new Set([
-  'CreateIdea', 'AssignCapacityFootprint', 'MoveCapacityFootprint',
-  'ResizeCapacityFootprint', 'RemoveCapacityFootprint', 'RestoreCapacityFootprint',
-  'SetPrimaryTeam', 'UpdateCommitment', 'PassCommitGate', 'HoldCommitment',
-  'ResumeCommitment', 'DropCommitment', 'SetProductImpact', 'RemoveProductImpact',
-  'AddDependency', 'UpdateDependency', 'RemoveDependency', 'AddMilestone',
-  'UpdateMilestone', 'RemoveMilestone',
+  'CreateIdea',
+  'AssignCapacityFootprint',
+  'MoveCapacityFootprint',
+  'ResizeCapacityFootprint',
+  'RemoveCapacityFootprint',
+  'RestoreCapacityFootprint',
+  'SetPrimaryTeam',
+  'UpdateCommitment',
+  'PassCommitGate',
+  'HoldCommitment',
+  'ResumeCommitment',
+  'DropCommitment',
+  'SetProductImpact',
+  'RemoveProductImpact',
+  'AddDependency',
+  'UpdateDependency',
+  'RemoveDependency',
+  'AddMilestone',
+  'UpdateMilestone',
+  'RemoveMilestone',
 ]);
 
 /**
@@ -130,7 +161,10 @@ export function projectScenario(
  * A deterministic, management-facing comparison. It deliberately groups by
  * team-quarter and commitment rather than exposing storage-table mutations.
  */
-export function compareScenario(base: BaselineProjection, projected: ScenarioProjection): ScenarioDiff {
+export function compareScenario(
+  base: BaselineProjection,
+  projected: ScenarioProjection,
+): ScenarioDiff {
   const capacity: ScenarioCapacityDiff[] = [];
   const cellKeys = new Set([
     ...[...base.teamQuarters.values()].map((item) => `${item.teamId}:${item.quarterId}`),
@@ -138,43 +172,90 @@ export function compareScenario(base: BaselineProjection, projected: ScenarioPro
   ]);
   for (const key of cellKeys) {
     const [teamId, quarterId] = key.split(':') as [EntityId, string];
-    const beforeContainer = [...base.teamQuarters.values()].find((item) => item.teamId === teamId && item.quarterId === quarterId);
-    const afterContainer = [...projected.teamQuarters.values()].find((item) => item.teamId === teamId && item.quarterId === quarterId);
+    const beforeContainer = [...base.teamQuarters.values()].find(
+      (item) => item.teamId === teamId && item.quarterId === quarterId,
+    );
+    const afterContainer = [...projected.teamQuarters.values()].find(
+      (item) => item.teamId === teamId && item.quarterId === quarterId,
+    );
     if (!beforeContainer || !afterContainer) continue;
-    const before = summariseCapacity({ teamQuarter: beforeContainer, footprints: [...base.footprints.values()], commitmentsById: base.commitments, currentQuarterId: base.workspace.currentQuarterId });
-    const after = summariseCapacity({ teamQuarter: afterContainer, footprints: [...projected.footprints.values()], commitmentsById: projected.commitments, currentQuarterId: projected.workspace.currentQuarterId });
+    const before = summariseCapacity({
+      teamQuarter: beforeContainer,
+      footprints: [...base.footprints.values()],
+      commitmentsById: base.commitments,
+      currentQuarterId: base.workspace.currentQuarterId,
+    });
+    const after = summariseCapacity({
+      teamQuarter: afterContainer,
+      footprints: [...projected.footprints.values()],
+      commitmentsById: projected.commitments,
+      currentQuarterId: projected.workspace.currentQuarterId,
+    });
     const scenarioLoad = [...projected.footprints.values()].reduce((sum, footprint) => {
       const commitment = projected.commitments.get(footprint.commitmentId);
-      return footprint.teamId === teamId && footprint.quarterId === quarterId && commitment?.lifecycle === 'IDEA'
+      return footprint.teamId === teamId &&
+        footprint.quarterId === quarterId &&
+        commitment?.lifecycle === 'IDEA'
         ? sum + footprint.units
         : sum;
     }, 0);
-    if (before.committedLoad !== after.committedLoad || scenarioLoad > 0 || before.overflow !== after.overflow) {
-      capacity.push({ teamId, quarterId, loadBefore: before.committedLoad, loadAfter: after.committedLoad, scenarioLoad, headroomBefore: before.headroom, headroomAfter: after.headroom, overflowBefore: before.overflow, overflowAfter: after.overflow });
+    if (
+      before.committedLoad !== after.committedLoad ||
+      scenarioLoad > 0 ||
+      before.overflow !== after.overflow
+    ) {
+      capacity.push({
+        teamId,
+        quarterId,
+        loadBefore: before.committedLoad,
+        loadAfter: after.committedLoad,
+        scenarioLoad,
+        headroomBefore: before.headroom,
+        headroomAfter: after.headroom,
+        overflowBefore: before.overflow,
+        overflowAfter: after.overflow,
+      });
     }
   }
   const commitments: Array<{ commitmentId: EntityId; changedFields: readonly string[] }> = [];
   const newCommitments: EntityId[] = [];
   for (const [id, after] of projected.commitments) {
     const before = base.commitments.get(id);
-    if (!before) { newCommitments.push(id); continue; }
+    if (!before) {
+      newCommitments.push(id);
+      continue;
+    }
     const fields = ['name', 'lifecycle', 'primaryTeamId', 'targetQuarterId', 'targetDate'].filter(
       (field) => before[field as keyof typeof before] !== after[field as keyof typeof after],
     );
     if (fields.length > 0) commitments.push({ commitmentId: id, changedFields: fields });
   }
-  const newOverflows = capacity.filter((item) => item.overflowBefore === 0 && item.overflowAfter > 0).length;
-  const resolvedOverflows = capacity.filter((item) => item.overflowBefore > 0 && item.overflowAfter === 0).length;
+  const newOverflows = capacity.filter(
+    (item) => item.overflowBefore === 0 && item.overflowAfter > 0,
+  ).length;
+  const resolvedOverflows = capacity.filter(
+    (item) => item.overflowBefore > 0 && item.overflowAfter === 0,
+  ).length;
   return {
-    capacity: capacity.sort((a, b) => a.teamId.localeCompare(b.teamId) || a.quarterId.localeCompare(b.quarterId)),
+    capacity: capacity.sort(
+      (a, b) => a.teamId.localeCompare(b.teamId) || a.quarterId.localeCompare(b.quarterId),
+    ),
     commitments,
     newCommitments,
-    gatePassages: commitments.filter((item) => item.changedFields.includes('lifecycle')).map((item) => item.commitmentId),
-    productImpact: [], dependencies: [], milestones: [], attention: { added: [], removed: [], worsened: [] },
+    gatePassages: commitments
+      .filter((item) => item.changedFields.includes('lifecycle'))
+      .map((item) => item.commitmentId),
+    productImpact: [],
+    dependencies: [],
+    milestones: [],
+    attention: { added: [], removed: [], worsened: [] },
     summary: {
       teamsAffected: new Set(capacity.map((item) => item.teamId)).size,
       quartersAffected: new Set(capacity.map((item) => item.quarterId)).size,
-      netUnitsMoved: capacity.reduce((sum, item) => sum + Math.abs(item.loadAfter - item.loadBefore) + item.scenarioLoad, 0),
+      netUnitsMoved: capacity.reduce(
+        (sum, item) => sum + Math.abs(item.loadAfter - item.loadBefore) + item.scenarioLoad,
+        0,
+      ),
       newOverflows,
       resolvedOverflows,
     },
@@ -200,7 +281,8 @@ export function classifyScenarioRebase(
       return live !== MISSING && !sameValue(live, field.value);
     });
     if (conflict) {
-      const entity = scenarioEntity(baseline, conflict.kind, conflict.id) as { updatedBy?: string; updatedAt?: string } | undefined;
+      const entity = scenarioEntity(baseline, conflict.kind, conflict.id) as
+        { updatedBy?: string; updatedAt?: string } | undefined;
       return {
         commandId: record.id,
         status: 'CONFLICT',
@@ -216,7 +298,8 @@ export function classifyScenarioRebase(
     if (command.name === 'PassCommitGate') return { commandId: record.id, status: 'CLEAN' };
     const result = replay(current, command);
     if (!result.ok) return { commandId: record.id, status: 'OBSOLETE', reason: result.error.code };
-    if (result.effects.changes.length === 0) return { commandId: record.id, status: 'REDUNDANT', reason: 'No baseline change remains' };
+    if (result.effects.changes.length === 0)
+      return { commandId: record.id, status: 'REDUNDANT', reason: 'No baseline change remains' };
     current = applyEffects(current, result.effects);
     return { commandId: record.id, status: 'CLEAN' };
   });
@@ -236,11 +319,16 @@ export function applyScenario(
   const unauthorised = authorise(ctx, 'PLANNER');
   if (unauthorised) return unauthorised;
   const payload = cmd.payload as ApplyScenarioPayload;
-  if (payload.scenarioId !== scenario.id) return domainFail('ENTITY_NOT_FOUND', { entityRef: { kind: 'SCENARIO', id: payload.scenarioId } });
+  if (payload.scenarioId !== scenario.id)
+    return domainFail('ENTITY_NOT_FOUND', {
+      entityRef: { kind: 'SCENARIO', id: payload.scenarioId },
+    });
   if (scenario.baseRevision < baseline.workspace.revision) return domainFail('SCENARIO_STALE');
   const rebase = classifyScenarioRebase(baseline, scenario, replay);
   if (rebase.some((outcome) => outcome.status === 'CONFLICT')) {
-    return domainFail('SCENARIO_CONFLICT_UNRESOLVED', { params: { count: rebase.filter((item) => item.status === 'CONFLICT').length } });
+    return domainFail('SCENARIO_CONFLICT_UNRESOLVED', {
+      params: { count: rebase.filter((item) => item.status === 'CONFLICT').length },
+    });
   }
   let current: WorkspaceState = baseline;
   const selected = selectedScenarioCommands(scenario, payload);
@@ -253,15 +341,44 @@ export function applyScenario(
     if (!result.ok) return result;
     current = applyEffects(current, result.effects);
     changes.push(...result.effects.changes);
-    events.push(...result.effects.events.map((item) => ({ ...item, sequence: ctx.nextSequence + events.length, scenarioId: scenario.id })));
+    events.push(
+      ...result.effects.events.map((item) => ({
+        ...item,
+        sequence: ctx.nextSequence + events.length,
+        scenarioId: scenario.id,
+      })),
+    );
   }
-  const workspaceAfter = bumped({ ...baseline.workspace, revision: baseline.workspace.revision + 1 }, ctx);
-  const scenarioAfter = bumped({ ...scenario, status: 'APPLIED' as const, appliedAt: ctx.clock.now(), appliedBy: ctx.actorId, appliedCommandIds: selected.records.map((record) => record.id) }, ctx);
+  const workspaceAfter = bumped(
+    { ...baseline.workspace, revision: baseline.workspace.revision + 1 },
+    ctx,
+  );
+  const scenarioAfter = bumped(
+    {
+      ...scenario,
+      status: 'APPLIED' as const,
+      appliedAt: ctx.clock.now(),
+      appliedBy: ctx.actorId,
+      appliedCommandIds: selected.records.map((record) => record.id),
+    },
+    ctx,
+  );
   const workspaceRef = { kind: 'WORKSPACE', id: baseline.workspace.id } as const;
   const scenarioRef = { kind: 'SCENARIO', id: scenario.id } as const;
   return succeed({
-    changes: [...changes, updated(workspaceRef, baseline.workspace, workspaceAfter), updated(scenarioRef, scenario, scenarioAfter)],
-    events: [...events, event(cmd, ctx, events.length, 'SCENARIO_APPLIED', [scenarioRef], { scenarioId: scenario.id, commandIds: selected.records.map((record) => record.id), mode: payload.mode ?? 'ALL' })],
+    changes: [
+      ...changes,
+      updated(workspaceRef, baseline.workspace, workspaceAfter),
+      updated(scenarioRef, scenario, scenarioAfter),
+    ],
+    events: [
+      ...events,
+      event(cmd, ctx, events.length, 'SCENARIO_APPLIED', [scenarioRef], {
+        scenarioId: scenario.id,
+        commandIds: selected.records.map((record) => record.id),
+        mode: payload.mode ?? 'ALL',
+      }),
+    ],
     affectedProjections: ['radar'],
     consequences: [{ kind: 'IRREVERSIBLE', noteKey: 'scenario.applyUndoBarrier' }],
   });
@@ -281,8 +398,11 @@ export function rebaseScenario(
   const base = baselineProjection(state);
   const outcomes = classifyScenarioRebase(base, scenario, replay);
   const choices = new Map(resolutions.map((resolution) => [resolution.commandId, resolution]));
-  const unresolved = outcomes.filter((outcome) => outcome.status === 'CONFLICT' && !choices.has(outcome.commandId));
-  if (unresolved.length > 0) return domainFail('SCENARIO_CONFLICT_UNRESOLVED', { params: { count: unresolved.length } });
+  const unresolved = outcomes.filter(
+    (outcome) => outcome.status === 'CONFLICT' && !choices.has(outcome.commandId),
+  );
+  if (unresolved.length > 0)
+    return domainFail('SCENARIO_CONFLICT_UNRESOLVED', { params: { count: unresolved.length } });
   const outcomeById = new Map(outcomes.map((outcome) => [outcome.commandId, outcome]));
   const commands: ScenarioCommandRecord[] = [];
   for (const record of scenario.commands) {
@@ -293,8 +413,10 @@ export function rebaseScenario(
     if (resolution?.action === 'EDIT' && resolution.command === undefined) {
       return domainFail('SCENARIO_CONFLICT_UNRESOLVED', { params: { count: 1 } });
     }
-    const command = resolution?.action === 'EDIT' ? resolution.command! : record.command as unknown as Command;
-    if (command.scenarioId !== scenario.id) return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', { params: { command: command.name } });
+    const command =
+      resolution?.action === 'EDIT' ? resolution.command! : (record.command as unknown as Command);
+    if (command.scenarioId !== scenario.id)
+      return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', { params: { command: command.name } });
     commands.push({
       ...record,
       sequence: commands.length + 1,
@@ -306,7 +428,13 @@ export function rebaseScenario(
   const ref = { kind: 'SCENARIO', id: scenario.id } as const;
   return succeed({
     changes: [updated(ref, scenario, after)],
-    events: [event(cmd, ctx, 0, 'SCENARIO_REBASED', [ref], { scenarioId: scenario.id, baseRevision: after.baseRevision, droppedCommands: scenario.commands.length - commands.length })],
+    events: [
+      event(cmd, ctx, 0, 'SCENARIO_REBASED', [ref], {
+        scenarioId: scenario.id,
+        baseRevision: after.baseRevision,
+        droppedCommands: scenario.commands.length - commands.length,
+      }),
+    ],
     affectedProjections: ['radar'],
   });
 }
@@ -325,7 +453,8 @@ function selectedScenarioCommands(
   const missing = new Set<EntityId>();
   for (const record of selected) {
     const command = record.command as unknown as Command;
-    const commitmentId = (command.payload as Record<string, unknown>).commitmentId as EntityId | undefined;
+    const commitmentId = (command.payload as Record<string, unknown>).commitmentId as
+      EntityId | undefined;
     if (!commitmentId || command.name === 'SetPrimaryTeam') continue;
     // The placement sequence is intentionally explicit: accountable team,
     // footprint, then gate. A later intent cannot be applied without its
@@ -334,15 +463,21 @@ function selectedScenarioCommands(
       if (candidate.sequence >= record.sequence) return false;
       const previous = candidate.command as unknown as Command;
       const previousCommitment = (previous.payload as Record<string, unknown>).commitmentId;
-      return previousCommitment === commitmentId && (
-        (command.name === 'AssignCapacityFootprint' && previous.name === 'SetPrimaryTeam') ||
-        (command.name === 'PassCommitGate' && ['SetPrimaryTeam', 'AssignCapacityFootprint'].includes(previous.name))
+      return (
+        previousCommitment === commitmentId &&
+        ((command.name === 'AssignCapacityFootprint' && previous.name === 'SetPrimaryTeam') ||
+          (command.name === 'PassCommitGate' &&
+            ['SetPrimaryTeam', 'AssignCapacityFootprint'].includes(previous.name)))
       );
     });
-    for (const prerequisite of prerequisites) if (!requested.has(prerequisite.id)) missing.add(prerequisite.id);
+    for (const prerequisite of prerequisites)
+      if (!requested.has(prerequisite.id)) missing.add(prerequisite.id);
   }
   return missing.size > 0
-    ? { ok: false, error: domainError('SCENARIO_SELECTION_INCOMPLETE', { params: { count: missing.size } }) }
+    ? {
+        ok: false,
+        error: domainError('SCENARIO_SELECTION_INCOMPLETE', { params: { count: missing.size } }),
+      }
     : { ok: true, records: selected };
 }
 
@@ -356,15 +491,24 @@ export function recordScenarioCommand(
   const unauthorised = authorise(ctx, 'CONTRIBUTOR');
   if (unauthorised) return unauthorised;
   const scenario = state.scenarios?.get(payload.scenarioId);
-  if (!scenario) return domainFail('ENTITY_NOT_FOUND', { entityRef: { kind: 'SCENARIO', id: payload.scenarioId } });
+  if (!scenario)
+    return domainFail('ENTITY_NOT_FOUND', {
+      entityRef: { kind: 'SCENARIO', id: payload.scenarioId },
+    });
   if (scenario.status !== 'DRAFT' && scenario.status !== 'SHARED') {
-    return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', { params: { command: payload.command.name } });
+    return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', {
+      params: { command: payload.command.name },
+    });
   }
   if (payload.command.scenarioId !== scenario.id) {
-    return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', { params: { command: payload.command.name } });
+    return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', {
+      params: { command: payload.command.name },
+    });
   }
   if (!SCENARIO_COMMANDS.has(payload.command.name)) {
-    return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', { params: { command: payload.command.name } });
+    return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', {
+      params: { command: payload.command.name },
+    });
   }
   const record: ScenarioCommandRecord = {
     id: payload.command.id,
@@ -378,7 +522,12 @@ export function recordScenarioCommand(
   const ref = { kind: 'SCENARIO', id: scenario.id } as const;
   return succeed({
     changes: [updated(ref, scenario, after)],
-    events: [event(cmd, ctx, 0, 'SCENARIO_COMMAND_RECORDED', [ref], { scenarioId: scenario.id, command: payload.command.name })],
+    events: [
+      event(cmd, ctx, 0, 'SCENARIO_COMMAND_RECORDED', [ref], {
+        scenarioId: scenario.id,
+        command: payload.command.name,
+      }),
+    ],
     affectedProjections: ['radar'],
   });
 }
@@ -389,15 +538,27 @@ function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function scenarioEntity(state: WorkspaceState, kind: string, id: EntityId): Record<string, unknown> | undefined {
+function scenarioEntity(
+  state: WorkspaceState,
+  kind: string,
+  id: EntityId,
+): Record<string, unknown> | undefined {
   const buckets: Record<string, ReadonlyMap<EntityId, unknown> | undefined> = {
-    COMMITMENT: state.commitments, FOOTPRINT: state.footprints, PRODUCT_IMPACT: state.productImpacts,
-    DEPENDENCY: state.dependencies, MILESTONE: state.milestones,
+    COMMITMENT: state.commitments,
+    FOOTPRINT: state.footprints,
+    PRODUCT_IMPACT: state.productImpacts,
+    DEPENDENCY: state.dependencies,
+    MILESTONE: state.milestones,
   };
   return buckets[kind]?.get(id) as Record<string, unknown> | undefined;
 }
 
-function scenarioField(state: WorkspaceState, kind: string, id: EntityId, field: string): unknown | typeof MISSING {
+function scenarioField(
+  state: WorkspaceState,
+  kind: string,
+  id: EntityId,
+  field: string,
+): unknown | typeof MISSING {
   const entity = scenarioEntity(state, kind, id);
   return entity === undefined ? MISSING : entity[field];
 }
@@ -408,27 +569,59 @@ function scenarioValue(command: Command, field: string): unknown {
   return patch?.[field] ?? payload[field];
 }
 
-function captureScenarioFields(state: WorkspaceState, command: Command): readonly ScenarioBaseField[] {
+function captureScenarioFields(
+  state: WorkspaceState,
+  command: Command,
+): readonly ScenarioBaseField[] {
   const payload = command.payload as Record<string, unknown>;
   const entries: Array<{ kind: string; id: EntityId | undefined; fields: readonly string[] }> = [];
   const commitmentId = payload.commitmentId as EntityId | undefined;
   const footprintId = payload.footprintId as EntityId | undefined;
-  const relationId = (payload.impactId ?? payload.dependencyId ?? payload.milestoneId) as EntityId | undefined;
-  if (['UpdateCommitment'].includes(command.name)) entries.push({ kind: 'COMMITMENT', id: commitmentId, fields: Object.keys((payload.patch ?? {}) as object) });
-  if (['SetPrimaryTeam'].includes(command.name)) entries.push({ kind: 'COMMITMENT', id: commitmentId, fields: ['primaryTeamId'] });
-  if (['PassCommitGate', 'HoldCommitment', 'ResumeCommitment', 'DropCommitment'].includes(command.name)) entries.push({ kind: 'COMMITMENT', id: commitmentId, fields: ['lifecycle'] });
-  if (['MoveCapacityFootprint'].includes(command.name)) entries.push({ kind: 'FOOTPRINT', id: footprintId, fields: ['teamId', 'quarterId'] });
-  if (['ResizeCapacityFootprint'].includes(command.name)) entries.push({ kind: 'FOOTPRINT', id: footprintId, fields: ['units'] });
-  if (['RemoveCapacityFootprint', 'RestoreCapacityFootprint'].includes(command.name)) entries.push({ kind: 'FOOTPRINT', id: footprintId, fields: ['archivedAt'] });
-  if (['SetProductImpact', 'RemoveProductImpact'].includes(command.name)) entries.push({ kind: 'PRODUCT_IMPACT', id: relationId, fields: ['type', 'archivedAt'] });
-  if (['UpdateDependency', 'RemoveDependency'].includes(command.name)) entries.push({ kind: 'DEPENDENCY', id: relationId, fields: ['target', 'status', 'archivedAt'] });
-  if (['UpdateMilestone', 'RemoveMilestone'].includes(command.name)) entries.push({ kind: 'MILESTONE', id: relationId, fields: ['targetDate', 'status', 'archivedAt'] });
+  const relationId = (payload.impactId ?? payload.dependencyId ?? payload.milestoneId) as
+    EntityId | undefined;
+  if (['UpdateCommitment'].includes(command.name))
+    entries.push({
+      kind: 'COMMITMENT',
+      id: commitmentId,
+      fields: Object.keys((payload.patch ?? {}) as object),
+    });
+  if (['SetPrimaryTeam'].includes(command.name))
+    entries.push({ kind: 'COMMITMENT', id: commitmentId, fields: ['primaryTeamId'] });
+  if (
+    ['PassCommitGate', 'HoldCommitment', 'ResumeCommitment', 'DropCommitment'].includes(
+      command.name,
+    )
+  )
+    entries.push({ kind: 'COMMITMENT', id: commitmentId, fields: ['lifecycle'] });
+  if (['MoveCapacityFootprint'].includes(command.name))
+    entries.push({ kind: 'FOOTPRINT', id: footprintId, fields: ['teamId', 'quarterId'] });
+  if (['ResizeCapacityFootprint'].includes(command.name))
+    entries.push({ kind: 'FOOTPRINT', id: footprintId, fields: ['units'] });
+  if (['RemoveCapacityFootprint', 'RestoreCapacityFootprint'].includes(command.name))
+    entries.push({ kind: 'FOOTPRINT', id: footprintId, fields: ['archivedAt'] });
+  if (['SetProductImpact', 'RemoveProductImpact'].includes(command.name))
+    entries.push({ kind: 'PRODUCT_IMPACT', id: relationId, fields: ['type', 'archivedAt'] });
+  if (['UpdateDependency', 'RemoveDependency'].includes(command.name))
+    entries.push({
+      kind: 'DEPENDENCY',
+      id: relationId,
+      fields: ['target', 'status', 'archivedAt'],
+    });
+  if (['UpdateMilestone', 'RemoveMilestone'].includes(command.name))
+    entries.push({
+      kind: 'MILESTONE',
+      id: relationId,
+      fields: ['targetDate', 'status', 'archivedAt'],
+    });
   return entries.flatMap(({ kind, id, fields }) => {
     if (!id) return [];
     const entity = scenarioEntity(state, kind, id);
     if (!entity) return [];
     return fields.map((field) => ({
-      kind, id, field, value: entity[field],
+      kind,
+      id,
+      field,
+      value: entity[field],
       changedBy: entity.updatedBy as string,
       changedAt: entity.updatedAt as string,
     }));
@@ -457,7 +650,12 @@ export function createScenario(
   const ref = { kind: 'SCENARIO', id: scenario.id } as const;
   return succeed({
     changes: [created(ref, scenario)],
-    events: [event(cmd, ctx, 0, 'SCENARIO_CREATED', [ref], { name: scenario.name, baseRevision: scenario.baseRevision })],
+    events: [
+      event(cmd, ctx, 0, 'SCENARIO_CREATED', [ref], {
+        name: scenario.name,
+        baseRevision: scenario.baseRevision,
+      }),
+    ],
     affectedProjections: ['radar'],
   });
 }
@@ -472,7 +670,10 @@ export function cloneScenario(
   const unauthorised = authorise(ctx, 'CONTRIBUTOR');
   if (unauthorised) return unauthorised;
   const source = state.scenarios?.get(sourceScenarioId);
-  if (!source) return domainFail('ENTITY_NOT_FOUND', { entityRef: { kind: 'SCENARIO', id: sourceScenarioId } });
+  if (!source)
+    return domainFail('ENTITY_NOT_FOUND', {
+      entityRef: { kind: 'SCENARIO', id: sourceScenarioId },
+    });
   if (source.status !== 'DRAFT' && source.status !== 'SHARED') {
     return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', { params: { command: 'CloneScenario' } });
   }
@@ -483,12 +684,19 @@ export function cloneScenario(
       ...record,
       id: ctx.ids.next(),
       sequence: index + 1,
-      command: { ...command, id: ctx.ids.next(), scenarioId: id } as unknown as Readonly<Record<string, unknown>>,
+      command: { ...command, id: ctx.ids.next(), scenarioId: id } as unknown as Readonly<
+        Record<string, unknown>
+      >,
     };
   });
   const clone: Scenario = {
-    ...newEnvelope(id, cmd, ctx), name: source.name, ownerUserId: ctx.actorId,
-    visibility: 'PRIVATE', baseRevision: state.workspace.revision, commands, status: 'DRAFT',
+    ...newEnvelope(id, cmd, ctx),
+    name: source.name,
+    ownerUserId: ctx.actorId,
+    visibility: 'PRIVATE',
+    baseRevision: state.workspace.revision,
+    commands,
+    status: 'DRAFT',
   };
   const ref = { kind: 'SCENARIO', id } as const;
   return succeed({
@@ -500,24 +708,35 @@ export function cloneScenario(
 
 export function updateScenario(
   state: WorkspaceState,
-  payload: { scenarioId: EntityId; name?: string; visibility?: Scenario['visibility']; status?: Scenario['status'] },
+  payload: {
+    scenarioId: EntityId;
+    name?: string;
+    visibility?: Scenario['visibility'];
+    status?: Scenario['status'];
+  },
   cmd: Command,
   ctx: CommandContext,
 ): CommandResult {
   const scenario = state.scenarios?.get(payload.scenarioId);
-  if (!scenario) return domainFail('ENTITY_NOT_FOUND', { entityRef: { kind: 'SCENARIO', id: payload.scenarioId } });
+  if (!scenario)
+    return domainFail('ENTITY_NOT_FOUND', {
+      entityRef: { kind: 'SCENARIO', id: payload.scenarioId },
+    });
   const unauthorised = authorise(ctx, payload.status === 'APPLIED' ? 'PLANNER' : 'CONTRIBUTOR');
   if (unauthorised) return unauthorised;
   if (payload.name !== undefined) {
     const invalid = requireName(payload.name, 140);
     if (invalid) return invalid;
   }
-  const after = bumped({
-    ...scenario,
-    ...(payload.name === undefined ? {} : { name: payload.name.trim() }),
-    ...(payload.visibility === undefined ? {} : { visibility: payload.visibility }),
-    ...(payload.status === undefined ? {} : { status: payload.status }),
-  }, ctx);
+  const after = bumped(
+    {
+      ...scenario,
+      ...(payload.name === undefined ? {} : { name: payload.name.trim() }),
+      ...(payload.visibility === undefined ? {} : { visibility: payload.visibility }),
+      ...(payload.status === undefined ? {} : { status: payload.status }),
+    },
+    ctx,
+  );
   const ref = { kind: 'SCENARIO', id: scenario.id } as const;
   return succeed({
     changes: [updated(ref, scenario, after)],
@@ -557,13 +776,20 @@ function cloneState(state: WorkspaceState): WorkspaceState {
 function applyEffects(state: WorkspaceState, effects: CommandEffects): WorkspaceState {
   const next = cloneState(state) as Record<string, unknown>;
   const maps: Record<string, Map<string, unknown> | undefined> = {
-    TEAM: next['teams'] as Map<string, unknown>, TEAM_QUARTER: next['teamQuarters'] as Map<string, unknown>,
-    COMMITMENT: next['commitments'] as Map<string, unknown>, CAPACITY_FOOTPRINT: next['footprints'] as Map<string, unknown>,
-    PRODUCT_SERVICE: next['products'] as Map<string, unknown> | undefined, PRODUCT_IMPACT: next['productImpacts'] as Map<string, unknown> | undefined,
-    DEPENDENCY: next['dependencies'] as Map<string, unknown> | undefined, DECISION: next['decisions'] as Map<string, unknown> | undefined,
-    MILESTONE: next['milestones'] as Map<string, unknown> | undefined, THEME: next['themes'] as Map<string, unknown> | undefined,
-    COMMITMENT_THEME: next['commitmentThemes'] as Map<string, unknown> | undefined, EXTERNAL_LINK: next['externalLinks'] as Map<string, unknown> | undefined,
-    PERSON: next['people'] as Map<string, unknown> | undefined, SIGNAL_DISPOSITION: next['signalDispositions'] as Map<string, unknown> | undefined,
+    TEAM: next['teams'] as Map<string, unknown>,
+    TEAM_QUARTER: next['teamQuarters'] as Map<string, unknown>,
+    COMMITMENT: next['commitments'] as Map<string, unknown>,
+    CAPACITY_FOOTPRINT: next['footprints'] as Map<string, unknown>,
+    PRODUCT_SERVICE: next['products'] as Map<string, unknown> | undefined,
+    PRODUCT_IMPACT: next['productImpacts'] as Map<string, unknown> | undefined,
+    DEPENDENCY: next['dependencies'] as Map<string, unknown> | undefined,
+    DECISION: next['decisions'] as Map<string, unknown> | undefined,
+    MILESTONE: next['milestones'] as Map<string, unknown> | undefined,
+    THEME: next['themes'] as Map<string, unknown> | undefined,
+    COMMITMENT_THEME: next['commitmentThemes'] as Map<string, unknown> | undefined,
+    EXTERNAL_LINK: next['externalLinks'] as Map<string, unknown> | undefined,
+    PERSON: next['people'] as Map<string, unknown> | undefined,
+    SIGNAL_DISPOSITION: next['signalDispositions'] as Map<string, unknown> | undefined,
   };
   for (const change of effects.changes) {
     if (change.ref.kind === 'WORKSPACE' || change.ref.kind === 'PRODUCT_QUARTER') continue;

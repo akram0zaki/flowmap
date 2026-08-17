@@ -199,7 +199,9 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
   async apply(input: ApplyInput): Promise<void> {
     if (input.command.scenarioId !== undefined) {
       throw new DomainErrorException(
-        domainError('SCENARIO_CANNOT_MUTATE_BASELINE', { params: { scenarioId: input.command.scenarioId } }),
+        domainError('SCENARIO_CANNOT_MUTATE_BASELINE', {
+          params: { scenarioId: input.command.scenarioId },
+        }),
       );
     }
     await this.db.transaction(async () => {
@@ -236,12 +238,19 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
   }
 
   async listSnapshots(workspaceId: WorkspaceId, limit = 50): Promise<SnapshotRecord[]> {
-    return (await this.db.all('SELECT * FROM snapshot WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?', [workspaceId, limit]))
-      .map((row) => ({
-        id: String(row['id']), workspaceId: String(row['workspace_id']),
-        workspaceRevision: Number(row['workspace_revision']), createdAt: String(row['created_at']),
-        commandName: String(row['command_name']), content: p(row['content_json']) ?? {},
-      }));
+    return (
+      await this.db.all(
+        'SELECT * FROM snapshot WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?',
+        [workspaceId, limit],
+      )
+    ).map((row) => ({
+      id: String(row['id']),
+      workspaceId: String(row['workspace_id']),
+      workspaceRevision: Number(row['workspace_revision']),
+      createdAt: String(row['created_at']),
+      commandName: String(row['command_name']),
+      content: p(row['content_json']) ?? {},
+    }));
   }
 
   async listOutbox(workspaceId: WorkspaceId, state?: OutboxState): Promise<OutboxEntry[]> {
@@ -356,7 +365,14 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
     );
     await this.db.run(
       'INSERT INTO snapshot (id, workspace_id, workspace_revision, created_at, command_name, content_json) VALUES (?, ?, ?, ?, ?, ?)',
-      [snapshot.id, snapshot.workspaceId, snapshot.workspaceRevision, snapshot.createdAt, snapshot.commandName, JSON.stringify(content)],
+      [
+        snapshot.id,
+        snapshot.workspaceId,
+        snapshot.workspaceRevision,
+        snapshot.createdAt,
+        snapshot.commandName,
+        JSON.stringify(content),
+      ],
     );
   }
 

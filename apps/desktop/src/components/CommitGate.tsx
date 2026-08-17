@@ -28,14 +28,28 @@ export type CommitGateProps = {
   /** Units past deliverable capacity if this were committed. Never blocks. */
   readonly overflow: number;
   readonly tradeoff?: {
-    readonly constrained: readonly { name: string; reason: 'MANDATORY' | 'IN_DELIVERY' | 'HARD_DEPENDENCY' }[];
-    readonly movable: readonly { name: string; units: number; earliestAlternativeQuarter?: string }[];
+    readonly constrained: readonly {
+      name: string;
+      reason: 'MANDATORY' | 'IN_DELIVERY' | 'HARD_DEPENDENCY';
+    }[];
+    readonly movable: readonly {
+      name: string;
+      units: number;
+      earliestAlternativeQuarter?: string;
+    }[];
   };
   readonly onCommit: () => void;
   readonly onDismiss: () => void;
 };
 
-export function CommitGate({ name, readiness, overflow, tradeoff, onCommit, onDismiss }: CommitGateProps) {
+export function CommitGate({
+  name,
+  readiness,
+  overflow,
+  tradeoff,
+  onCommit,
+  onDismiss,
+}: CommitGateProps) {
   const [reviewed, setReviewed] = useState(false);
 
   return (
@@ -79,12 +93,27 @@ export function CommitGate({ name, readiness, overflow, tradeoff, onCommit, onDi
               <p>{t('tradeoff.excess', { units: overflow })}</p>
               <h5>{t('tradeoff.constrained')}</h5>
               <ul>
-                {tradeoff.constrained.map((item) => <li key={`${item.name}:${item.reason}`}>{item.name} · {t(`tradeoff.reason.${item.reason}`)}</li>)}
+                {tradeoff.constrained.map((item) => (
+                  <li key={`${item.name}:${item.reason}`}>
+                    {item.name} · {t(`tradeoff.reason.${item.reason}`)}
+                  </li>
+                ))}
               </ul>
               <h5>{t('tradeoff.movable')}</h5>
-              {tradeoff.movable.length === 0 ? <p>{t('tradeoff.none')}</p> : <ul>
-                {tradeoff.movable.map((item) => <li key={item.name}>{item.name} · {item.units}{item.earliestAlternativeQuarter ? ` · ${t('tradeoff.alternative', { quarter: item.earliestAlternativeQuarter })}` : ''}</li>)}
-              </ul>}
+              {tradeoff.movable.length === 0 ? (
+                <p>{t('tradeoff.none')}</p>
+              ) : (
+                <ul>
+                  {tradeoff.movable.map((item) => (
+                    <li key={item.name}>
+                      {item.name} · {item.units}
+                      {item.earliestAlternativeQuarter
+                        ? ` · ${t('tradeoff.alternative', { quarter: item.earliestAlternativeQuarter })}`
+                        : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           )}
         </>

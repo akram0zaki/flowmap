@@ -18,19 +18,37 @@ export type DemandFlowProps = {
   readonly scenarioId: string | null;
   readonly defaultUnits: number;
   readonly headroomFor: (teamId: string, quarterId: string) => number;
-  readonly onPlace: (input: { commitmentId: string; teamId: string; quarterId: string; units: number }) => void;
+  readonly onPlace: (input: {
+    commitmentId: string;
+    teamId: string;
+    quarterId: string;
+    units: number;
+  }) => void;
 };
 
-export function DemandFlow({ ideas, teams, quarters, scenarioId, defaultUnits, headroomFor, onPlace }: DemandFlowProps) {
+export function DemandFlow({
+  ideas,
+  teams,
+  quarters,
+  scenarioId,
+  defaultUnits,
+  headroomFor,
+  onPlace,
+}: DemandFlowProps) {
   const [ideaId, setIdeaId] = useState<string | null>(ideas[0]?.id ?? null);
   const [teamId, setTeamId] = useState<string | null>(teams[0]?.id ?? null);
   const [quarterId, setQuarterId] = useState<string | null>(quarters[0] ?? null);
   const [units, setUnits] = useState(defaultUnits);
   const [moveMode, setMoveMode] = useState(false);
   const selected = useMemo(() => ideas.find((idea) => idea.id === ideaId) ?? null, [ideas, ideaId]);
-  const targetAnnouncement = teamId && quarterId
-    ? t('qbr.target', { team: teams.find((team) => team.id === teamId)?.name ?? teamId, quarter: quarterId, headroom: headroomFor(teamId, quarterId) })
-    : '';
+  const targetAnnouncement =
+    teamId && quarterId
+      ? t('qbr.target', {
+          team: teams.find((team) => team.id === teamId)?.name ?? teamId,
+          quarter: quarterId,
+          headroom: headroomFor(teamId, quarterId),
+        })
+      : '';
 
   const place = () => {
     if (!selected || !teamId || !quarterId || scenarioId === null || units <= 0) return;
@@ -49,25 +67,68 @@ export function DemandFlow({ ideas, teams, quarters, scenarioId, defaultUnits, h
 
   return (
     <section className="fm-demand-flow" aria-label={t('qbr.label')}>
-      <div className="fm-demand-flow__lane" role="listbox" aria-label={t('qbr.ideas')} onKeyDown={(event) => {
-        if (!moveMode && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-          event.preventDefault();
-          const current = Math.max(0, ideas.findIndex((idea) => idea.id === ideaId));
-          const next = Math.max(0, Math.min(ideas.length - 1, current + (event.key === 'ArrowUp' ? -1 : 1)));
-          setIdeaId(ideas[next]?.id ?? null);
-          return;
-        }
-        if (event.key === 'm') { event.preventDefault(); setMoveMode(true); return; }
-        if (event.key === 'Escape') { setMoveMode(false); return; }
-        if (moveMode && event.key === 'ArrowLeft') { event.preventDefault(); moveTarget('quarter', -1); return; }
-        if (moveMode && event.key === 'ArrowRight') { event.preventDefault(); moveTarget('quarter', 1); return; }
-        if (moveMode && event.key === 'ArrowUp') { event.preventDefault(); moveTarget('team', -1); return; }
-        if (moveMode && event.key === 'ArrowDown') { event.preventDefault(); moveTarget('team', 1); return; }
-        if (moveMode && event.key === 'Enter') { event.preventDefault(); place(); }
-      }}>
+      <div
+        className="fm-demand-flow__lane"
+        role="listbox"
+        aria-label={t('qbr.ideas')}
+        onKeyDown={(event) => {
+          if (!moveMode && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+            event.preventDefault();
+            const current = Math.max(
+              0,
+              ideas.findIndex((idea) => idea.id === ideaId),
+            );
+            const next = Math.max(
+              0,
+              Math.min(ideas.length - 1, current + (event.key === 'ArrowUp' ? -1 : 1)),
+            );
+            setIdeaId(ideas[next]?.id ?? null);
+            return;
+          }
+          if (event.key === 'm') {
+            event.preventDefault();
+            setMoveMode(true);
+            return;
+          }
+          if (event.key === 'Escape') {
+            setMoveMode(false);
+            return;
+          }
+          if (moveMode && event.key === 'ArrowLeft') {
+            event.preventDefault();
+            moveTarget('quarter', -1);
+            return;
+          }
+          if (moveMode && event.key === 'ArrowRight') {
+            event.preventDefault();
+            moveTarget('quarter', 1);
+            return;
+          }
+          if (moveMode && event.key === 'ArrowUp') {
+            event.preventDefault();
+            moveTarget('team', -1);
+            return;
+          }
+          if (moveMode && event.key === 'ArrowDown') {
+            event.preventDefault();
+            moveTarget('team', 1);
+            return;
+          }
+          if (moveMode && event.key === 'Enter') {
+            event.preventDefault();
+            place();
+          }
+        }}
+      >
         <h2>{t('qbr.ideas')}</h2>
         {ideas.map((idea) => (
-          <button key={idea.id} type="button" role="option" aria-selected={idea.id === ideaId} onClick={() => setIdeaId(idea.id)}>
+          <button
+            key={idea.id}
+            type="button"
+            role="option"
+            aria-selected={idea.id === ideaId}
+            onClick={() => setIdeaId(idea.id)}
+          >
             {idea.name}
           </button>
         ))}
@@ -75,21 +136,48 @@ export function DemandFlow({ ideas, teams, quarters, scenarioId, defaultUnits, h
 
       <section className="fm-demand-flow__pipe" aria-label={t('qbr.pipe')}>
         <h2>{t('qbr.pipe')}</h2>
-        {selected ? <p>{t('qbr.selected', { name: selected.name })}</p> : <p>{t('qbr.pipeEmpty')}</p>}
+        {selected ? (
+          <p>{t('qbr.selected', { name: selected.name })}</p>
+        ) : (
+          <p>{t('qbr.pipeEmpty')}</p>
+        )}
         <label>
           <span>{t('qbr.units')}</span>
-          <input type="number" min="1" value={units} onChange={(event) => setUnits(Number(event.target.value))} />
+          <input
+            type="number"
+            min="1"
+            value={units}
+            onChange={(event) => setUnits(Number(event.target.value))}
+          />
         </label>
         <fieldset>
           <legend>{t('qbr.quarters')}</legend>
           <div className="fm-demand-flow__quarters">
-            {quarters.map((quarter) => <button key={quarter} type="button" aria-pressed={quarter === quarterId} onClick={() => setQuarterId(quarter)}>{quarter}</button>)}
+            {quarters.map((quarter) => (
+              <button
+                key={quarter}
+                type="button"
+                aria-pressed={quarter === quarterId}
+                onClick={() => setQuarterId(quarter)}
+              >
+                {quarter}
+              </button>
+            ))}
           </div>
         </fieldset>
         <fieldset>
           <legend>{t('qbr.teams')}</legend>
           <div className="fm-demand-flow__teams">
-            {teams.map((team) => <button key={team.id} type="button" aria-pressed={team.id === teamId} onClick={() => setTeamId(team.id)}>{team.name}</button>)}
+            {teams.map((team) => (
+              <button
+                key={team.id}
+                type="button"
+                aria-pressed={team.id === teamId}
+                onClick={() => setTeamId(team.id)}
+              >
+                {team.name}
+              </button>
+            ))}
           </div>
         </fieldset>
       </section>
@@ -97,11 +185,18 @@ export function DemandFlow({ ideas, teams, quarters, scenarioId, defaultUnits, h
       <section className="fm-demand-flow__gate" aria-label={t('qbr.gate')}>
         <h2>{t('qbr.gate')}</h2>
         <p>{scenarioId === null ? t('qbr.scenarioRequired') : t('qbr.gateDescription')}</p>
-        <button type="button" className="fm-primary" disabled={scenarioId === null || !selected || !teamId || !quarterId || units <= 0} onClick={place}>
+        <button
+          type="button"
+          className="fm-primary"
+          disabled={scenarioId === null || !selected || !teamId || !quarterId || units <= 0}
+          onClick={place}
+        >
           {t('qbr.place')}
         </button>
       </section>
-      <p className="fm-visually-hidden" aria-live="polite">{moveMode ? `${t('qbr.moveMode')} ${targetAnnouncement}` : ''}</p>
+      <p className="fm-visually-hidden" aria-live="polite">
+        {moveMode ? `${t('qbr.moveMode')} ${targetAnnouncement}` : ''}
+      </p>
     </section>
   );
 }

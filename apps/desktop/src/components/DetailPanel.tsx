@@ -87,8 +87,15 @@ export type DetailPanelProps = {
     readonly readiness: GateReadiness;
     readonly overflow: number;
     readonly tradeoff?: {
-      readonly constrained: readonly { name: string; reason: 'MANDATORY' | 'IN_DELIVERY' | 'HARD_DEPENDENCY' }[];
-      readonly movable: readonly { name: string; units: number; earliestAlternativeQuarter?: string }[];
+      readonly constrained: readonly {
+        name: string;
+        reason: 'MANDATORY' | 'IN_DELIVERY' | 'HARD_DEPENDENCY';
+      }[];
+      readonly movable: readonly {
+        name: string;
+        units: number;
+        earliestAlternativeQuarter?: string;
+      }[];
     };
     readonly onCommit: () => void;
   } | null;

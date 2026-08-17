@@ -164,7 +164,15 @@ export function buildBoard(input: BoardInput): BoardModel {
         : null;
 
       const blocks = teamQuarter
-        ? layOutBlocks(team.id, quarterId, liveFootprints, commitments, workspace, summary!, input.scenario ?? false)
+        ? layOutBlocks(
+            team.id,
+            quarterId,
+            liveFootprints,
+            commitments,
+            workspace,
+            summary!,
+            input.scenario ?? false,
+          )
         : [];
 
       return {

@@ -35,7 +35,13 @@ import type {
 } from '@flowmap/domain';
 import { DomainErrorException, domainError, refKey } from '@flowmap/domain';
 
-import type { ApplyInput, OutboxEntry, OutboxState, SnapshotRecord, WorkspaceRepository } from './contracts.js';
+import type {
+  ApplyInput,
+  OutboxEntry,
+  OutboxState,
+  SnapshotRecord,
+  WorkspaceRepository,
+} from './contracts.js';
 
 type Snapshot = {
   workspaces: Record<string, Workspace>;
@@ -213,7 +219,9 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
   async apply(input: ApplyInput): Promise<void> {
     if (input.command.scenarioId !== undefined) {
       throw new DomainErrorException(
-        domainError('SCENARIO_CANNOT_MUTATE_BASELINE', { params: { scenarioId: input.command.scenarioId } }),
+        domainError('SCENARIO_CANNOT_MUTATE_BASELINE', {
+          params: { scenarioId: input.command.scenarioId },
+        }),
       );
     }
     const draft: Snapshot = structuredClone(this.#data);
@@ -244,19 +252,19 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
       }
 
       draft.outbox.push({
-          id: `${input.command.id}:${refKey(change.ref)}`,
-          workspaceId: input.workspaceId,
-          commandId: input.command.id,
-          entityRef: change.ref,
-          op: change.op,
-          changedFields: change.changedFields,
-          patch: change.after,
-          createdAt: input.command.issuedAt,
-          attempts: 0,
-          state: 'PENDING',
-          ...(input.command.batchId !== undefined ? { batchId: input.command.batchId } : {}),
-          ...(change.fromVersion !== undefined ? { baseVersion: change.fromVersion } : {}),
-          ...(change.before !== undefined ? { baseSnapshot: change.before } : {}),
+        id: `${input.command.id}:${refKey(change.ref)}`,
+        workspaceId: input.workspaceId,
+        commandId: input.command.id,
+        entityRef: change.ref,
+        op: change.op,
+        changedFields: change.changedFields,
+        patch: change.after,
+        createdAt: input.command.issuedAt,
+        attempts: 0,
+        state: 'PENDING',
+        ...(input.command.batchId !== undefined ? { batchId: input.command.batchId } : {}),
+        ...(change.fromVersion !== undefined ? { baseVersion: change.fromVersion } : {}),
+        ...(change.before !== undefined ? { baseSnapshot: change.before } : {}),
       });
     }
 
