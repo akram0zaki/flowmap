@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@flowmap/domain": "workspace:*",
+    "@flowmap/import-export": "workspace:*",
     "@flowmap/i18n": "workspace:*",
     "@flowmap/rules": "workspace:*",
     "@flowmap/storage": "workspace:*",

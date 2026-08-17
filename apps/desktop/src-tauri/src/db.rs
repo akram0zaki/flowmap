@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub struct DbState {
     pub conn: Mutex<Option<Connection>>,
+    pub path: Mutex<Option<PathBuf>>,
 }
 
 #[derive(Serialize)]
@@ -30,6 +31,8 @@ pub struct OpenInfo {
     #[serde(rename = "dataDir")]
     pub data_dir: String,
     pub portable: bool,
+    #[serde(rename = "corruptCacheRecovered")]
+    pub corrupt_cache_recovered: bool,
 }
 
 /// JSON-compatible parameter. `bigint` and byte arrays are converted on the JS
@@ -103,6 +106,23 @@ pub fn resolve_data_dir(app_data: PathBuf) -> (PathBuf, bool) {
     (app_data, false)
 }
 
+fn configure(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA foreign_keys = ON;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA busy_timeout = 5000;",
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn integrity_ok(conn: &Connection) -> Result<bool, String> {
+    let result: String = conn
+        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    Ok(result.eq_ignore_ascii_case("ok"))
+}
+
 pub fn open_at(dir: PathBuf, portable: bool) -> Result<(Connection, OpenInfo), String> {
     fs::create_dir_all(&dir).map_err(|e| format!("Cannot create data directory: {e}"))?;
 
@@ -117,20 +137,34 @@ pub fn open_at(dir: PathBuf, portable: bool) -> Result<(Connection, OpenInfo), S
         }
     }
 
-    let conn = Connection::open(&path).map_err(|e| e.to_string())?;
-    conn.execute_batch(
-        "PRAGMA journal_mode = WAL;
-         PRAGMA foreign_keys = ON;
-         PRAGMA synchronous = NORMAL;
-         PRAGMA busy_timeout = 5000;",
-    )
-    .map_err(|e| e.to_string())?;
+    let mut conn = Connection::open(&path).map_err(|e| e.to_string())?;
+    configure(&conn)?;
+    // A local cache is recoverable, but it is never silently discarded. Keep
+    // the original beside the rebuilt cache so support can restore a snapshot
+    // or inspect it; shared-provider rebuilding is added with M8.
+    let corrupt_cache_recovered = if integrity_ok(&conn)? {
+        false
+    } else {
+        drop(conn);
+        let backup = dir.join(format!(
+            "flowmap.corrupt-{}.db",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| e.to_string())?
+                .as_secs()
+        ));
+        fs::rename(&path, backup).map_err(|e| format!("Cannot preserve corrupt cache: {e}"))?;
+        conn = Connection::open(&path).map_err(|e| e.to_string())?;
+        configure(&conn)?;
+        true
+    };
 
     Ok((
         conn,
         OpenInfo {
             data_dir: dir.to_string_lossy().to_string(),
             portable,
+            corrupt_cache_recovered,
         },
     ))
 }
@@ -146,6 +180,24 @@ fn with_conn<T>(
 
 pub fn exec(state: &DbState, sql: &str) -> Result<(), String> {
     with_conn(state, |conn| conn.execute_batch(sql))
+}
+
+/** Preserves the database before a forward-only migration. Never overwrites a backup. */
+pub fn backup(state: &DbState, version: u32) -> Result<String, String> {
+    // Flush WAL first; copying only the main file while WAL contains committed
+    // pages would create a backup that cannot be restored independently.
+    with_conn(state, |conn| conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)"))?;
+    let path = state
+        .path
+        .lock()
+        .map_err(|_| "database path lock poisoned".to_string())?
+        .clone()
+        .ok_or_else(|| "database is not open".to_string())?;
+    let target = path.with_file_name(format!("flowmap.pre-migration-{version}.db"));
+    if !target.exists() {
+        fs::copy(&path, &target).map_err(|e| format!("Cannot write pre-migration backup: {e}"))?;
+    }
+    Ok(target.to_string_lossy().to_string())
 }
 
 pub fn run(state: &DbState, sql: &str, params: &[Param]) -> Result<(), String> {
@@ -257,5 +309,11 @@ mod tests {
     fn refuses_to_work_when_closed() {
         let state = DbState::default();
         assert!(exec(&state, "SELECT 1").is_err());
+    }
+
+    #[test]
+    fn integrity_check_accepts_a_new_database() {
+        let conn = Connection::open_in_memory().unwrap();
+        assert!(integrity_ok(&conn).unwrap());
     }
 }

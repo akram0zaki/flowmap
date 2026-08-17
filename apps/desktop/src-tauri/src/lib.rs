@@ -25,6 +25,11 @@ fn db_open(app: tauri::AppHandle, state: tauri::State<'_, DbState>) -> Result<Op
         .conn
         .lock()
         .map_err(|_| "database lock poisoned".to_string())? = Some(conn);
+    *state
+        .path
+        .lock()
+        .map_err(|_| "database path lock poisoned".to_string())? =
+        Some(std::path::PathBuf::from(&info.data_dir).join("flowmap.db"));
     Ok(info)
 }
 
@@ -69,7 +74,16 @@ fn db_close(state: tauri::State<'_, DbState>) -> Result<(), String> {
         .lock()
         .map_err(|_| "database lock poisoned".to_string())?;
     *guard = None;
+    *state
+        .path
+        .lock()
+        .map_err(|_| "database path lock poisoned".to_string())? = None;
     Ok(())
+}
+
+#[tauri::command]
+fn db_backup(state: tauri::State<'_, DbState>, version: u32) -> Result<String, String> {
+    db::backup(&state, version)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -85,6 +99,7 @@ pub fn run() {
             db_begin,
             db_commit,
             db_rollback,
+            db_backup,
             db_close
         ])
         .run(tauri::generate_context!())

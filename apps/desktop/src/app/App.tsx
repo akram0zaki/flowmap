@@ -49,6 +49,7 @@ import {
   levelForScale,
   scaleForLevel,
   toggleFilterValue,
+  allBlocks,
   LENSES,
   type CellModel,
   type DragPayload,
@@ -72,6 +73,11 @@ import { RuleSettings } from '../components/RuleSettings.jsx';
 import { ScenarioDock } from '../components/ScenarioDock.jsx';
 import { DemandFlow } from '../components/DemandFlow.jsx';
 import { CommandPalette } from '../components/CommandPalette.jsx';
+import { WorkspaceSwitcher } from '../components/WorkspaceSwitcher.jsx';
+import { PortabilityPanel } from '../components/PortabilityPanel.jsx';
+import { SavedViews } from '../components/SavedViews.jsx';
+import { SnapshotsPanel } from '../components/SnapshotsPanel.jsx';
+import { FirstRunGuide } from '../components/FirstRunGuide.jsx';
 import {
   DependencyMapView,
   HistoryView,
@@ -80,6 +86,7 @@ import {
   TimelineView,
 } from '../components/M5Views.jsx';
 import { useSignals } from '../state/use-signals.js';
+import { notificationMessages } from '../state/notifications.js';
 import type { VesselBlock } from '../components/CapacityVessel.jsx';
 import { t } from '../i18n/t.js';
 
@@ -89,6 +96,9 @@ export function App() {
   const state = useWorkspace((s) => s.state);
   const status = useWorkspace((s) => s.status);
   const profileName = useWorkspace((s) => s.profileName);
+  const workspaces = useWorkspace((s) => s.workspaces);
+  const archivedWorkspaces = useWorkspace((s) => s.archivedWorkspaces);
+  const activeWorkspaceId = useWorkspace((s) => s.activeWorkspaceId);
   const selectedFootprintId = useWorkspace((s) => s.selectedFootprintId);
   const presentationMode = useWorkspace((s) => s.presentationMode);
   const {
@@ -96,6 +106,17 @@ export function App() {
     redo,
     select,
     clearStatus,
+    createWorkspace,
+    switchWorkspace,
+    archiveActiveWorkspace,
+    restoreArchivedWorkspace,
+    importIdeas,
+    createSnapshot,
+    restoreSnapshot,
+    saveView,
+    removeSavedView,
+    saveImportMapping,
+    setNotificationSettings,
     clearLocalData,
     commitIdeaInto,
     moveFootprint,
@@ -245,6 +266,7 @@ export function App() {
   );
 
   const events = useWorkspace((s) => s.events);
+  const snapshots = useWorkspace((s) => s.snapshots);
   const runtime = useWorkspace((s) => s.runtime);
 
   /**
@@ -258,6 +280,23 @@ export function App() {
     now: runtime?.now ?? (() => new Date().toISOString()),
     events,
   });
+  const notifiedSignals = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (!state || typeof Notification === 'undefined') return;
+    const now = new Date(runtime?.now() ?? new Date().toISOString());
+    const messages = notificationMessages(
+      signals.visible,
+      state.workspace.settings.notifications,
+      now,
+      notifiedSignals.current,
+      t,
+    );
+    if (messages.length === 0 || Notification.permission !== 'granted') return;
+    for (const message of messages) {
+      new Notification(message.title, { body: message.body });
+      for (const key of message.key.split('|')) notifiedSignals.current.set(key, now.getTime());
+    }
+  }, [runtime, signals.visible, state]);
   const scenarioSignals = useSignals(scenarioState, {
     actorId: `local:local-profile`,
     settings: ruleSettings,
@@ -1037,6 +1076,13 @@ export function App() {
   const scenarios = [...(state.scenarios?.values() ?? [])]
     .filter((scenario) => scenario.archivedAt === undefined)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const exportRows = allBlocks(board).map((block) => ({
+    commitment: block.name,
+    lifecycle: block.lifecycle,
+    team: block.cell.teamName,
+    quarter: block.cell.quarterId,
+    units: block.units,
+  }));
 
   useEffect(() => {
     if (
@@ -1051,7 +1097,69 @@ export function App() {
     <div className="fm-shell" data-presentation={presentationMode || undefined}>
       <header className="fm-header">
         <h1 className="fm-header__brand">{t('app.name')}</h1>
-        <span className="fm-header__workspace">{state.workspace.name}</span>
+        <WorkspaceSwitcher
+          workspaces={workspaces}
+          archivedWorkspaces={archivedWorkspaces}
+          activeWorkspaceId={activeWorkspaceId}
+          timezone={state.workspace.timezone}
+          onSwitch={(workspaceId) => void switchWorkspace(workspaceId)}
+          onCreate={(name) => void createWorkspace(name, state.workspace.timezone)}
+          onArchive={() => void archiveActiveWorkspace()}
+          onRestore={(workspaceId) => void restoreArchivedWorkspace(workspaceId)}
+        />
+        {runtime && (
+          <PortabilityPanel
+            state={state}
+            events={events}
+            profileName={profileName}
+            now={runtime.now}
+            rows={exportRows}
+            radarRows={signals.visible.map((signal) => ({
+              rule: signal.ruleCode,
+              severity: signal.severity,
+              entity: signal.entityRef.kind,
+              due: signal.dueOn ?? '',
+            }))}
+            onImportedIdeas={importIdeas}
+            savedMappings={state.workspace.settings.importMappings ?? []}
+            onSaveMapping={saveImportMapping}
+            notificationSettings={state.workspace.settings.notifications ?? { mode: 'MY_ACTIONS' }}
+            onNotificationSettings={setNotificationSettings}
+            announce={announce}
+          />
+        )}
+        <SavedViews
+          views={state.workspace.settings.savedViews ?? []}
+          onSave={(name) =>
+            void saveView({
+              name,
+              lens: activeLens,
+              filters: {
+                quarters: filter.quarters,
+                teams: filter.teams,
+                lifecycles: filter.lifecycles,
+                classes: filter.classes,
+              },
+            })
+          }
+          onApply={(view) => {
+            setActiveLens(view.lens as ActiveLens);
+            setFilter({
+              ...NO_FILTER,
+              quarters: (view.filters['quarters'] ?? []) as FilterState['quarters'],
+              teams: (view.filters['teams'] ?? []) as FilterState['teams'],
+              lifecycles: (view.filters['lifecycles'] ?? []) as FilterState['lifecycles'],
+              classes: (view.filters['classes'] ?? []) as FilterState['classes'],
+            });
+            announce(t('savedViews.applied', { name: view.name }));
+          }}
+          onRemove={(viewId) => void removeSavedView(viewId)}
+        />
+        <SnapshotsPanel
+          snapshots={snapshots}
+          onCreate={() => void createSnapshot()}
+          onRestore={(id, confirmation) => void restoreSnapshot(id, confirmation)}
+        />
         <span className="fm-header__spacer" />
         <div className="fm-header__status" role="status">
           {/* Pending count is sync plumbing. With no shared provider there is
@@ -1073,6 +1181,7 @@ export function App() {
           </button>
         </div>
       )}
+      {state.teams.size === 0 && state.commitments.size === 0 && <FirstRunGuide />}
 
       <div className="fm-controlbar fm-editing-chrome">
         <nav className="fm-lens-nav" aria-label={t('lens.switch')}>

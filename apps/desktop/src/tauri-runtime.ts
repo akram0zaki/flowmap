@@ -100,16 +100,19 @@ export async function createTauriRuntime(base: {
   // A portable app must be able to tell you where its state actually lives
   // (spec 10 §3.1), so the resolved directory travels with the runtime and is
   // shown in Settings rather than buried in a console line.
-  const info = await invoke<{ dataDir: string; portable: boolean }>('db_open');
+  const info = await invoke<{ dataDir: string; portable: boolean; corruptCacheRecovered: boolean }>(
+    'db_open',
+  );
 
   const driver = new TauriSqlDriver(invoke);
   const repository = new SqliteWorkspaceRepository(driver);
-  await repository.migrate();
+  await repository.migrate({ backup: (version) => invoke<string>('db_backup', { version }) });
 
   return {
     repository,
     dataDir: info.dataDir,
     portable: info.portable,
+    ...(info.corruptCacheRecovered ? { recoveryNotice: 'CORRUPT_CACHE_RECOVERED' as const } : {}),
     /**
      * The only outward action the app performs.
      *

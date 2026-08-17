@@ -17,6 +17,9 @@
       "path": "../../packages/i18n"
     },
     {
+      "path": "../../packages/import-export"
+    },
+    {
       "path": "../../packages/rules"
     },
     {

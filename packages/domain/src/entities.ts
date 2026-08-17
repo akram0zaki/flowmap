@@ -92,6 +92,38 @@ export type WorkspaceSettings = {
   readonly valueDrivers: readonly string[];
   readonly noteMaxLength: 2000;
   readonly milestonesPerCommitment: 6;
+  /** View-only presets travel with a workspace but never contain portfolio data. */
+  readonly savedViews?: readonly SavedView[];
+  /** Reusable column mappings are workspace metadata, never imported portfolio data. */
+  readonly importMappings?: readonly SavedImportMapping[];
+  /** Foreground Radar delivery preferences. Radar remains the source of truth. */
+  readonly notifications?: NotificationSettings;
+  /** Stable external keys by importable entity type; keys never replace entity IDs. */
+  readonly externalKeys?: Readonly<Record<string, Readonly<Record<string, EntityId>>>>;
+};
+
+export type SavedView = {
+  readonly id: EntityId;
+  readonly name: string;
+  readonly lens: string;
+  readonly filters: Readonly<Record<string, readonly string[]>>;
+};
+
+export type SavedImportMapping = {
+  readonly id: EntityId;
+  readonly name: string;
+  readonly entity: string;
+  readonly mappings: readonly { readonly field: string; readonly column: string }[];
+  readonly enumValues: Readonly<Record<string, Readonly<Record<string, string>>>>;
+};
+
+export type NotificationMode =
+  'URGENT_ONLY' | 'MY_ACTIONS' | 'PORTFOLIO_WARNINGS' | 'STALE_ITEMS' | 'OFF';
+
+export type NotificationSettings = {
+  readonly mode: NotificationMode;
+  /** Inclusive local hour interval. Omitted means no quiet hours. */
+  readonly quietHours?: { readonly startHour: number; readonly endHour: number };
 };
 
 export const DEFAULT_VALUE_DRIVERS: readonly string[] = [
