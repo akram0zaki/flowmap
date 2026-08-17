@@ -12,6 +12,7 @@
 import { create } from 'zustand';
 import {
   applyTransition,
+  applyScenario as applyScenarioBatch,
   assignCapacityFootprint,
   baselineProjection,
   createIdea,
@@ -27,6 +28,8 @@ import {
   resizeCapacityFootprint,
   projectScenario,
   recordScenarioCommand,
+  rebaseScenario as rebaseScenarioDraft,
+  classifyScenarioRebase,
   restoreCapacityFootprint,
   setPrimaryTeam,
   splitCapacityFootprint,
@@ -41,6 +44,8 @@ import {
   type QuarterId,
   type WorkspaceState,
   type ScenarioProjection,
+  type RebaseOutcome,
+  type RebaseResolution,
 } from '@flowmap/domain';
 import {
   clearSignalDisposition,
@@ -273,6 +278,10 @@ type StoreState = {
   discardScenario(scenarioId: EntityId): Promise<boolean>;
   scenarioProjection(scenarioId: EntityId): ScenarioProjection | null;
   placeScenarioIdea(input: { scenarioId: EntityId; commitmentId: EntityId; teamId: EntityId; quarterId: string; units: number }): Promise<boolean>;
+  /** Applies a current scenario atomically. An irreversible apply clears local undo history. */
+  applyScenario(scenarioId: EntityId): Promise<boolean>;
+  getScenarioRebase(scenarioId: EntityId): readonly RebaseOutcome[];
+  rebaseScenario(scenarioId: EntityId, resolutions: readonly RebaseResolution[]): Promise<boolean>;
 };
 
 export const useWorkspace = create<StoreState>((set, get) => ({
@@ -325,7 +334,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
 
     const cmd = makeCommand(runtime, name);
     const ctx = makeContext(runtime, await runtime.repository.nextSequence(WORKSPACE_ID));
-    const result = run(state, cmd, ctx);
+    let result = run(state, cmd, ctx);
 
     if (!result.ok) {
       set({
@@ -336,6 +345,8 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       });
       return false;
     }
+
+    result = withBaselineRevision(state, name, result, ctx);
 
     await runtime.repository.apply({
       workspaceId: WORKSPACE_ID,
@@ -367,7 +378,10 @@ export const useWorkspace = create<StoreState>((set, get) => ({
         return [...stack.slice(0, -1), [...head, inverse]];
       };
 
-      const stacks =
+      const irreversible = result.effects.consequences?.some((consequence) => consequence.kind === 'IRREVERSIBLE');
+      const stacks = irreversible
+        ? { undoStack: [], redoStack: [] }
+        :
         history === 'record'
           ? { undoStack: append(prev.undoStack).slice(-100), redoStack: [] }
           : history === 'undoing'
@@ -841,7 +855,18 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     if (!runtime || !state) return false;
     const scenario = state.scenarios?.get(input.scenarioId);
     if (!scenario) return false;
-    const draft = {
+    const projected = get().scenarioProjection(input.scenarioId);
+    if (!projected) return false;
+    const idea = projected.commitments.get(input.commitmentId);
+    if (!idea || idea.lifecycle !== 'IDEA') return false;
+    const drafts: Command[] = [];
+    if (idea.primaryTeamId !== input.teamId) {
+      drafts.push({
+        ...makeCommand(runtime, 'SetPrimaryTeam'), scenarioId: input.scenarioId,
+        payload: { commitmentId: input.commitmentId, teamId: input.teamId },
+      });
+    }
+    drafts.push({
       ...makeCommand(runtime, 'AssignCapacityFootprint'),
       scenarioId: input.scenarioId,
       payload: {
@@ -849,28 +874,105 @@ export const useWorkspace = create<StoreState>((set, get) => ({
         teamId: input.teamId,
         quarterId: input.quarterId as QuarterId,
         units: input.units,
-        isPrimary: false,
+        isPrimary: true,
       },
-    };
-    const projected = get().scenarioProjection(input.scenarioId);
-    if (!projected) return false;
-    const preview = runNamed(draft.name, projected, draft, makeContext(runtime, 1));
-    if (!preview.ok) {
-      set({ status: { tone: 'critical', message: t(`errors.${preview.error.code}`, preview.error.params ?? {}) } });
-      return false;
-    }
-    return (
-      (await get().dispatch('RecordScenarioCommand', (baseline, cmd, ctx) =>
+    });
+    // The gate remains an intent while projected, so the block is still a
+    // ghost. It is realised only in the atomic apply batch.
+    drafts.push({
+      ...makeCommand(runtime, 'PassCommitGate'), scenarioId: input.scenarioId,
+      payload: { commitmentId: input.commitmentId },
+    });
+    for (const draft of drafts) {
+      const preview = draft.name === 'PassCommitGate'
+        ? { ok: true as const, effects: { changes: [], events: [], affectedProjections: [] } }
+        : runNamed(draft.name, projected, draft, makeContext(runtime, 1));
+      if (!preview.ok) {
+        set({ status: { tone: 'critical', message: t(`errors.${preview.error.code}`, preview.error.params ?? {}) } });
+        return false;
+      }
+      const saved = await get().dispatch('RecordScenarioCommand', (baseline, cmd, ctx) =>
         recordScenarioCommand(
           baseline,
-          { scenarioId: input.scenarioId, command: draft, label: 'scenario.command.assignFootprint' },
+          { scenarioId: input.scenarioId, command: draft, label: `scenario.command.${draft.name}` },
           cmd,
           ctx,
         ),
-      )) !== false
+      );
+      if (saved === false) return false;
+    }
+    return true;
+  },
+
+  async applyScenario(scenarioId) {
+    return (
+      (await get().dispatch('ApplyScenario', (state, cmd, ctx) => {
+        const scenario = state.scenarios?.get(scenarioId);
+        if (!scenario) return { ok: false, error: { code: 'ENTITY_NOT_FOUND', messageKey: 'error.ENTITY_NOT_FOUND' } };
+        return applyScenarioBatch(
+          baselineProjection(state), scenario,
+          (projection, recorded) => {
+            const { scenarioId: _scenarioId, ...baselineCommand } = recorded;
+            return runNamed(recorded.name, projection, baselineCommand, ctx);
+          },
+          { ...cmd, payload: { scenarioId } },
+          ctx,
+        );
+      })) !== false
+    );
+  },
+
+  getScenarioRebase(scenarioId) {
+    const { runtime, state } = get();
+    const scenario = state?.scenarios?.get(scenarioId);
+    if (!runtime || !state || !scenario) return [];
+    return classifyScenarioRebase(baselineProjection(state), scenario, (projection, recorded) => {
+      const { scenarioId: _scenarioId, ...baselineCommand } = recorded;
+      return runNamed(recorded.name, projection, baselineCommand, makeContext(runtime, 1));
+    });
+  },
+
+  async rebaseScenario(scenarioId, resolutions) {
+    return (
+      (await get().dispatch('RebaseScenario', (state, cmd, ctx) => {
+        const scenario = state.scenarios?.get(scenarioId);
+        if (!scenario) return { ok: false, error: { code: 'ENTITY_NOT_FOUND', messageKey: 'error.ENTITY_NOT_FOUND' } };
+        return rebaseScenarioDraft(
+          state, scenario,
+          (projection, recorded) => {
+            const { scenarioId: _scenarioId, ...baselineCommand } = recorded;
+            return runNamed(recorded.name, projection, baselineCommand, ctx);
+          },
+          resolutions,
+          cmd,
+          ctx,
+        );
+      })) !== false
     );
   },
 }));
+
+const SCENARIO_METADATA_COMMANDS = new Set(['CreateScenario', 'RecordScenarioCommand', 'DiscardScenario', 'ShareScenario', 'RebaseScenario']);
+
+/** Every baseline mutation advances the optimistic-concurrency revision once. */
+function withBaselineRevision(
+  state: WorkspaceState,
+  name: string,
+  result: Extract<CommandResult, { ok: true }>,
+  ctx: CommandContext,
+): Extract<CommandResult, { ok: true }> {
+  if (SCENARIO_METADATA_COMMANDS.has(name) || result.effects.changes.some((change) => change.ref.kind === 'WORKSPACE')) return result;
+  const before = state.workspace;
+  const after = { ...before, revision: before.revision + 1, entityVersion: before.entityVersion + 1, updatedAt: ctx.clock.now(), updatedBy: ctx.actorId };
+  return {
+    ok: true,
+    effects: { ...result.effects, changes: [...result.effects.changes, {
+      ref: { kind: 'WORKSPACE', id: before.id }, op: 'UPDATE', fromVersion: before.entityVersion,
+      toVersion: after.entityVersion, before, after,
+      changedFields: ['entityVersion', 'revision', 'updatedAt', 'updatedBy'],
+    }] },
+  };
+}
 
 async function refreshPending(get: () => StoreState, set: (partial: Partial<StoreState>) => void) {
   const { runtime } = get();

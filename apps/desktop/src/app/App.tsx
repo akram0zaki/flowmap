@@ -68,6 +68,7 @@ import { CaptureBar } from '../components/CaptureBar.jsx';
 import { Radar } from '../components/Radar.jsx';
 import { RuleSettings } from '../components/RuleSettings.jsx';
 import { ScenarioDock } from '../components/ScenarioDock.jsx';
+import { DemandFlow } from '../components/DemandFlow.jsx';
 import { useSignals } from '../state/use-signals.js';
 import type { VesselBlock } from '../components/CapacityVessel.jsx';
 import { t } from '../i18n/t.js';
@@ -101,6 +102,9 @@ export function App() {
     clearSignal,
     createScenario,
     discardScenario,
+    applyScenario,
+    getScenarioRebase,
+    rebaseScenario,
     scenarioProjection,
     placeScenarioIdea,
   } = useWorkspace.getState();
@@ -133,9 +137,13 @@ export function App() {
   const [ruleSettings, setRuleSettings] = useState<Settings>(NO_RULE_SETTINGS);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
   const [presentationMode, setPresentationMode] = useState(false);
+  const [showDemandFlow, setShowDemandFlow] = useState(false);
   const scenarioState = selectedScenarioId === null ? null : scenarioProjection(selectedScenarioId);
   const viewState = scenarioState ?? state;
   const scenarioDiff = state && scenarioState ? compareScenario(baselineProjection(state), scenarioState) : null;
+  const scenarioRebase = state && selectedScenarioId !== null && state.scenarios?.get(selectedScenarioId)?.baseRevision !== state.workspace.revision
+    ? getScenarioRebase(selectedScenarioId)
+    : undefined;
 
   // Announcements are debounced through a ref so rapid arrow-key movement does
   // not queue a dozen utterances.
@@ -922,6 +930,9 @@ export function App() {
           onToggleHide={() => setFilter((f) => ({ ...f, hideFiltered: !f.hideFiltered }))}
           onClearFocus={() => setFocusedCommitmentId(null)}
         />
+        <button type="button" className="fm-quiet" aria-pressed={showDemandFlow} onClick={() => setShowDemandFlow((visible) => !visible)}>
+          {t(showDemandFlow ? 'qbr.close' : 'qbr.open')}
+        </button>
       </div>
 
       <ScenarioDock
@@ -934,7 +945,15 @@ export function App() {
             if (discarded) setSelectedScenarioId(null);
           });
         }}
+        onApply={(scenarioId) => {
+          void applyScenario(scenarioId).then((applied) => {
+            if (applied) setSelectedScenarioId(null);
+          });
+        }}
+        onRebase={(scenarioId, resolutions) => void rebaseScenario(scenarioId, resolutions)}
         {...(scenarioDiff ? { summary: scenarioDiff.summary } : {})}
+        {...(scenarioDiff ? { diff: scenarioDiff } : {})}
+        {...(scenarioRebase ? { rebase: scenarioRebase } : {})}
       />
 
       {!presentationMode && <CaptureBar
@@ -953,7 +972,22 @@ export function App() {
         onOpenRuleSettings={() => setShowRuleSettings(true)}
       />}
 
-      <div className="fm-workspace">
+      {showDemandFlow && board && (
+        <DemandFlow
+          ideas={board.ideas.map((idea) => ({ id: idea.commitmentId, name: idea.name }))}
+          teams={teams.map((team) => ({ id: team.id, name: team.name }))}
+          quarters={board.quarters}
+          scenarioId={selectedScenarioId}
+          defaultUnits={defaultDropUnits(state.workspace.settings.capacity.sizeMapping)}
+          onPlace={(input) => {
+            if (selectedScenarioId !== null) {
+              void placeScenarioIdea({ scenarioId: selectedScenarioId, ...input });
+            }
+          }}
+        />
+      )}
+
+      {!showDemandFlow && <div className="fm-workspace">
         <IdeasLane
           ideas={board.ideas}
           readiness={readiness}
@@ -1166,7 +1200,7 @@ export function App() {
             onClose={() => setFocusedCommitmentId(null)}
           />
         )}
-      </div>
+      </div>}
 
       {/* The piece that follows the cursor. Small and quiet — the answer is on
           the board, not under the pointer. Positioned by `usePlacement` writing

@@ -614,7 +614,18 @@ export function CapacityVessel({
                       {truncate(block.commitment.name, labelBudget(BODY_WIDTH - milestoneWidth))}
                     </text>
                   )}
-                  {blockHeight >= 9 && (
+                  {block.scenarioGhost && blockHeight >= 15 && (
+                    <text
+                      x={BODY_WIDTH - 18}
+                      y={labelY}
+                      className="fm-block__scenario-badge"
+                      textAnchor="end"
+                      aria-hidden="true"
+                    >
+                      {t('scenario.ghost')}
+                    </text>
+                  )}
+                  {blockHeight >= 9 && (!block.scenarioGhost || blockHeight < 15) && (
                     <text
                       x={BODY_WIDTH - 18}
                       y={blockHeight >= 15 ? labelY : y(block.top) + blockHeight / 2 + 3}
@@ -766,6 +777,7 @@ function blockLabel(
     carried ? t('carryover.from', { quarter: block.footprint.carryOverFromQuarterId ?? '' }) : null,
     isOverflow ? t('patterns.overflow') : null,
     block.counted ? null : t('vessel.notCounted'),
+    block.scenarioGhost ? t('scenario.ghost') : null,
     // Health is a separate answer from attention, so it is said separately.
     block.health && block.health !== 'OK' ? t(`health.${block.health}`) : null,
     // Announced at every level, including the ones too small to draw them —

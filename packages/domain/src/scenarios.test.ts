@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { Command, CommandContext, WorkspaceState } from './command.js';
 import {
   baselineProjection,
+  applyScenario,
+  classifyScenarioRebase,
   createScenario,
   projectScenario,
   recordScenarioCommand,
@@ -64,5 +66,91 @@ describe('scenario overlays', () => {
     const result = recordScenarioCommand(withScenario, { scenarioId: scenario.id, command: command('CreateIdea'), label: 'scenario.command.createIdea' }, command('RecordScenarioCommand'), context());
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('SCENARIO_COMMAND_NOT_ALLOWED');
+  });
+
+  it('never applies a stale scenario, even when its replay would succeed', () => {
+    const base = state();
+    const made = createScenario(base, { name: 'Option', ownerUserId: 'person' }, command('CreateScenario'), context());
+    if (!made.ok) throw new Error('scenario should be created');
+    const scenario = made.effects.changes[0]!.after as Scenario;
+    const stale = baselineProjection({ ...base, workspace: { ...base.workspace, revision: 5 } });
+    const result = applyScenario(
+      stale,
+      scenario,
+      () => ({ ok: true, effects: { changes: [], events: [], affectedProjections: [] } }),
+      { ...command('ApplyScenario'), payload: { scenarioId: scenario.id } },
+      context(),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('SCENARIO_STALE');
+  });
+
+  it('applies an up-to-date scenario as one revision bump and undo barrier', () => {
+    const base = state();
+    const made = createScenario(base, { name: 'Option', ownerUserId: 'person' }, command('CreateScenario'), context());
+    if (!made.ok) throw new Error('scenario should be created');
+    const scenario = made.effects.changes[0]!.after as Scenario;
+    const result = applyScenario(
+      baselineProjection(base), scenario,
+      () => ({ ok: true, effects: { changes: [], events: [], affectedProjections: [] } }),
+      { ...command('ApplyScenario'), payload: { scenarioId: scenario.id } },
+      context(),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const workspace = result.effects.changes.find((change) => change.ref.kind === 'WORKSPACE')!.after as Workspace;
+      const applied = result.effects.changes.find((change) => change.ref.kind === 'SCENARIO')!.after as Scenario;
+      expect(workspace.revision).toBe(5);
+      expect(applied.status).toBe('APPLIED');
+      expect(result.effects.consequences).toEqual([{ kind: 'IRREVERSIBLE', noteKey: 'scenario.applyUndoBarrier' }]);
+    }
+  });
+
+  it('reports an overlapping field edit with the baseline actor and time', () => {
+    const base = state();
+    const scenario: Scenario = {
+      id: 'scenario-1', workspaceId: 'ws', schemaVersion: 1, entityVersion: 1,
+      createdAt: NOW, createdBy: 'person', updatedAt: NOW, updatedBy: 'person',
+      name: 'Option', ownerUserId: 'person', visibility: 'PRIVATE', baseRevision: 4,
+      status: 'DRAFT',
+      commands: [{
+        id: 'record-1', sequence: 1, recordedAt: NOW, label: 'scenario.command.UpdateCommitment',
+        command: { ...command('UpdateCommitment'), scenarioId: 'scenario-1', payload: { commitmentId: 'c-1', patch: { name: 'Mine' } } },
+        baseFields: [{ kind: 'COMMITMENT', id: 'c-1', field: 'name', value: 'Original', changedBy: 'other', changedAt: '2026-08-14T09:00:00Z' }],
+      }],
+    };
+    const commitment = {
+      id: 'c-1', workspaceId: 'ws', schemaVersion: 1, entityVersion: 2, createdAt: NOW,
+      createdBy: 'person', updatedAt: '2026-08-16T09:00:00Z', updatedBy: 'other',
+      name: 'Theirs', lifecycle: 'IDEA', class: 'DISCRETIONARY',
+    } as never;
+    const outcomes = classifyScenarioRebase(
+      baselineProjection({ ...base, commitments: new Map([['c-1', commitment]]) }),
+      scenario,
+      () => ({ ok: true, effects: { changes: [], events: [], affectedProjections: [] } }),
+    );
+    expect(outcomes).toEqual([expect.objectContaining({ status: 'CONFLICT', field: 'name', scenarioValue: 'Mine', baselineValue: 'Theirs', baselineChangedBy: 'other' })]);
+  });
+
+  it('rejects a selective gate apply without its recorded placement prerequisites', () => {
+    const base = state();
+    const scenario: Scenario = {
+      id: 'scenario-1', workspaceId: 'ws', schemaVersion: 1, entityVersion: 1,
+      createdAt: NOW, createdBy: 'person', updatedAt: NOW, updatedBy: 'person',
+      name: 'Option', ownerUserId: 'person', visibility: 'PRIVATE', baseRevision: 4, status: 'DRAFT',
+      commands: [
+        { id: 'team', sequence: 1, recordedAt: NOW, label: 'scenario.command.SetPrimaryTeam', command: { ...command('SetPrimaryTeam'), scenarioId: 'scenario-1', payload: { commitmentId: 'idea', teamId: 'team-a' } } },
+        { id: 'footprint', sequence: 2, recordedAt: NOW, label: 'scenario.command.AssignCapacityFootprint', command: { ...command('AssignCapacityFootprint'), scenarioId: 'scenario-1', payload: { commitmentId: 'idea', teamId: 'team-a', quarterId: '2026-Q3', units: 10 } } },
+        { id: 'gate', sequence: 3, recordedAt: NOW, label: 'scenario.command.PassCommitGate', command: { ...command('PassCommitGate'), scenarioId: 'scenario-1', payload: { commitmentId: 'idea' } } },
+      ],
+    };
+    const result = applyScenario(
+      baselineProjection(base), scenario,
+      () => ({ ok: true, effects: { changes: [], events: [], affectedProjections: [] } }),
+      { ...command('ApplyScenario'), payload: { scenarioId: scenario.id, mode: 'SELECTED', commandIds: ['gate'] } },
+      context(),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('SCENARIO_SELECTION_INCOMPLETE');
   });
 });

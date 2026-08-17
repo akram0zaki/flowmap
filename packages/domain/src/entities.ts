@@ -395,6 +395,21 @@ export type ScenarioCommandRecord = {
   readonly recordedAt: IsoDateTime;
   /** I18n summary key, never user-authored prose. */
   readonly label: string;
+  /**
+   * Values read when the intent was recorded. They are deliberately small,
+   * field-level snapshots rather than a copy of the workspace: rebase uses
+   * them to distinguish a genuinely overlapping change from a clean replay.
+   */
+  readonly baseFields?: readonly ScenarioBaseField[];
+};
+
+export type ScenarioBaseField = {
+  readonly kind: string;
+  readonly id: EntityId;
+  readonly field: string;
+  readonly value: unknown;
+  readonly changedBy: ActorId;
+  readonly changedAt: IsoDateTime;
 };
 
 export type Scenario = EntityEnvelope & {

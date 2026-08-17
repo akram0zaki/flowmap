@@ -6,7 +6,8 @@
  * overlay and diff steps land.
  */
 
-import type { Scenario } from '@flowmap/domain';
+import { useState } from 'react';
+import type { RebaseOutcome, RebaseResolution, Scenario, ScenarioDiff } from '@flowmap/domain';
 
 import { t } from '../i18n/t.js';
 
@@ -16,7 +17,11 @@ export type ScenarioDockProps = {
   readonly onSelect: (id: string | null) => void;
   readonly onCreate: () => void;
   readonly onDiscard: (id: string) => void;
+  readonly onApply: (id: string) => void;
   readonly summary?: { teamsAffected: number; quartersAffected: number; netUnitsMoved: number; newOverflows: number; resolvedOverflows: number };
+  readonly diff?: ScenarioDiff;
+  readonly rebase?: readonly RebaseOutcome[];
+  readonly onRebase: (id: string, resolutions: readonly RebaseResolution[]) => void;
 };
 
 export function ScenarioDock({
@@ -25,10 +30,18 @@ export function ScenarioDock({
   onSelect,
   onCreate,
   onDiscard,
+  onApply,
   summary,
+  diff,
+  rebase,
+  onRebase,
 }: ScenarioDockProps) {
   const active = scenarios.filter((scenario) => scenario.status === 'DRAFT' || scenario.status === 'SHARED');
   const selected = active.find((scenario) => scenario.id === selectedId) ?? null;
+  const [resolutions, setResolutions] = useState<Record<string, RebaseResolution['action']>>({});
+  const [confirmingApply, setConfirmingApply] = useState(false);
+  const conflicts = rebase?.filter((outcome) => outcome.status === 'CONFLICT') ?? [];
+  const stale = selected !== null && rebase !== undefined;
 
   return (
     <section className="fm-scenarios" aria-label={t('scenario.label')}>
@@ -81,12 +94,87 @@ export function ScenarioDock({
               <div><dt>{t('scenario.newOverflows')}</dt><dd>{summary.newOverflows}</dd></div>
             </dl>
           )}
+          <section className="fm-scenario-diff" aria-label={t('scenario.diff.list')}>
+            <h3>{t('scenario.comparison')}</h3>
+            {diff && (diff.capacity.length > 0 || diff.commitments.length > 0 || diff.gatePassages.length > 0) ? (
+              <ul>
+                {diff.capacity.map((change) => (
+                  <li key={`${change.teamId}:${change.quarterId}`}>
+                    {t('scenario.diff.capacityChange', { team: change.teamId, quarter: change.quarterId, before: change.loadBefore, after: change.loadAfter, ghost: change.scenarioLoad })}
+                  </li>
+                ))}
+                {diff.commitments.map((change) => (
+                  <li key={change.commitmentId}>
+                    {t('scenario.diff.commitmentChange', { count: change.changedFields.length })}
+                  </li>
+                ))}
+                {diff.gatePassages.length > 0 && <li>{t('scenario.diff.gateCount', { count: diff.gatePassages.length })}</li>}
+              </ul>
+            ) : <p>{t('scenario.diff.empty')}</p>}
+          </section>
+          {stale && (
+            <section className="fm-scenario-rebase" aria-label={t('scenario.rebase')}>
+              <h3>{t('scenario.rebase')}</h3>
+              <p>{t('scenario.rebaseDescription')}</p>
+              <ul>
+                {rebase.map((outcome) => (
+                  <li key={outcome.commandId}>
+                    {outcome.status === 'CLEAN' && t('scenario.rebase.clean')}
+                    {outcome.status === 'REDUNDANT' && t('scenario.rebase.redundant')}
+                    {outcome.status === 'OBSOLETE' && t('scenario.rebase.obsolete')}
+                    {outcome.status === 'CONFLICT' && (
+                      <label>
+                        <span>{t('scenario.rebase.conflict', { field: outcome.field })}</span>
+                        <select
+                          value={resolutions[outcome.commandId] ?? ''}
+                          onChange={(event) => setResolutions((current) => ({
+                            ...current,
+                            [outcome.commandId]: event.target.value as RebaseResolution['action'],
+                          }))}
+                        >
+                          <option value="">{t('scenario.rebase.choose')}</option>
+                          <option value="KEEP_MINE">{t('scenario.rebase.keepMine')}</option>
+                          <option value="TAKE_THEIRS">{t('scenario.rebase.takeTheirs')}</option>
+                        </select>
+                      </label>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                className="fm-primary"
+                disabled={conflicts.some((outcome) => resolutions[outcome.commandId] === undefined)}
+                onClick={() => onRebase(selected.id, conflicts.map((outcome) => ({ commandId: outcome.commandId, action: resolutions[outcome.commandId]! })))}
+              >
+                {t('scenario.rebase')}
+              </button>
+            </section>
+          )}
         <div className="fm-scenarios__footer">
           <span>{t('scenario.commands', { count: selected.commands.length })}</span>
+          <button type="button" className="fm-primary" disabled={stale} onClick={() => setConfirmingApply(true)}>
+            {t('scenario.apply')}
+          </button>
           <button type="button" className="fm-danger" onClick={() => onDiscard(selected.id)}>
             {t('scenario.discard')}
           </button>
         </div>
+        {confirmingApply && diff && (
+          <section className="fm-consequence-preview" role="dialog" aria-modal="true" aria-label={t('consequence.label')}>
+            <h3>{t('consequence.label')}</h3>
+            <p>{t('consequence.apply')}</p>
+            <ul>
+              {diff.capacity.length > 0 && <li>{t('consequence.capacity', { count: diff.capacity.length })}</li>}
+              {diff.summary.newOverflows > 0 && <li>{t('consequence.overflow', { count: diff.summary.newOverflows })}</li>}
+              {diff.gatePassages.length > 0 && <li>{t('consequence.gate', { count: diff.gatePassages.length })}</li>}
+            </ul>
+            <div className="fm-consequence-preview__actions">
+              <button type="button" onClick={() => setConfirmingApply(false)}>{t('consequence.cancel')}</button>
+              <button type="button" className="fm-primary" onClick={() => { setConfirmingApply(false); onApply(selected.id); }}>{t('consequence.continue')}</button>
+            </div>
+          </section>
+        )}
         </>
       )}
     </section>

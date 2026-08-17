@@ -8,10 +8,11 @@
  */
 
 import type { Command, CommandContext, CommandEffects, CommandResult, WorkspaceState } from './command.js';
-import type { Scenario, ScenarioCommandRecord } from './entities.js';
+import type { Scenario, ScenarioBaseField, ScenarioCommandRecord } from './entities.js';
 import type { EntityId } from './primitives.js';
 import { summariseCapacity } from './capacity.js';
 import { authorise, bumped, created, domainFail, event, newEnvelope, requireName, succeed, updated } from './handler-kit.js';
+import { domainError, type DomainError } from './errors.js';
 
 const baselineBrand = Symbol('flowmap.baseline');
 const scenarioBrand = Symbol('flowmap.scenario');
@@ -67,6 +68,43 @@ export type ScenarioDiff = {
   };
 };
 
+export type RebaseOutcome =
+  | { readonly commandId: EntityId; readonly status: 'CLEAN' }
+  | { readonly commandId: EntityId; readonly status: 'REDUNDANT'; readonly reason: string }
+  | { readonly commandId: EntityId; readonly status: 'OBSOLETE'; readonly reason: string }
+  | {
+      readonly commandId: EntityId;
+      readonly status: 'CONFLICT';
+      readonly field: string;
+      readonly scenarioValue: unknown;
+      readonly baselineValue: unknown;
+      readonly baselineChangedBy: string;
+      readonly baselineChangedAt: string;
+    };
+
+export type ApplyScenarioPayload = {
+  readonly scenarioId: EntityId;
+  readonly mode?: 'ALL' | 'SELECTED';
+  readonly commandIds?: readonly EntityId[];
+  readonly reason?: string;
+};
+
+export type RebaseResolution = {
+  readonly commandId: EntityId;
+  readonly action: 'KEEP_MINE' | 'TAKE_THEIRS' | 'EDIT';
+  /** Required for EDIT and kept as scenario intent. */
+  readonly command?: Command;
+};
+
+const SCENARIO_COMMANDS = new Set([
+  'CreateIdea', 'AssignCapacityFootprint', 'MoveCapacityFootprint',
+  'ResizeCapacityFootprint', 'RemoveCapacityFootprint', 'RestoreCapacityFootprint',
+  'SetPrimaryTeam', 'UpdateCommitment', 'PassCommitGate', 'HoldCommitment',
+  'ResumeCommitment', 'DropCommitment', 'SetProductImpact', 'RemoveProductImpact',
+  'AddDependency', 'UpdateDependency', 'RemoveDependency', 'AddMilestone',
+  'UpdateMilestone', 'RemoveMilestone',
+]);
+
 /**
  * Replays draft effects onto fresh maps. The baseline maps are never written;
  * callers can retain and byte-compare their serialised baseline with confidence.
@@ -79,6 +117,9 @@ export function projectScenario(
   let current: WorkspaceState = cloneState(base);
   for (const record of scenario.commands) {
     const command = record.command as unknown as Command;
+    // A gate passage is an intent in a scenario. Keeping the Idea an Idea is
+    // what lets its placement remain visibly tentative until apply.
+    if (command.name === 'PassCommitGate') continue;
     const result = replay(current, command);
     if (result.ok) current = applyEffects(current, result.effects);
   }
@@ -140,6 +181,171 @@ export function compareScenario(base: BaselineProjection, projected: ScenarioPro
   };
 }
 
+/**
+ * Rebase is a replay, not a merge. A command that now produces no effects is
+ * redundant; a command that cannot be replayed is obsolete. Field conflicts
+ * require a historical base snapshot and are therefore conservatively surfaced
+ * as unresolved by callers that have one.
+ */
+export function classifyScenarioRebase(
+  baseline: BaselineProjection,
+  scenario: Scenario,
+  replay: ScenarioReplay,
+): readonly RebaseOutcome[] {
+  let current: WorkspaceState = baseline;
+  return scenario.commands.map((record) => {
+    const { scenarioId: _scenarioId, ...command } = record.command as unknown as Command;
+    const conflict = record.baseFields?.find((field) => {
+      const live = scenarioField(baseline, field.kind, field.id, field.field);
+      return live !== MISSING && !sameValue(live, field.value);
+    });
+    if (conflict) {
+      const entity = scenarioEntity(baseline, conflict.kind, conflict.id) as { updatedBy?: string; updatedAt?: string } | undefined;
+      return {
+        commandId: record.id,
+        status: 'CONFLICT',
+        field: conflict.field,
+        scenarioValue: scenarioValue(command, conflict.field),
+        baselineValue: scenarioField(baseline, conflict.kind, conflict.id, conflict.field),
+        baselineChangedBy: entity?.updatedBy ?? conflict.changedBy,
+        baselineChangedAt: entity?.updatedAt ?? conflict.changedAt,
+      };
+    }
+    // Gate intents can only be validated when their preceding ghost placement
+    // is materialised during apply; they are clean while rebasing a draft.
+    if (command.name === 'PassCommitGate') return { commandId: record.id, status: 'CLEAN' };
+    const result = replay(current, command);
+    if (!result.ok) return { commandId: record.id, status: 'OBSOLETE', reason: result.error.code };
+    if (result.effects.changes.length === 0) return { commandId: record.id, status: 'REDUNDANT', reason: 'No baseline change remains' };
+    current = applyEffects(current, result.effects);
+    return { commandId: record.id, status: 'CLEAN' };
+  });
+}
+
+/**
+ * Produces one atomic baseline batch for an up-to-date scenario. Repository
+ * `apply` is the transaction boundary; callers submit this single effect set.
+ */
+export function applyScenario(
+  baseline: BaselineProjection,
+  scenario: Scenario,
+  replay: ScenarioReplay,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'PLANNER');
+  if (unauthorised) return unauthorised;
+  const payload = cmd.payload as ApplyScenarioPayload;
+  if (payload.scenarioId !== scenario.id) return domainFail('ENTITY_NOT_FOUND', { entityRef: { kind: 'SCENARIO', id: payload.scenarioId } });
+  if (scenario.baseRevision < baseline.workspace.revision) return domainFail('SCENARIO_STALE');
+  const rebase = classifyScenarioRebase(baseline, scenario, replay);
+  if (rebase.some((outcome) => outcome.status === 'CONFLICT')) {
+    return domainFail('SCENARIO_CONFLICT_UNRESOLVED', { params: { count: rebase.filter((item) => item.status === 'CONFLICT').length } });
+  }
+  let current: WorkspaceState = baseline;
+  const selected = selectedScenarioCommands(scenario, payload);
+  if (!selected.ok) return selected;
+  const changes: Array<CommandEffects['changes'][number]> = [];
+  const events: Array<CommandEffects['events'][number]> = [];
+  for (const record of selected.records) {
+    const { scenarioId: _scenarioId, ...recorded } = record.command as unknown as Command;
+    const result = replay(current, recorded);
+    if (!result.ok) return result;
+    current = applyEffects(current, result.effects);
+    changes.push(...result.effects.changes);
+    events.push(...result.effects.events.map((item) => ({ ...item, sequence: ctx.nextSequence + events.length, scenarioId: scenario.id })));
+  }
+  const workspaceAfter = bumped({ ...baseline.workspace, revision: baseline.workspace.revision + 1 }, ctx);
+  const scenarioAfter = bumped({ ...scenario, status: 'APPLIED' as const, appliedAt: ctx.clock.now(), appliedBy: ctx.actorId, appliedCommandIds: selected.records.map((record) => record.id) }, ctx);
+  const workspaceRef = { kind: 'WORKSPACE', id: baseline.workspace.id } as const;
+  const scenarioRef = { kind: 'SCENARIO', id: scenario.id } as const;
+  return succeed({
+    changes: [...changes, updated(workspaceRef, baseline.workspace, workspaceAfter), updated(scenarioRef, scenario, scenarioAfter)],
+    events: [...events, event(cmd, ctx, events.length, 'SCENARIO_APPLIED', [scenarioRef], { scenarioId: scenario.id, commandIds: selected.records.map((record) => record.id), mode: payload.mode ?? 'ALL' })],
+    affectedProjections: ['radar'],
+    consequences: [{ kind: 'IRREVERSIBLE', noteKey: 'scenario.applyUndoBarrier' }],
+  });
+}
+
+/** Resolves rebase outcomes explicitly and moves the draft onto the live revision. */
+export function rebaseScenario(
+  state: WorkspaceState,
+  scenario: Scenario,
+  replay: ScenarioReplay,
+  resolutions: readonly RebaseResolution[],
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'CONTRIBUTOR');
+  if (unauthorised) return unauthorised;
+  const base = baselineProjection(state);
+  const outcomes = classifyScenarioRebase(base, scenario, replay);
+  const choices = new Map(resolutions.map((resolution) => [resolution.commandId, resolution]));
+  const unresolved = outcomes.filter((outcome) => outcome.status === 'CONFLICT' && !choices.has(outcome.commandId));
+  if (unresolved.length > 0) return domainFail('SCENARIO_CONFLICT_UNRESOLVED', { params: { count: unresolved.length } });
+  const outcomeById = new Map(outcomes.map((outcome) => [outcome.commandId, outcome]));
+  const commands: ScenarioCommandRecord[] = [];
+  for (const record of scenario.commands) {
+    const outcome = outcomeById.get(record.id);
+    if (!outcome || outcome.status === 'REDUNDANT' || outcome.status === 'OBSOLETE') continue;
+    const resolution = choices.get(record.id);
+    if (resolution?.action === 'TAKE_THEIRS') continue;
+    if (resolution?.action === 'EDIT' && resolution.command === undefined) {
+      return domainFail('SCENARIO_CONFLICT_UNRESOLVED', { params: { count: 1 } });
+    }
+    const command = resolution?.action === 'EDIT' ? resolution.command! : record.command as unknown as Command;
+    if (command.scenarioId !== scenario.id) return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', { params: { command: command.name } });
+    commands.push({
+      ...record,
+      sequence: commands.length + 1,
+      command: command as unknown as Readonly<Record<string, unknown>>,
+      baseFields: captureScenarioFields(state, command),
+    });
+  }
+  const after = bumped({ ...scenario, baseRevision: state.workspace.revision, commands }, ctx);
+  const ref = { kind: 'SCENARIO', id: scenario.id } as const;
+  return succeed({
+    changes: [updated(ref, scenario, after)],
+    events: [event(cmd, ctx, 0, 'SCENARIO_REBASED', [ref], { scenarioId: scenario.id, baseRevision: after.baseRevision, droppedCommands: scenario.commands.length - commands.length })],
+    affectedProjections: ['radar'],
+  });
+}
+
+type SelectedScenarioCommands =
+  | { readonly ok: true; readonly records: readonly ScenarioCommandRecord[] }
+  | { readonly ok: false; readonly error: DomainError };
+
+function selectedScenarioCommands(
+  scenario: Scenario,
+  payload: ApplyScenarioPayload,
+): SelectedScenarioCommands {
+  if ((payload.mode ?? 'ALL') === 'ALL') return { ok: true, records: scenario.commands };
+  const requested = new Set(payload.commandIds ?? []);
+  const selected = scenario.commands.filter((record) => requested.has(record.id));
+  const missing = new Set<EntityId>();
+  for (const record of selected) {
+    const command = record.command as unknown as Command;
+    const commitmentId = (command.payload as Record<string, unknown>).commitmentId as EntityId | undefined;
+    if (!commitmentId || command.name === 'SetPrimaryTeam') continue;
+    // The placement sequence is intentionally explicit: accountable team,
+    // footprint, then gate. A later intent cannot be applied without its
+    // earlier structural prerequisite.
+    const prerequisites = scenario.commands.filter((candidate) => {
+      if (candidate.sequence >= record.sequence) return false;
+      const previous = candidate.command as unknown as Command;
+      const previousCommitment = (previous.payload as Record<string, unknown>).commitmentId;
+      return previousCommitment === commitmentId && (
+        (command.name === 'AssignCapacityFootprint' && previous.name === 'SetPrimaryTeam') ||
+        (command.name === 'PassCommitGate' && ['SetPrimaryTeam', 'AssignCapacityFootprint'].includes(previous.name))
+      );
+    });
+    for (const prerequisite of prerequisites) if (!requested.has(prerequisite.id)) missing.add(prerequisite.id);
+  }
+  return missing.size > 0
+    ? { ok: false, error: domainError('SCENARIO_SELECTION_INCOMPLETE', { params: { count: missing.size } }) }
+    : { ok: true, records: selected };
+}
+
 /** Only this module accepts a scenario command; baseline handlers must reject it. */
 export function recordScenarioCommand(
   state: WorkspaceState,
@@ -157,12 +363,16 @@ export function recordScenarioCommand(
   if (payload.command.scenarioId !== scenario.id) {
     return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', { params: { command: payload.command.name } });
   }
+  if (!SCENARIO_COMMANDS.has(payload.command.name)) {
+    return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', { params: { command: payload.command.name } });
+  }
   const record: ScenarioCommandRecord = {
     id: payload.command.id,
     sequence: scenario.commands.length + 1,
     command: payload.command as unknown as Readonly<Record<string, unknown>>,
     recordedAt: ctx.clock.now(),
     label: payload.label,
+    baseFields: captureScenarioFields(state, payload.command),
   };
   const after = bumped({ ...scenario, commands: [...scenario.commands, record] }, ctx);
   const ref = { kind: 'SCENARIO', id: scenario.id } as const;
@@ -170,6 +380,58 @@ export function recordScenarioCommand(
     changes: [updated(ref, scenario, after)],
     events: [event(cmd, ctx, 0, 'SCENARIO_COMMAND_RECORDED', [ref], { scenarioId: scenario.id, command: payload.command.name })],
     affectedProjections: ['radar'],
+  });
+}
+
+const MISSING = Symbol('missing');
+
+function sameValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function scenarioEntity(state: WorkspaceState, kind: string, id: EntityId): Record<string, unknown> | undefined {
+  const buckets: Record<string, ReadonlyMap<EntityId, unknown> | undefined> = {
+    COMMITMENT: state.commitments, FOOTPRINT: state.footprints, PRODUCT_IMPACT: state.productImpacts,
+    DEPENDENCY: state.dependencies, MILESTONE: state.milestones,
+  };
+  return buckets[kind]?.get(id) as Record<string, unknown> | undefined;
+}
+
+function scenarioField(state: WorkspaceState, kind: string, id: EntityId, field: string): unknown | typeof MISSING {
+  const entity = scenarioEntity(state, kind, id);
+  return entity === undefined ? MISSING : entity[field];
+}
+
+function scenarioValue(command: Command, field: string): unknown {
+  const payload = command.payload as Record<string, unknown>;
+  const patch = payload.patch as Record<string, unknown> | undefined;
+  return patch?.[field] ?? payload[field];
+}
+
+function captureScenarioFields(state: WorkspaceState, command: Command): readonly ScenarioBaseField[] {
+  const payload = command.payload as Record<string, unknown>;
+  const entries: Array<{ kind: string; id: EntityId | undefined; fields: readonly string[] }> = [];
+  const commitmentId = payload.commitmentId as EntityId | undefined;
+  const footprintId = payload.footprintId as EntityId | undefined;
+  const relationId = (payload.impactId ?? payload.dependencyId ?? payload.milestoneId) as EntityId | undefined;
+  if (['UpdateCommitment'].includes(command.name)) entries.push({ kind: 'COMMITMENT', id: commitmentId, fields: Object.keys((payload.patch ?? {}) as object) });
+  if (['SetPrimaryTeam'].includes(command.name)) entries.push({ kind: 'COMMITMENT', id: commitmentId, fields: ['primaryTeamId'] });
+  if (['PassCommitGate', 'HoldCommitment', 'ResumeCommitment', 'DropCommitment'].includes(command.name)) entries.push({ kind: 'COMMITMENT', id: commitmentId, fields: ['lifecycle'] });
+  if (['MoveCapacityFootprint'].includes(command.name)) entries.push({ kind: 'FOOTPRINT', id: footprintId, fields: ['teamId', 'quarterId'] });
+  if (['ResizeCapacityFootprint'].includes(command.name)) entries.push({ kind: 'FOOTPRINT', id: footprintId, fields: ['units'] });
+  if (['RemoveCapacityFootprint', 'RestoreCapacityFootprint'].includes(command.name)) entries.push({ kind: 'FOOTPRINT', id: footprintId, fields: ['archivedAt'] });
+  if (['SetProductImpact', 'RemoveProductImpact'].includes(command.name)) entries.push({ kind: 'PRODUCT_IMPACT', id: relationId, fields: ['type', 'archivedAt'] });
+  if (['UpdateDependency', 'RemoveDependency'].includes(command.name)) entries.push({ kind: 'DEPENDENCY', id: relationId, fields: ['target', 'status', 'archivedAt'] });
+  if (['UpdateMilestone', 'RemoveMilestone'].includes(command.name)) entries.push({ kind: 'MILESTONE', id: relationId, fields: ['targetDate', 'status', 'archivedAt'] });
+  return entries.flatMap(({ kind, id, fields }) => {
+    if (!id) return [];
+    const entity = scenarioEntity(state, kind, id);
+    if (!entity) return [];
+    return fields.map((field) => ({
+      kind, id, field, value: entity[field],
+      changedBy: entity.updatedBy as string,
+      changedAt: entity.updatedAt as string,
+    }));
   });
 }
 
