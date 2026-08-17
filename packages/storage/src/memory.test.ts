@@ -34,6 +34,7 @@ const STORED_KINDS: readonly EntityKind[] = [
   'COMMITMENT_THEME',
   'EXTERNAL_LINK',
   'PERSON',
+  'SCENARIO',
 ];
 
 function command(name: string): Command {
@@ -84,17 +85,29 @@ describe('MemoryWorkspaceRepository', () => {
     }
   });
 
-  it('refuses a kind it has nowhere to put, rather than dropping it silently', async () => {
+  it('refuses a derived projection kind it has nowhere to put, rather than dropping it silently', async () => {
     const repo = new MemoryWorkspaceRepository();
 
     await expect(
       repo.apply({
         workspaceId: WS,
-        changes: [change('SCENARIO', 's-1')],
+        changes: [change('PRODUCT_QUARTER' as EntityKind, 's-1')],
         events: [],
         command: command('Seed'),
       }),
-    ).rejects.toThrow(/SCENARIO/);
+    ).rejects.toThrow(/PRODUCT_QUARTER/);
+  });
+
+  it('refuses a scenario command at the baseline write boundary', async () => {
+    const repo = new MemoryWorkspaceRepository();
+    await expect(
+      repo.apply({
+        workspaceId: WS,
+        changes: [change('COMMITMENT', 'c-1')],
+        events: [],
+        command: { ...command('Draft move'), scenarioId: 'scenario-1' },
+      }),
+    ).rejects.toThrow('SCENARIO_CANNOT_MUTATE_BASELINE');
   });
 
   it('loads relations back into the workspace state', async () => {

@@ -65,6 +65,7 @@ import type { DependencyEdge } from '../components/DependencyLayer.jsx';
 import { CaptureBar } from '../components/CaptureBar.jsx';
 import { Radar } from '../components/Radar.jsx';
 import { RuleSettings } from '../components/RuleSettings.jsx';
+import { ScenarioDock } from '../components/ScenarioDock.jsx';
 import { useSignals } from '../state/use-signals.js';
 import type { VesselBlock } from '../components/CapacityVessel.jsx';
 import { t } from '../i18n/t.js';
@@ -96,6 +97,8 @@ export function App() {
     reviewSignal,
     snoozeSignal,
     clearSignal,
+    createScenario,
+    discardScenario,
   } = useWorkspace.getState();
 
   /**
@@ -124,6 +127,7 @@ export function App() {
    * flagged so nobody mistakes it for the finished thing.
    */
   const [ruleSettings, setRuleSettings] = useState<Settings>(NO_RULE_SETTINGS);
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
 
   // Announcements are debounced through a ref so rapid arrow-key movement does
   // not queue a dozen utterances.
@@ -839,6 +843,15 @@ export function App() {
   const ideas = [...state.commitments.values()].filter(
     (c) => c.archivedAt === undefined && c.lifecycle === 'IDEA',
   );
+  const scenarios = [...(state.scenarios?.values() ?? [])]
+    .filter((scenario) => scenario.archivedAt === undefined)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+  useEffect(() => {
+    if (selectedScenarioId !== null && !scenarios.some((scenario) => scenario.id === selectedScenarioId)) {
+      setSelectedScenarioId(null);
+    }
+  }, [scenarios, selectedScenarioId]);
 
   return (
     <div className="fm-shell">
@@ -881,6 +894,18 @@ export function App() {
           onClearFocus={() => setFocusedCommitmentId(null)}
         />
       </div>
+
+      <ScenarioDock
+        scenarios={scenarios}
+        selectedId={selectedScenarioId}
+        onSelect={setSelectedScenarioId}
+        onCreate={() => void createScenario()}
+        onDiscard={(scenarioId) => {
+          void discardScenario(scenarioId).then((discarded) => {
+            if (discarded) setSelectedScenarioId(null);
+          });
+        }}
+      />
 
       <CaptureBar
         teams={teams.map((team) => ({ id: team.id, name: team.name }))}

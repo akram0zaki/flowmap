@@ -14,6 +14,7 @@ import {
   applyTransition,
   assignCapacityFootprint,
   createIdea,
+  createScenario,
   createTeam,
   createWorkspace,
   ensureTeamQuarter,
@@ -28,6 +29,7 @@ import {
   splitCapacityFootprint,
   unlinkIdeaFromRefinementReserve,
   updateCommitment,
+  updateScenario,
   type Command,
   type CommandContext,
   type CommandResult,
@@ -263,6 +265,8 @@ type StoreState = {
   clearStatus(): void;
   clearLocalData(): Promise<void>;
   loadSample(scale?: 25 | 100 | 500): Promise<void>;
+  createScenario(): Promise<boolean>;
+  discardScenario(scenarioId: EntityId): Promise<boolean>;
 };
 
 export const useWorkspace = create<StoreState>((set, get) => ({
@@ -795,6 +799,25 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     await runtime.repository.clearLocalData(WORKSPACE_ID);
     set({ state: null, undoStack: [], redoStack: [], selectedFootprintId: null, pendingCount: 0 });
     await get().init(runtime, get().profileName);
+  },
+
+  async createScenario() {
+    const { runtime, profileName } = get();
+    if (!runtime) return false;
+    const date = runtime.now().slice(0, 10);
+    return (
+      (await get().dispatch('CreateScenario', (state, cmd, ctx) =>
+        createScenario(state, { name: `Scenario — ${date} — ${profileName}`, ownerUserId: ctx.actorId }, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async discardScenario(scenarioId) {
+    return (
+      (await get().dispatch('DiscardScenario', (state, cmd, ctx) =>
+        updateScenario(state, { scenarioId, status: 'DISCARDED' }, cmd, ctx),
+      )) !== false
+    );
   },
 }));
 

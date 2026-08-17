@@ -21,6 +21,7 @@ import type {
   EntityId,
   ExternalLink,
   SignalDisposition,
+  Scenario,
   Milestone,
   Person,
   ProductImpact,
@@ -32,7 +33,7 @@ import type {
   WorkspaceId,
   WorkspaceState,
 } from '@flowmap/domain';
-import { refKey } from '@flowmap/domain';
+import { DomainErrorException, domainError, refKey } from '@flowmap/domain';
 
 import type { ApplyInput, OutboxEntry, OutboxState, WorkspaceRepository } from './contracts.js';
 
@@ -51,6 +52,7 @@ type Snapshot = {
   commitmentThemes: Record<string, CommitmentTheme>;
   externalLinks: Record<string, ExternalLink>;
   signalDispositions: Record<string, SignalDisposition>;
+  scenarios: Record<string, Scenario>;
   people: Record<string, Person>;
   events: DomainEvent[];
   outbox: OutboxEntry[];
@@ -111,6 +113,7 @@ function emptySnapshot(): Snapshot {
     commitmentThemes: {},
     externalLinks: {},
     signalDispositions: {},
+    scenarios: {},
     people: {},
     events: [],
     outbox: [],
@@ -132,6 +135,7 @@ const KIND_TO_BUCKET = {
   COMMITMENT_THEME: 'commitmentThemes',
   EXTERNAL_LINK: 'externalLinks',
   SIGNAL_DISPOSITION: 'signalDispositions',
+  SCENARIO: 'scenarios',
   PERSON: 'people',
 } as const;
 
@@ -150,6 +154,7 @@ const ENTITY_BUCKETS = [
   'commitmentThemes',
   'externalLinks',
   'signalDispositions',
+  'scenarios',
   'people',
 ] as const;
 
@@ -194,6 +199,7 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
       commitmentThemes: scoped(this.#data.commitmentThemes),
       externalLinks: scoped(this.#data.externalLinks),
       signalDispositions: scoped(this.#data.signalDispositions),
+      scenarios: scoped(this.#data.scenarios),
       people: scoped(this.#data.people),
     };
   }
@@ -203,6 +209,11 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
    * state untouched. Same guarantee as the SQLite transaction.
    */
   async apply(input: ApplyInput): Promise<void> {
+    if (input.command.scenarioId !== undefined) {
+      throw new DomainErrorException(
+        domainError('SCENARIO_CANNOT_MUTATE_BASELINE', { params: { scenarioId: input.command.scenarioId } }),
+      );
+    }
     const draft: Snapshot = structuredClone(this.#data);
 
     for (const change of input.changes) {
@@ -219,8 +230,7 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
         };
       }
 
-      if (input.command.scenarioId === undefined) {
-        draft.outbox.push({
+      draft.outbox.push({
           id: `${input.command.id}:${refKey(change.ref)}`,
           workspaceId: input.workspaceId,
           commandId: input.command.id,
@@ -234,8 +244,7 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
           ...(input.command.batchId !== undefined ? { batchId: input.command.batchId } : {}),
           ...(change.fromVersion !== undefined ? { baseVersion: change.fromVersion } : {}),
           ...(change.before !== undefined ? { baseSnapshot: change.before } : {}),
-        });
-      }
+      });
     }
 
     draft.events.push(...input.events);
