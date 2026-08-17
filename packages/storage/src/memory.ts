@@ -35,7 +35,7 @@ import type {
 } from '@flowmap/domain';
 import { DomainErrorException, domainError, refKey } from '@flowmap/domain';
 
-import type { ApplyInput, OutboxEntry, OutboxState, WorkspaceRepository } from './contracts.js';
+import type { ApplyInput, OutboxEntry, OutboxState, SnapshotRecord, WorkspaceRepository } from './contracts.js';
 
 type Snapshot = {
   workspaces: Record<string, Workspace>;
@@ -56,6 +56,7 @@ type Snapshot = {
   people: Record<string, Person>;
   events: DomainEvent[];
   outbox: OutboxEntry[];
+  snapshots: SnapshotRecord[];
   profile?: { id: string; displayName: string };
 };
 
@@ -117,6 +118,7 @@ function emptySnapshot(): Snapshot {
     people: {},
     events: [],
     outbox: [],
+    snapshots: [],
   };
 }
 
@@ -216,6 +218,17 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
     }
     const draft: Snapshot = structuredClone(this.#data);
 
+    if (input.preSnapshot) {
+      draft.snapshots.push({
+        id: input.preSnapshot.id,
+        workspaceId: input.preSnapshot.workspaceId,
+        workspaceRevision: input.preSnapshot.workspaceRevision,
+        createdAt: input.preSnapshot.createdAt,
+        commandName: input.preSnapshot.commandName,
+        content: structuredClone(this.#data),
+      });
+    }
+
     for (const change of input.changes) {
       const bucket = KIND_TO_BUCKET[change.ref.kind as keyof typeof KIND_TO_BUCKET];
       if (!bucket) throw new Error(`No bucket for entity kind ${change.ref.kind}`);
@@ -256,6 +269,14 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
       .filter((e) => e.workspaceId === workspaceId)
       .sort((a, b) => b.sequence - a.sequence)
       .slice(0, limit);
+  }
+
+  async listSnapshots(workspaceId: WorkspaceId, limit = 50): Promise<SnapshotRecord[]> {
+    return this.#data.snapshots
+      .filter((snapshot) => snapshot.workspaceId === workspaceId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit)
+      .map((snapshot) => structuredClone(snapshot));
   }
 
   async listOutbox(workspaceId: WorkspaceId, state?: OutboxState): Promise<OutboxEntry[]> {

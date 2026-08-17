@@ -130,6 +130,22 @@ describe('MemoryWorkspaceRepository', () => {
     expect(state?.externalLinks?.has('l-1')).toBe(true);
   });
 
+  it('writes a recovery snapshot in the same apply boundary before a barrier change', async () => {
+    const repo = new MemoryWorkspaceRepository();
+    await repo.apply({ workspaceId: WS, changes: [change('WORKSPACE', WS)], events: [], command: command('Seed') });
+    const before = await repo.load(WS);
+    if (!before) throw new Error('seeded workspace should load');
+    await repo.apply({
+      workspaceId: WS,
+      changes: [change('TEAM', 'team-1')],
+      events: [], command: command('ApplyScenario'),
+      preSnapshot: { id: 'snapshot-1', workspaceId: WS, workspaceRevision: 1, createdAt: NOW, commandName: 'ApplyScenario', state: before },
+    });
+    const snapshots = await repo.listSnapshots(WS);
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]).toMatchObject({ id: 'snapshot-1', commandName: 'ApplyScenario' });
+  });
+
   it('clears every bucket, leaving nothing behind from a previous sample', async () => {
     const repo = new MemoryWorkspaceRepository();
     await repo.apply({

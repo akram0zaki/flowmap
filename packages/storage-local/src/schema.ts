@@ -452,6 +452,21 @@ CREATE INDEX IF NOT EXISTS ix_scenario_workspace_status
   ON scenario(workspace_id, status, updated_at DESC);
 `;
 
+/** Barrier recovery points are local cache records, never synced artefacts. */
+const V5_SQL = `
+CREATE TABLE IF NOT EXISTS snapshot (
+  id                 TEXT PRIMARY KEY,
+  workspace_id       TEXT NOT NULL,
+  workspace_revision INTEGER NOT NULL,
+  created_at         TEXT NOT NULL,
+  command_name       TEXT NOT NULL,
+  content_json       TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_snapshot_workspace_created
+  ON snapshot(workspace_id, created_at DESC);
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
@@ -500,6 +515,17 @@ export const MIGRATIONS: readonly Migration[] = [
     checksumSource: V4_SQL,
     up: async (ctx) => {
       for (const statement of V4_SQL.split(';')) {
+        const trimmed = statement.trim();
+        if (trimmed.length > 0) await ctx.exec(trimmed);
+      }
+    },
+  },
+  {
+    version: 5,
+    name: 'barrier-snapshots',
+    checksumSource: V5_SQL,
+    up: async (ctx) => {
+      for (const statement of V5_SQL.split(';')) {
         const trimmed = statement.trim();
         if (trimmed.length > 0) await ctx.exec(trimmed);
       }

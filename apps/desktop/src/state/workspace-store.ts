@@ -148,6 +148,9 @@ type StoreState = {
   undoStack: Command[][];
   redoStack: Command[][];
   pendingCount: number;
+  /** Presentation is a hard edit boundary, not merely hidden chrome. */
+  presentationMode: boolean;
+  setPresentationMode(enabled: boolean): void;
 
   init(runtime: Runtime, profileName: string): Promise<void>;
   dispatch(
@@ -293,7 +296,12 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   undoStack: [],
   redoStack: [],
   pendingCount: 0,
+  presentationMode: false,
   events: [],
+
+  setPresentationMode(enabled) {
+    set({ presentationMode: enabled });
+  },
 
   async init(runtime, profileName) {
     await runtime.repository.ensureLocalProfile?.(PROFILE_ID, profileName, runtime.now());
@@ -328,6 +336,10 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   async dispatch(name, run, history = 'record') {
     const { runtime, state } = get();
     if (!runtime || !state) return false;
+    if (get().presentationMode) {
+      set({ status: { tone: 'info', message: t('scenario.presentationBlocked') } });
+      return false;
+    }
 
     // Whether this command joins the step already being built.
     const grouping = stepDepth > 0 && stepStarted;
@@ -348,11 +360,18 @@ export const useWorkspace = create<StoreState>((set, get) => ({
 
     result = withBaselineRevision(state, name, result, ctx);
 
+    const irreversible = result.effects.consequences?.some((consequence) => consequence.kind === 'IRREVERSIBLE') ?? false;
     await runtime.repository.apply({
       workspaceId: WORKSPACE_ID,
       changes: result.effects.changes,
       events: result.effects.events,
       command: cmd,
+      ...(irreversible ? {
+        preSnapshot: {
+          id: runtime.newId(), workspaceId: WORKSPACE_ID,
+          workspaceRevision: state.workspace.revision, createdAt: runtime.now(), commandName: name, state,
+        },
+      } : {}),
     });
 
     const overflow = result.effects.consequences?.find((c) => c.kind === 'CAPACITY');
@@ -378,7 +397,6 @@ export const useWorkspace = create<StoreState>((set, get) => ({
         return [...stack.slice(0, -1), [...head, inverse]];
       };
 
-      const irreversible = result.effects.consequences?.some((consequence) => consequence.kind === 'IRREVERSIBLE');
       const stacks = irreversible
         ? { undoStack: [], redoStack: [] }
         :

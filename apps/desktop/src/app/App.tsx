@@ -78,6 +78,7 @@ export function App() {
   const status = useWorkspace((s) => s.status);
   const profileName = useWorkspace((s) => s.profileName);
   const selectedFootprintId = useWorkspace((s) => s.selectedFootprintId);
+  const presentationMode = useWorkspace((s) => s.presentationMode);
   const {
     undo,
     redo,
@@ -105,6 +106,7 @@ export function App() {
     applyScenario,
     getScenarioRebase,
     rebaseScenario,
+    setPresentationMode,
     scenarioProjection,
     placeScenarioIdea,
   } = useWorkspace.getState();
@@ -136,7 +138,6 @@ export function App() {
    */
   const [ruleSettings, setRuleSettings] = useState<Settings>(NO_RULE_SETTINGS);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
-  const [presentationMode, setPresentationMode] = useState(false);
   const [showDemandFlow, setShowDemandFlow] = useState(false);
   const scenarioState = selectedScenarioId === null ? null : scenarioProjection(selectedScenarioId);
   const viewState = scenarioState ?? state;
@@ -166,10 +167,8 @@ export function App() {
       }
       if (mod && e.shiftKey && e.key.toLowerCase() === 'p') {
         e.preventDefault();
-        setPresentationMode((enabled) => {
-          announce(enabled ? t('presentation.off') : t('presentation.on'));
-          return !enabled;
-        });
+        announce(presentationMode ? t('presentation.off') : t('presentation.on'));
+        setPresentationMode(!presentationMode);
       }
       if (e.key === 'Escape') {
         setFocusedCommitmentId(null);

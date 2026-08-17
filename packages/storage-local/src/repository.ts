@@ -40,6 +40,7 @@ import {
   type MigrationReport,
   type OutboxEntry,
   type OutboxState,
+  type SnapshotRecord,
   type WorkspaceRepository,
 } from '@flowmap/storage';
 
@@ -202,6 +203,7 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
       );
     }
     await this.db.transaction(async () => {
+      if (input.preSnapshot) await this.#writeSnapshot(input.preSnapshot);
       for (const change of input.changes) await this.#writeChange(input.workspaceId, change);
       for (const event of input.events) await this.#writeEvent(event);
       for (const change of input.changes) await this.#writeOutbox(input, change);
@@ -231,6 +233,15 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
           scenarioId: s(row['scenario_id']),
         }) as DomainEvent,
     );
+  }
+
+  async listSnapshots(workspaceId: WorkspaceId, limit = 50): Promise<SnapshotRecord[]> {
+    return (await this.db.all('SELECT * FROM snapshot WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?', [workspaceId, limit]))
+      .map((row) => ({
+        id: String(row['id']), workspaceId: String(row['workspace_id']),
+        workspaceRevision: Number(row['workspace_revision']), createdAt: String(row['created_at']),
+        commandName: String(row['command_name']), content: p(row['content_json']) ?? {},
+      }));
   }
 
   async listOutbox(workspaceId: WorkspaceId, state?: OutboxState): Promise<OutboxEntry[]> {
@@ -335,6 +346,19 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
   }
 
   // ── Writers ──────────────────────────────────────────────────────────────
+
+  async #writeSnapshot(snapshot: NonNullable<ApplyInput['preSnapshot']>): Promise<void> {
+    const content = Object.fromEntries(
+      Object.entries(snapshot.state).map(([key, value]) => [
+        key,
+        value instanceof Map ? Object.fromEntries(value) : value,
+      ]),
+    );
+    await this.db.run(
+      'INSERT INTO snapshot (id, workspace_id, workspace_revision, created_at, command_name, content_json) VALUES (?, ?, ?, ?, ?, ?)',
+      [snapshot.id, snapshot.workspaceId, snapshot.workspaceRevision, snapshot.createdAt, snapshot.commandName, JSON.stringify(content)],
+    );
+  }
 
   async #writeChange(workspaceId: WorkspaceId, change: EntityChange): Promise<void> {
     const table = TABLE_BY_KIND[change.ref.kind];
