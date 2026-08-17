@@ -10,6 +10,7 @@
 import type { Command, CommandContext, CommandEffects, CommandResult, WorkspaceState } from './command.js';
 import type { Scenario, ScenarioCommandRecord } from './entities.js';
 import type { EntityId } from './primitives.js';
+import { summariseCapacity } from './capacity.js';
 import { authorise, bumped, created, domainFail, event, newEnvelope, requireName, succeed, updated } from './handler-kit.js';
 
 const baselineBrand = Symbol('flowmap.baseline');
@@ -31,6 +32,41 @@ export type ScenarioReplay = (
   command: Command,
 ) => CommandResult;
 
+export type ScenarioCapacityDiff = {
+  readonly teamId: EntityId;
+  readonly quarterId: string;
+  readonly loadBefore: number;
+  readonly loadAfter: number;
+  readonly scenarioLoad: number;
+  readonly headroomBefore: number;
+  readonly headroomAfter: number;
+  readonly overflowBefore: number;
+  readonly overflowAfter: number;
+};
+
+export type ScenarioDiff = {
+  readonly capacity: readonly ScenarioCapacityDiff[];
+  readonly commitments: ReadonlyArray<{
+    commitmentId: EntityId;
+    readonly changedFields: readonly string[];
+    readonly movedFrom?: string;
+    readonly movedTo?: string;
+  }>;
+  readonly newCommitments: readonly EntityId[];
+  readonly gatePassages: readonly EntityId[];
+  readonly productImpact: readonly [];
+  readonly dependencies: readonly [];
+  readonly milestones: readonly [];
+  readonly attention: { readonly added: readonly []; readonly removed: readonly []; readonly worsened: readonly [] };
+  readonly summary: {
+    readonly teamsAffected: number;
+    readonly quartersAffected: number;
+    readonly netUnitsMoved: number;
+    readonly newOverflows: number;
+    readonly resolvedOverflows: number;
+  };
+};
+
 /**
  * Replays draft effects onto fresh maps. The baseline maps are never written;
  * callers can retain and byte-compare their serialised baseline with confidence.
@@ -47,6 +83,61 @@ export function projectScenario(
     if (result.ok) current = applyEffects(current, result.effects);
   }
   return { ...current, [scenarioBrand]: 'scenario', base, scenario };
+}
+
+/**
+ * A deterministic, management-facing comparison. It deliberately groups by
+ * team-quarter and commitment rather than exposing storage-table mutations.
+ */
+export function compareScenario(base: BaselineProjection, projected: ScenarioProjection): ScenarioDiff {
+  const capacity: ScenarioCapacityDiff[] = [];
+  const cellKeys = new Set([
+    ...[...base.teamQuarters.values()].map((item) => `${item.teamId}:${item.quarterId}`),
+    ...[...projected.teamQuarters.values()].map((item) => `${item.teamId}:${item.quarterId}`),
+  ]);
+  for (const key of cellKeys) {
+    const [teamId, quarterId] = key.split(':') as [EntityId, string];
+    const beforeContainer = [...base.teamQuarters.values()].find((item) => item.teamId === teamId && item.quarterId === quarterId);
+    const afterContainer = [...projected.teamQuarters.values()].find((item) => item.teamId === teamId && item.quarterId === quarterId);
+    if (!beforeContainer || !afterContainer) continue;
+    const before = summariseCapacity({ teamQuarter: beforeContainer, footprints: [...base.footprints.values()], commitmentsById: base.commitments, currentQuarterId: base.workspace.currentQuarterId });
+    const after = summariseCapacity({ teamQuarter: afterContainer, footprints: [...projected.footprints.values()], commitmentsById: projected.commitments, currentQuarterId: projected.workspace.currentQuarterId });
+    const scenarioLoad = [...projected.footprints.values()].reduce((sum, footprint) => {
+      const commitment = projected.commitments.get(footprint.commitmentId);
+      return footprint.teamId === teamId && footprint.quarterId === quarterId && commitment?.lifecycle === 'IDEA'
+        ? sum + footprint.units
+        : sum;
+    }, 0);
+    if (before.committedLoad !== after.committedLoad || scenarioLoad > 0 || before.overflow !== after.overflow) {
+      capacity.push({ teamId, quarterId, loadBefore: before.committedLoad, loadAfter: after.committedLoad, scenarioLoad, headroomBefore: before.headroom, headroomAfter: after.headroom, overflowBefore: before.overflow, overflowAfter: after.overflow });
+    }
+  }
+  const commitments: Array<{ commitmentId: EntityId; changedFields: readonly string[] }> = [];
+  const newCommitments: EntityId[] = [];
+  for (const [id, after] of projected.commitments) {
+    const before = base.commitments.get(id);
+    if (!before) { newCommitments.push(id); continue; }
+    const fields = ['name', 'lifecycle', 'primaryTeamId', 'targetQuarterId', 'targetDate'].filter(
+      (field) => before[field as keyof typeof before] !== after[field as keyof typeof after],
+    );
+    if (fields.length > 0) commitments.push({ commitmentId: id, changedFields: fields });
+  }
+  const newOverflows = capacity.filter((item) => item.overflowBefore === 0 && item.overflowAfter > 0).length;
+  const resolvedOverflows = capacity.filter((item) => item.overflowBefore > 0 && item.overflowAfter === 0).length;
+  return {
+    capacity: capacity.sort((a, b) => a.teamId.localeCompare(b.teamId) || a.quarterId.localeCompare(b.quarterId)),
+    commitments,
+    newCommitments,
+    gatePassages: commitments.filter((item) => item.changedFields.includes('lifecycle')).map((item) => item.commitmentId),
+    productImpact: [], dependencies: [], milestones: [], attention: { added: [], removed: [], worsened: [] },
+    summary: {
+      teamsAffected: new Set(capacity.map((item) => item.teamId)).size,
+      quartersAffected: new Set(capacity.map((item) => item.quarterId)).size,
+      netUnitsMoved: capacity.reduce((sum, item) => sum + Math.abs(item.loadAfter - item.loadBefore) + item.scenarioLoad, 0),
+      newOverflows,
+      resolvedOverflows,
+    },
+  };
 }
 
 /** Only this module accepts a scenario command; baseline handlers must reject it. */
