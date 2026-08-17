@@ -954,8 +954,8 @@ export function App() {
             if (discarded) setSelectedScenarioId(null);
           });
         }}
-        onApply={(scenarioId) => {
-          void applyScenario(scenarioId).then((applied) => {
+        onApply={(scenarioId, selectedCommandIds) => {
+          void applyScenario(scenarioId, selectedCommandIds).then((applied) => {
             if (applied) setSelectedScenarioId(null);
           });
         }}

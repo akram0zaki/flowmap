@@ -285,7 +285,7 @@ type StoreState = {
   scenarioProjection(scenarioId: EntityId): ScenarioProjection | null;
   placeScenarioIdea(input: { scenarioId: EntityId; commitmentId: EntityId; teamId: EntityId; quarterId: string; units: number }): Promise<boolean>;
   /** Applies a current scenario atomically. An irreversible apply clears local undo history. */
-  applyScenario(scenarioId: EntityId): Promise<boolean>;
+  applyScenario(scenarioId: EntityId, selectedCommandIds?: readonly EntityId[]): Promise<boolean>;
   getScenarioRebase(scenarioId: EntityId): readonly RebaseOutcome[];
   rebaseScenario(scenarioId: EntityId, resolutions: readonly RebaseResolution[]): Promise<boolean>;
 };
@@ -941,7 +941,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     return true;
   },
 
-  async applyScenario(scenarioId) {
+  async applyScenario(scenarioId, selectedCommandIds) {
     return (
       (await get().dispatch('ApplyScenario', (state, cmd, ctx) => {
         const scenario = state.scenarios?.get(scenarioId);
@@ -952,7 +952,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
             const { scenarioId: _scenarioId, ...baselineCommand } = recorded;
             return runNamed(recorded.name, projection, baselineCommand, ctx);
           },
-          { ...cmd, payload: { scenarioId } },
+          { ...cmd, payload: { scenarioId, ...(selectedCommandIds !== undefined ? { mode: 'SELECTED' as const, commandIds: selectedCommandIds } : {}) } },
           ctx,
         );
       })) !== false

@@ -17,7 +17,7 @@ export type ScenarioDockProps = {
   readonly onSelect: (id: string | null) => void;
   readonly onCreate: () => void;
   readonly onDiscard: (id: string) => void;
-  readonly onApply: (id: string) => void;
+  readonly onApply: (id: string, selectedCommandIds?: readonly string[]) => void;
   readonly onShare: (id: string) => void;
   readonly onClone: (id: string) => void;
   readonly summary?: { teamsAffected: number; quartersAffected: number; netUnitsMoved: number; newOverflows: number; resolvedOverflows: number };
@@ -44,6 +44,7 @@ export function ScenarioDock({
   const selected = active.find((scenario) => scenario.id === selectedId) ?? null;
   const [resolutions, setResolutions] = useState<Record<string, RebaseResolution['action']>>({});
   const [confirmingApply, setConfirmingApply] = useState(false);
+  const [selectedCommandIds, setSelectedCommandIds] = useState<readonly string[] | null>(null);
   const conflicts = rebase?.filter((outcome) => outcome.status === 'CONFLICT') ?? [];
   const stale = selected !== null && rebase !== undefined;
 
@@ -116,6 +117,27 @@ export function ScenarioDock({
               </ul>
             ) : <p>{t('scenario.diff.empty')}</p>}
           </section>
+          {selected.commands.length > 0 && (
+            <details className="fm-scenario-selective">
+              <summary>{t('scenario.selective')}</summary>
+              <p>{t('scenario.selectiveDescription')}</p>
+              <ul>
+                {selected.commands.map((command) => {
+                  const checked = selectedCommandIds?.includes(command.id) ?? false;
+                  return <li key={command.id}>
+                    <label>
+                      <input type="checkbox" checked={checked} onChange={() => setSelectedCommandIds((current) => {
+                        const ids = new Set(current ?? []);
+                        if (ids.has(command.id)) ids.delete(command.id); else ids.add(command.id);
+                        return [...ids];
+                      })} />
+                      {t(command.label)}
+                    </label>
+                  </li>;
+                })}
+              </ul>
+            </details>
+          )}
           {stale && (
             <section className="fm-scenario-rebase" aria-label={t('scenario.rebase')}>
               <h3>{t('scenario.rebase')}</h3>
@@ -157,9 +179,10 @@ export function ScenarioDock({
           )}
         <div className="fm-scenarios__footer">
           <span>{t('scenario.commands', { count: selected.commands.length })}</span>
-          <button type="button" className="fm-primary" disabled={stale} onClick={() => setConfirmingApply(true)}>
+          <button type="button" className="fm-primary" disabled={stale} onClick={() => { setSelectedCommandIds(null); setConfirmingApply(true); }}>
             {t('scenario.apply')}
           </button>
+          {selectedCommandIds !== null && selectedCommandIds.length > 0 && <button type="button" disabled={stale} onClick={() => setConfirmingApply(true)}>{t('scenario.selective')}</button>}
           {selected.visibility === 'PRIVATE' && <button type="button" onClick={() => onShare(selected.id)}>{t('scenario.share')}</button>}
           <button type="button" onClick={() => onClone(selected.id)}>{t('scenario.clone')}</button>
           <button type="button" className="fm-danger" onClick={() => onDiscard(selected.id)}>
@@ -177,7 +200,7 @@ export function ScenarioDock({
             </ul>
             <div className="fm-consequence-preview__actions">
               <button type="button" onClick={() => setConfirmingApply(false)}>{t('consequence.cancel')}</button>
-              <button type="button" className="fm-primary" onClick={() => { setConfirmingApply(false); onApply(selected.id); }}>{t('consequence.continue')}</button>
+              <button type="button" className="fm-primary" onClick={() => { setConfirmingApply(false); onApply(selected.id, selectedCommandIds ?? undefined); }}>{t('consequence.continue')}</button>
             </div>
           </section>
         )}
