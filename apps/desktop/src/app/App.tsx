@@ -107,6 +107,7 @@ export function App() {
     switchWorkspace,
     importIdeas,
     createSnapshot,
+    restoreSnapshot,
     saveView,
     removeSavedView,
     clearLocalData,
@@ -1117,7 +1118,11 @@ export function App() {
           }}
           onRemove={(viewId) => void removeSavedView(viewId)}
         />
-        <SnapshotsPanel snapshots={snapshots} onCreate={() => void createSnapshot()} />
+        <SnapshotsPanel
+          snapshots={snapshots}
+          onCreate={() => void createSnapshot()}
+          onRestore={(id, confirmation) => void restoreSnapshot(id, confirmation)}
+        />
         <span className="fm-header__spacer" />
         <div className="fm-header__status" role="status">
           {/* Pending count is sync plumbing. With no shared provider there is

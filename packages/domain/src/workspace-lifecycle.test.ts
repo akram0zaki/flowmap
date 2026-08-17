@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Command, CommandContext, WorkspaceState } from './command.js';
 import { createWorkspace } from './handlers.js';
-import { archiveWorkspace, restoreWorkspace } from './workspace-lifecycle.js';
+import { archiveWorkspace, restoreReport, restoreWorkspace } from './workspace-lifecycle.js';
 
 const now = '2026-08-17T10:00:00.000Z';
 const command: Command = {
@@ -49,5 +49,15 @@ describe('workspace archive', () => {
     };
     expect(archivedState.workspace.archivedAt).toBe(now);
     expect(restoreWorkspace(archivedState, {}, command, context)).toMatchObject({ ok: true });
+  });
+
+  it('reports restore changes before a command is applied', () => {
+    const before = state();
+    const snapshot = { ...before, teams: new Map([['team', { id: 'team' }]]) } as WorkspaceState;
+    expect(restoreReport(before, snapshot, 'Snapshot', now, 2)).toMatchObject({
+      snapshot: { name: 'Snapshot', workspaceRevision: 1 },
+      counts: { TEAM: { added: 1, removed: 0, changed: 0 } },
+      eventsSinceSnapshot: 2,
+    });
   });
 });

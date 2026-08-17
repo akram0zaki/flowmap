@@ -38,6 +38,7 @@ import {
   saveView,
   removeSavedView,
   restoreCapacityFootprint,
+  restoreWorkspaceSnapshot,
   setPrimaryTeam,
   splitCapacityFootprint,
   unlinkIdeaFromRefinementReserve,
@@ -80,7 +81,12 @@ import {
   updateMilestone,
   type RelationState,
 } from '@flowmap/domain';
-import type { SearchHit, SnapshotRecord, WorkspaceRepository } from '@flowmap/storage';
+import {
+  snapshotState,
+  type SearchHit,
+  type SnapshotRecord,
+  type WorkspaceRepository,
+} from '@flowmap/storage';
 
 import { t } from '../i18n/t.js';
 import { seedSampleWorkspace } from './sample-workspace.js';
@@ -179,6 +185,7 @@ type StoreState = {
   /** CSV/XLSX/JSON imports are validated first, then written in one command transaction. */
   importIdeas(names: readonly string[]): Promise<boolean>;
   createSnapshot(): Promise<boolean>;
+  restoreSnapshot(snapshotId: string, confirmation: string): Promise<boolean>;
   saveView(input: {
     name: string;
     lens: string;
@@ -601,6 +608,52 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       snapshots: await runtime.repository.listSnapshots(activeWorkspaceId),
       events: await runtime.repository.listEvents(activeWorkspaceId, 500),
       status: { tone: 'info', message: t('snapshot.created') },
+    });
+    return true;
+  },
+
+  async restoreSnapshot(snapshotId, confirmation) {
+    const { runtime, state, activeWorkspaceId, snapshots } = get();
+    if (!runtime || !state || !activeWorkspaceId) return false;
+    const selected = snapshots.find((snapshot) => snapshot.id === snapshotId);
+    if (!selected || confirmation !== selected.commandName) {
+      set({ status: { tone: 'critical', message: t('snapshot.confirmationRequired') } });
+      return false;
+    }
+    const target = snapshotState(selected.content);
+    if (!target || target.workspace.schemaVersion > state.workspace.schemaVersion) {
+      set({ status: { tone: 'critical', message: t('snapshot.unsupported') } });
+      return false;
+    }
+    const cmd = makeCommand(runtime, 'RestoreSnapshot', activeWorkspaceId);
+    const result = restoreWorkspaceSnapshot(
+      state,
+      target,
+      cmd,
+      makeContext(runtime, await runtime.repository.nextSequence(activeWorkspaceId)),
+    );
+    if (!result.ok) return false;
+    await runtime.repository.apply({
+      workspaceId: activeWorkspaceId,
+      changes: result.effects.changes,
+      events: result.effects.events,
+      command: cmd,
+      preSnapshot: {
+        id: runtime.newId(),
+        workspaceId: activeWorkspaceId,
+        workspaceRevision: state.workspace.revision,
+        createdAt: runtime.now(),
+        commandName: cmd.name,
+        state,
+      },
+    });
+    set({
+      state: await runtime.repository.load(activeWorkspaceId),
+      events: await runtime.repository.listEvents(activeWorkspaceId, 500),
+      snapshots: await runtime.repository.listSnapshots(activeWorkspaceId),
+      undoStack: [],
+      redoStack: [],
+      status: { tone: 'info', message: t('snapshot.restored') },
     });
     return true;
   },

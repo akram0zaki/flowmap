@@ -113,6 +113,9 @@ export function PortabilityPanel({
         <p>{t('portability.definition')}</p>
         <p>{t('portability.not')}</p>
         <p>{t('portability.example')}</p>
+        <p className="fm-portability__warning" role="note">
+          {t('portability.sensitivity')}
+        </p>
         <div className="fm-portability__actions">
           <button type="button" onClick={() => download('flowmap-view.csv', toCsv(rows))}>
             {t('portability.exportCsv')}

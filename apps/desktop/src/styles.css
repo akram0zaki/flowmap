@@ -151,6 +151,13 @@ body {
   background: var(--surface-sunken);
 }
 
+.fm-portability__warning {
+  padding: var(--space-3);
+  border-inline-start: var(--focus-width) solid var(--warning-fg);
+  color: var(--warning-fg);
+  background: var(--warning-surface);
+}
+
 .fm-saved-views {
   position: relative;
   color: var(--ink-muted);
