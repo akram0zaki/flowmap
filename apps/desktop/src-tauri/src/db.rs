@@ -4,13 +4,9 @@
 //! SQLite only through the `db_*` commands here, and every value it supplies is
 //! **bound as a parameter** — never interpolated into SQL text.
 //!
-//! Portable data directory resolution (spec 10 §3.1), in order:
-//!   1. `FLOWMAP_DATA_DIR`
-//!   2. a writable `data/` folder beside the executable — "fully portable" mode
-//!   3. the per-user application-data directory
-//!
-//! A portable app must be able to tell you where its state actually lives, so
-//! the resolved path is returned to the UI and shown in Settings.
+//! Data-directory resolution lives in `paths` (spec 10 §3.1). This module
+//! opens the database at `{workspaces}/flowmap.db` and reports the resolved
+//! layout so Settings can show it.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,6 +15,9 @@ use std::sync::Mutex;
 use rusqlite::types::{Value, ValueRef};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+
+use crate::paths::{DataLayout, DataSource};
+use crate::webview::WebviewKind;
 
 #[derive(Default)]
 pub struct DbState {
@@ -30,7 +29,15 @@ pub struct DbState {
 pub struct OpenInfo {
     #[serde(rename = "dataDir")]
     pub data_dir: String,
+    #[serde(rename = "workspacesDir")]
+    pub workspaces_dir: String,
+    #[serde(rename = "logsDir")]
+    pub logs_dir: String,
     pub portable: bool,
+    #[serde(rename = "portableSource")]
+    pub portable_source: DataSource,
+    pub version: String,
+    pub webview: String,
     #[serde(rename = "corruptCacheRecovered")]
     pub corrupt_cache_recovered: bool,
 }
@@ -81,31 +88,6 @@ fn is_cloud_synced(path: &Path) -> Option<String> {
         .map(|marker| (*marker).to_string())
 }
 
-fn portable_dir() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let candidate = exe.parent()?.join("data");
-    if candidate.is_dir() {
-        // Probe writability rather than trusting permissions: the folder may sit
-        // on a read-only share.
-        let probe = candidate.join(".flowmap-write-probe");
-        if fs::write(&probe, b"1").is_ok() {
-            let _ = fs::remove_file(&probe);
-            return Some(candidate);
-        }
-    }
-    None
-}
-
-pub fn resolve_data_dir(app_data: PathBuf) -> (PathBuf, bool) {
-    if let Ok(explicit) = std::env::var("FLOWMAP_DATA_DIR") {
-        return (PathBuf::from(explicit), true);
-    }
-    if let Some(dir) = portable_dir() {
-        return (dir, true);
-    }
-    (app_data, false)
-}
-
 fn configure(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
@@ -123,10 +105,15 @@ fn integrity_ok(conn: &Connection) -> Result<bool, String> {
     Ok(result.eq_ignore_ascii_case("ok"))
 }
 
-pub fn open_at(dir: PathBuf, portable: bool) -> Result<(Connection, OpenInfo), String> {
-    fs::create_dir_all(&dir).map_err(|e| format!("Cannot create data directory: {e}"))?;
+pub fn open_at(
+    layout: &DataLayout,
+    webview: WebviewKind,
+) -> Result<(Connection, OpenInfo), String> {
+    fs::create_dir_all(&layout.workspaces_dir)
+        .map_err(|e| format!("Cannot create workspaces directory: {e}"))?;
+    fs::create_dir_all(&layout.logs_dir).map_err(|e| format!("Cannot create logs directory: {e}"))?;
 
-    let path = dir.join("flowmap.db");
+    let path = layout.workspaces_dir.join("flowmap.db");
 
     if std::env::var("FLOWMAP_ALLOW_SYNCED_DB").is_err() {
         if let Some(marker) = is_cloud_synced(&path) {
@@ -146,7 +133,7 @@ pub fn open_at(dir: PathBuf, portable: bool) -> Result<(Connection, OpenInfo), S
         false
     } else {
         drop(conn);
-        let backup = dir.join(format!(
+        let backup = layout.workspaces_dir.join(format!(
             "flowmap.corrupt-{}.db",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -162,8 +149,13 @@ pub fn open_at(dir: PathBuf, portable: bool) -> Result<(Connection, OpenInfo), S
     Ok((
         conn,
         OpenInfo {
-            data_dir: dir.to_string_lossy().to_string(),
-            portable,
+            data_dir: layout.root.to_string_lossy().to_string(),
+            workspaces_dir: layout.workspaces_dir.to_string_lossy().to_string(),
+            logs_dir: layout.logs_dir.to_string_lossy().to_string(),
+            portable: layout.portable,
+            portable_source: layout.source,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            webview: webview.as_str().to_string(),
             corrupt_cache_recovered,
         },
     ))

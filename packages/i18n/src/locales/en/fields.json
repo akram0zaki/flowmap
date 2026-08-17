@@ -122,5 +122,13 @@
   "split.eg": "20 units in Q3 becomes 12 in Q3 and 8 in Q4.",
   "rowOrder.label": "Row order",
   "rowOrder.def": "The order teams appear down the map, set by a Planner.",
-  "rowOrder.not": "a ranking, a priority, or anything the map changes on its own."
+  "rowOrder.not": "a ranking, a priority, or anything the map changes on its own.",
+  "dataDirectory.label": "Data directory",
+  "dataDirectory.def": "The folder this instance uses for the local cache, snapshots, and logs.",
+  "dataDirectory.not": "the shared workspace. That is a .flowmap file, and it is never this SQLite cache.",
+  "dataDirectory.eg": "Create a data folder beside the app to keep everything on a USB stick.",
+  "portableMode.label": "Portable mode",
+  "portableMode.def": "The instance stores its cache next to the executable, or in a folder you name with FLOWMAP_DATA_DIR.",
+  "portableMode.not": "an installer, a roaming profile, or a way to carry credentials. The OS keychain is never copied into the portable folder.",
+  "portableMode.eg": "Unzip to a USB stick, create data next to Flowmap.exe, and delete the folder to remove the instance."
 }

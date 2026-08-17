@@ -255,7 +255,7 @@ Deliverables:
 
 ---
 
-## M7 — Portable packaging
+## M7 — Portable packaging 🔵 **packaging built; Gate H needs devices and certs**
 
 **Objective:** a folder you unzip and run, on both platforms.
 

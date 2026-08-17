@@ -144,6 +144,10 @@ test('clear local data empties the workspace and starts a fresh one', async ({ p
   await expect(page.getByRole('gridcell', { name: /Temporary/ })).toBeVisible();
 
   await page.getByRole('button', { name: 'Clear local data' }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Clear local data' })
+    .getByRole('button', { name: 'Clear local data' })
+    .click();
 
   await expect(page.getByRole('rowheader', { name: /Payments/ })).toHaveCount(0);
   await page.reload();

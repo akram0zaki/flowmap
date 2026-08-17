@@ -100,6 +100,9 @@ For the desktop app build workflow, install Rust first if needed and then run:
 
 ```bash
 pnpm build:desktop
+pnpm package:portable                 # unzip-and-run ZIP for this platform
+pnpm package:portable -- --universal  # macOS universal
+pnpm package:portable -- --standalone # Windows + bundled WebView2
 ```
 
 Or run the Tauri desktop app directly:
@@ -107,6 +110,8 @@ Or run the Tauri desktop app directly:
 ```bash
 pnpm dev:desktop
 ```
+
+Distribution, rollback, and the managed-device unzip-and-run checklist live in [`docs/ops/`](docs/ops/distribution.md).
 
 ## Common verification commands
 

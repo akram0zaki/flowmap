@@ -36,6 +36,18 @@
     ],
     "category": "Productivity",
     "shortDescription": "Visual portfolio control",
-    "longDescription": "A management-level model of a delivery portfolio, rendered as a manipulable landscape."
+    "longDescription": "A management-level model of a delivery portfolio, rendered as a manipulable landscape.",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "skip"
+      },
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com"
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "hardenedRuntime": true,
+      "entitlements": "Entitlements.plist"
+    }
   }
 }

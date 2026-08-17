@@ -58,6 +58,16 @@ body {
   letter-spacing: var(--tracking-display);
 }
 
+.fm-header__action {
+  min-height: 0;
+  padding: 0;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+}
+
 .fm-header__workspace {
   font-size: var(--text-sm);
   color: var(--ink-muted);
@@ -3147,6 +3157,81 @@ label {
   text-align: left;
   background: var(--surface-hover);
   border: 1px solid var(--border);
+}
+
+.fm-dialog {
+  width: min(42rem, 100%);
+  max-height: min(80vh, 48rem);
+  padding: var(--space-6);
+  overflow: auto;
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+}
+
+.fm-dialog h2 {
+  margin: 0;
+}
+
+.fm-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-block-start: var(--space-5);
+}
+
+.fm-settings .fm-panel__head,
+.fm-shortcuts .fm-panel__head {
+  padding: 0 0 var(--space-4);
+}
+
+.fm-settings {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.fm-settings__label {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+.fm-settings__path {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.fm-shortcuts {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.fm-shortcuts__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.fm-shortcuts__table caption {
+  caption-side: top;
+  margin-block-end: var(--space-2);
+  text-align: start;
+  font-weight: var(--weight-medium);
+}
+
+.fm-shortcuts__table th,
+.fm-shortcuts__table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: start;
+  vertical-align: top;
+  border-bottom: 1px solid var(--rule);
+}
+
+.fm-shortcuts__table kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
 @media (max-width: 64rem) {
