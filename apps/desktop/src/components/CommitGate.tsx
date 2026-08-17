@@ -37,6 +37,9 @@ export type CommitGateProps = {
       units: number;
       earliestAlternativeQuarter?: string;
     }[];
+    readonly crossTeam: readonly { name: string; team: string; quarter: string }[];
+    readonly products: readonly { product: string; impact: string }[];
+    readonly dependencies: readonly { commitment: string; direction: 'INBOUND' | 'OUTBOUND' }[];
   };
   readonly onCommit: () => void;
   readonly onDismiss: () => void;
@@ -114,6 +117,36 @@ export function CommitGate({
                   ))}
                 </ul>
               )}
+              <h5>{t('tradeoff.crossTeam')}</h5>
+              <ul>
+                {tradeoff.crossTeam.map((item) => (
+                  <li key={`${item.name}:${item.team}:${item.quarter}`}>
+                    {t('tradeoff.crossTeamItem', item)}
+                  </li>
+                ))}
+              </ul>
+              <h5>{t('tradeoff.products')}</h5>
+              <ul>
+                {tradeoff.products.map((item) => (
+                  <li key={`${item.product}:${item.impact}`}>
+                    {t('tradeoff.productItem', {
+                      product: item.product,
+                      impact: t(`impact.${item.impact}`),
+                    })}
+                  </li>
+                ))}
+              </ul>
+              <h5>{t('tradeoff.dependencies')}</h5>
+              <ul>
+                {tradeoff.dependencies.map((item) => (
+                  <li key={`${item.commitment}:${item.direction}`}>
+                    {t('tradeoff.dependencyItem', {
+                      commitment: item.commitment,
+                      direction: t(`tradeoff.direction.${item.direction}`),
+                    })}
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
         </>

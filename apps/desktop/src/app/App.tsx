@@ -27,6 +27,7 @@ import {
 import {
   NO_RULE_SETTINGS,
   countByRule,
+  scenarioComparisonAdditions,
   type RadarMode,
   type RuleResult,
   type RuleSettings as Settings,
@@ -161,8 +162,6 @@ export function App() {
   const [showPalette, setShowPalette] = useState(false);
   const scenarioState = selectedScenarioId === null ? null : scenarioProjection(selectedScenarioId);
   const viewState = scenarioState ?? state;
-  const scenarioDiff =
-    state && scenarioState ? compareScenario(baselineProjection(state), scenarioState) : null;
   const scenarioRebase =
     state &&
     selectedScenarioId !== null &&
@@ -259,6 +258,25 @@ export function App() {
     now: runtime?.now ?? (() => new Date().toISOString()),
     events,
   });
+  const scenarioSignals = useSignals(scenarioState, {
+    actorId: `local:local-profile`,
+    settings: ruleSettings,
+    now: runtime?.now ?? (() => new Date().toISOString()),
+    events,
+  });
+  const scenarioDiff =
+    state && scenarioState
+      ? compareScenario(
+          baselineProjection(state),
+          scenarioState,
+          scenarioComparisonAdditions(
+            baselineProjection(state),
+            scenarioState,
+            signals.all,
+            scenarioSignals.all,
+          ),
+        )
+      : null;
 
   /**
    * What a quick action does.
@@ -744,6 +762,7 @@ export function App() {
     const constrained: { name: string; reason: 'MANDATORY' | 'IN_DELIVERY' | 'HARD_DEPENDENCY' }[] =
       [];
     const movable: { name: string; units: number; earliestAlternativeQuarter?: string }[] = [];
+    const crossTeam: { name: string; team: string; quarter: string }[] = [];
     for (const footprint of candidates) {
       const commitment = state.commitments.get(footprint.commitmentId);
       if (!commitment || commitment.id === panelCommitment.id) continue;
@@ -776,9 +795,54 @@ export function App() {
           units: footprint.units,
           ...(earliestAlternativeQuarter ? { earliestAlternativeQuarter } : {}),
         });
+        for (const team of state.teams.values()) {
+          if (team.archivedAt !== undefined || !team.active || team.id === footprint.teamId)
+            continue;
+          const alternative = findCell(board, team.id, footprint.quarterId);
+          if ((alternative?.summary?.headroom ?? 0) >= footprint.units) {
+            crossTeam.push({
+              name: commitment.name,
+              team: team.name,
+              quarter: footprint.quarterId,
+            });
+          }
+        }
       }
     }
-    return { readiness, overflow, tradeoff: { constrained, movable } };
+    const products = [...(state.productImpacts?.values() ?? [])]
+      .filter(
+        (impact) => impact.archivedAt === undefined && impact.commitmentId === panelCommitment.id,
+      )
+      .map((impact) => ({
+        product: state.products?.get(impact.productServiceId)?.name ?? impact.productServiceId,
+        impact: impact.type,
+      }));
+    const dependencies = [...(state.dependencies?.values() ?? [])]
+      .filter(
+        (dependency) =>
+          dependency.archivedAt === undefined &&
+          (dependency.sourceCommitmentId === panelCommitment.id ||
+            (dependency.target.kind === 'COMMITMENT' &&
+              dependency.target.id === panelCommitment.id)),
+      )
+      .map((dependency) => ({
+        commitment:
+          dependency.sourceCommitmentId === panelCommitment.id
+            ? (state.commitments.get(
+                dependency.target.kind === 'COMMITMENT' ? dependency.target.id : '',
+              )?.name ?? dependency.target.id)
+            : (state.commitments.get(dependency.sourceCommitmentId)?.name ??
+              dependency.sourceCommitmentId),
+        direction:
+          dependency.sourceCommitmentId === panelCommitment.id
+            ? ('OUTBOUND' as const)
+            : ('INBOUND' as const),
+      }));
+    return {
+      readiness,
+      overflow,
+      tradeoff: { constrained, movable, crossTeam, products, dependencies },
+    };
   }, [state, board, panelCommitment]);
 
   /** The relations that belong to whatever the panel is showing. */
@@ -1114,6 +1178,7 @@ export function App() {
           ideas={board.ideas.map((idea) => ({ id: idea.commitmentId, name: idea.name }))}
           teams={teams.map((team) => ({ id: team.id, name: team.name }))}
           quarters={board.quarters}
+          currentQuarter={state.workspace.currentQuarterId}
           scenarioId={selectedScenarioId}
           defaultUnits={defaultDropUnits(state.workspace.settings.capacity.sizeMapping)}
           headroomFor={(teamId, quarterId) =>

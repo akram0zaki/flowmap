@@ -17,5 +17,6 @@ export * from './change-load.js';
 export * from './radar.js';
 export * from './secrets.js';
 export * from './settings.js';
+export * from './scenario-diff.js';
 
 export { daysBetween, addDays } from './helpers.js';

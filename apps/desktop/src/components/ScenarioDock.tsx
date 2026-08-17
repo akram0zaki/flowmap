@@ -51,10 +51,12 @@ export function ScenarioDock({
   );
   const selected = active.find((scenario) => scenario.id === selectedId) ?? null;
   const [resolutions, setResolutions] = useState<Record<string, RebaseResolution['action']>>({});
+  const [edits, setEdits] = useState<Record<string, string>>({});
   const [confirmingApply, setConfirmingApply] = useState(false);
   const [selectedCommandIds, setSelectedCommandIds] = useState<readonly string[] | null>(null);
   const conflicts = rebase?.filter((outcome) => outcome.status === 'CONFLICT') ?? [];
   const stale = selected !== null && rebase !== undefined;
+  const missingPrerequisites = selected ? prerequisitesFor(selected, selectedCommandIds ?? []) : [];
 
   return (
     <section className="fm-scenarios" aria-label={t('scenario.label')}>
@@ -74,27 +76,30 @@ export function ScenarioDock({
 
       {active.length > 0 && (
         <div className="fm-scenarios__choices" role="list" aria-label={t('scenario.available')}>
-          <button
-            type="button"
-            aria-pressed={selected === null}
-            className="fm-scenarios__choice"
-            onClick={() => onSelect(null)}
-          >
-            {t('scenario.baseline')}
-          </button>
-          {active.map((scenario) => (
+          <div role="listitem">
             <button
-              key={scenario.id}
               type="button"
-              aria-pressed={scenario.id === selected?.id}
+              aria-pressed={selected === null}
               className="fm-scenarios__choice"
-              onClick={() => onSelect(scenario.id)}
+              onClick={() => onSelect(null)}
             >
-              <span>{scenario.name}</span>
-              <span className="fm-scenarios__meta">
-                {t(`scenario.visibility.${scenario.visibility}`)}
-              </span>
+              {t('scenario.baseline')}
             </button>
+          </div>
+          {active.map((scenario) => (
+            <div key={scenario.id} role="listitem">
+              <button
+                type="button"
+                aria-pressed={scenario.id === selected?.id}
+                className="fm-scenarios__choice"
+                onClick={() => onSelect(scenario.id)}
+              >
+                <span>{scenario.name}</span>
+                <span className="fm-scenarios__meta">
+                  {t(`scenario.visibility.${scenario.visibility}`)}
+                </span>
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -126,8 +131,14 @@ export function ScenarioDock({
             {diff &&
             (diff.capacity.length > 0 ||
               diff.commitments.length > 0 ||
-              diff.gatePassages.length > 0) ? (
-              <ul>
+              diff.gatePassages.length > 0 ||
+              diff.productImpact.length > 0 ||
+              diff.dependencies.length > 0 ||
+              diff.milestones.length > 0 ||
+              diff.attention.added.length > 0 ||
+              diff.attention.removed.length > 0 ||
+              diff.attention.worsened.length > 0) ? (
+              <ul tabIndex={0} aria-label={t('scenario.diff.list')}>
                 {diff.capacity.map((change) => (
                   <li key={`${change.teamId}:${change.quarterId}`}>
                     {t('scenario.diff.capacityChange', {
@@ -146,6 +157,37 @@ export function ScenarioDock({
                 ))}
                 {diff.gatePassages.length > 0 && (
                   <li>{t('scenario.diff.gateCount', { count: diff.gatePassages.length })}</li>
+                )}
+                {diff.productImpact.map((change) => (
+                  <li key={`${change.productServiceId}:${change.quarterId}`}>
+                    {t('scenario.diff.changeLoad', {
+                      product: change.productServiceId,
+                      quarter: change.quarterId,
+                      before: change.changeLoadBefore,
+                      after: change.changeLoadAfter,
+                    })}
+                  </li>
+                ))}
+                {diff.dependencies.map((change) => (
+                  <li key={change.dependencyId}>
+                    {t('scenario.diff.dependency', { effect: change.effect })}
+                  </li>
+                ))}
+                {diff.milestones.map((change) => (
+                  <li key={change.milestoneId}>
+                    {t('scenario.diff.milestone', { conflict: change.conflict })}
+                  </li>
+                ))}
+                {(diff.attention.added.length > 0 ||
+                  diff.attention.removed.length > 0 ||
+                  diff.attention.worsened.length > 0) && (
+                  <li>
+                    {t('scenario.diff.attention', {
+                      added: diff.attention.added.length,
+                      removed: diff.attention.removed.length,
+                      worsened: diff.attention.worsened.length,
+                    })}
+                  </li>
                 )}
               </ul>
             ) : (
@@ -180,6 +222,19 @@ export function ScenarioDock({
                   );
                 })}
               </ul>
+              {missingPrerequisites.length > 0 && (
+                <button
+                  type="button"
+                  className="fm-quiet"
+                  onClick={() =>
+                    setSelectedCommandIds((current) => [
+                      ...new Set([...(current ?? []), ...missingPrerequisites]),
+                    ])
+                  }
+                >
+                  {t('scenario.includePrerequisites', { count: missingPrerequisites.length })}
+                </button>
+              )}
             </details>
           )}
           {stale && (
@@ -207,7 +262,20 @@ export function ScenarioDock({
                           <option value="">{t('scenario.rebase.choose')}</option>
                           <option value="KEEP_MINE">{t('scenario.rebase.keepMine')}</option>
                           <option value="TAKE_THEIRS">{t('scenario.rebase.takeTheirs')}</option>
+                          <option value="EDIT">{t('scenario.rebase.edit')}</option>
                         </select>
+                        {resolutions[outcome.commandId] === 'EDIT' && (
+                          <input
+                            value={edits[outcome.commandId] ?? String(outcome.scenarioValue ?? '')}
+                            aria-label={t('scenario.rebase.editValue', { field: outcome.field })}
+                            onChange={(event) =>
+                              setEdits((current) => ({
+                                ...current,
+                                [outcome.commandId]: event.target.value,
+                              }))
+                            }
+                          />
+                        )}
                       </label>
                     )}
                   </li>
@@ -220,10 +288,29 @@ export function ScenarioDock({
                 onClick={() =>
                   onRebase(
                     selected.id,
-                    conflicts.map((outcome) => ({
-                      commandId: outcome.commandId,
-                      action: resolutions[outcome.commandId]!,
-                    })),
+                    conflicts.map((outcome) => {
+                      const action = resolutions[outcome.commandId]!;
+                      const record = selected.commands.find(
+                        (item) => item.id === outcome.commandId,
+                      )!;
+                      if (action !== 'EDIT') return { commandId: outcome.commandId, action };
+                      const command = record.command as {
+                        payload?: Readonly<Record<string, unknown>>;
+                      };
+                      const payload = command.payload ?? {};
+                      const patch = (payload['patch'] as Readonly<Record<string, unknown>>) ?? {};
+                      return {
+                        commandId: outcome.commandId,
+                        action,
+                        command: {
+                          ...record.command,
+                          payload: {
+                            ...payload,
+                            patch: { ...patch, [outcome.field]: edits[outcome.commandId] ?? '' },
+                          },
+                        },
+                      } as RebaseResolution;
+                    }),
                   )
                 }
               >
@@ -280,7 +367,34 @@ export function ScenarioDock({
                 {diff.gatePassages.length > 0 && (
                   <li>{t('consequence.gate', { count: diff.gatePassages.length })}</li>
                 )}
+                {diff.productImpact.length > 0 && (
+                  <li>{t('consequence.changeLoad', { count: diff.productImpact.length })}</li>
+                )}
+                {diff.dependencies.length > 0 && (
+                  <li>{t('consequence.dependencies', { count: diff.dependencies.length })}</li>
+                )}
+                {(diff.attention.added.length > 0 || diff.attention.worsened.length > 0) && (
+                  <li>
+                    {t('consequence.attention', {
+                      count: diff.attention.added.length + diff.attention.worsened.length,
+                    })}
+                  </li>
+                )}
               </ul>
+              <details>
+                <summary>{t('consequence.details')}</summary>
+                <ul>
+                  {diff.capacity.map((item) => (
+                    <li key={`${item.teamId}:${item.quarterId}`}>
+                      {t('consequence.capacityDetail', {
+                        team: item.teamId,
+                        quarter: item.quarterId,
+                        delta: item.loadAfter - item.loadBefore,
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              </details>
               <div className="fm-consequence-preview__actions">
                 <button type="button" onClick={() => setConfirmingApply(false)}>
                   {t('consequence.cancel')}
@@ -302,4 +416,24 @@ export function ScenarioDock({
       )}
     </section>
   );
+}
+
+function prerequisitesFor(scenario: Scenario, selectedIds: readonly string[]): readonly string[] {
+  const selected = new Set(selectedIds);
+  const missing = new Set<string>();
+  for (const record of scenario.commands.filter((item) => selected.has(item.id))) {
+    const command = record.command as { name?: string; payload?: { commitmentId?: string } };
+    const commitmentId = command.payload?.commitmentId;
+    if (!commitmentId || command.name === 'SetPrimaryTeam') continue;
+    for (const earlier of scenario.commands.filter((item) => item.sequence < record.sequence)) {
+      const candidate = earlier.command as { name?: string; payload?: { commitmentId?: string } };
+      if (candidate.payload?.commitmentId !== commitmentId) continue;
+      const required =
+        (command.name === 'AssignCapacityFootprint' && candidate.name === 'SetPrimaryTeam') ||
+        (command.name === 'PassCommitGate' &&
+          (candidate.name === 'SetPrimaryTeam' || candidate.name === 'AssignCapacityFootprint'));
+      if (required && !selected.has(earlier.id)) missing.add(earlier.id);
+    }
+  }
+  return [...missing];
 }

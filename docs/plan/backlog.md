@@ -230,16 +230,16 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 | St  | ID       | Title                                                      | Size | Dep                | Acceptance                                                                                    |
 | --- | -------- | ---------------------------------------------------------- | :--: | ------------------ | --------------------------------------------------------------------------------------------- |
 | ✅  | M4-SCN-1 | Branded baseline/scenario projections                      |  M   | M1-DOM-3           | A scenario command at a baseline write path is a compile error **and** a runtime rejection    |
-| ⬜  | M4-SCN-2 | Scenario entity + command overlay + replay                 |  M   | M4-SCN-1           | Property test: no scenario command mutates baseline bytes                                     |
+| ✅  | M4-SCN-2 | Scenario entity + command overlay + replay                 |  M   | M4-SCN-1           | Property test: no scenario command mutates baseline bytes                                     |
 | ✅  | M4-SCN-3 | Scenario lifecycle: create, clone, share, discard          |  S   | M4-SCN-2           | Private by default; sharing always explicit                                                   |
 | ✅  | M4-SCN-4 | Ghost footprints for Ideas                                 |  M   | M4-SCN-2, M2-MAP-7 | Baseline lifecycle unchanged; separate `scenarioLoad` band; tentative signals never notified  |
-| ⬜  | M4-SCN-5 | Scenario diff                                              |  L   | M4-SCN-2           | All groups in spec 05 §4; ≤ 500 ms at target scale                                            |
+| ✅  | M4-SCN-5 | Scenario diff                                              |  L   | M4-SCN-2           | All groups in spec 05 §4; ≤ 500 ms at target scale                                            |
 | ✅  | M4-SCN-6 | Side-by-side comparison view + textual diff list           |  M   | M4-SCN-5           | Both keyboard-navigable; the list is the accessible companion                                 |
-| ⬜  | M4-SCN-7 | Rebase + conflict classification and resolution            |  L   | M4-SCN-5           | `CLEAN/REDUNDANT/OBSOLETE/CONFLICT`; stale scenario cannot apply (property-tested)            |
-| ⬜  | M4-SCN-8 | Apply: whole (default) + selective with closure validation |  L   | M4-SCN-7           | Transactional; `revision` increments exactly once; missing prerequisites offered in one click |
+| ✅  | M4-SCN-7 | Rebase + conflict classification and resolution            |  L   | M4-SCN-5           | `CLEAN/REDUNDANT/OBSOLETE/CONFLICT`; stale scenario cannot apply (property-tested)            |
+| ✅  | M4-SCN-8 | Apply: whole (default) + selective with closure validation |  L   | M4-SCN-7           | Transactional; `revision` increments exactly once; missing prerequisites offered in one click |
 | ✅  | M4-QBR-1 | Demand Flow view: lane → pipe → gate → containers          |  L   | M2-MAP-7, M4-SCN-4 | Drop feedback ≤ 100 ms; carry-over and new demand grouped separately                          |
-| ⬜  | M4-QBR-2 | Trade-off panel for overflow                               |  M   | M3-RUL-3           | Excess, constrained, movable, cross-team, product, dependency effects; ranks nothing          |
-| ⬜  | M4-QBR-3 | Consequence preview                                        |  M   | M4-SCN-5           | Fires only on the measured triggers; summary with drill-down; fixed action position           |
+| ✅  | M4-QBR-2 | Trade-off panel for overflow                               |  M   | M3-RUL-3           | Excess, constrained, movable, cross-team, product, dependency effects; ranks nothing          |
+| ✅  | M4-QBR-3 | Consequence preview                                        |  M   | M4-SCN-5           | Fires only on the measured triggers; summary with drill-down; fixed action position           |
 | ✅  | M4-QBR-4 | Presentation mode                                          |  M   | M2-MAP-3           | Editing blocked with an explanation; type up one step; focus rings thickened                  |
 | ✅  | M4-QBR-5 | Undo barriers + auto-snapshot before barrier commands      |  S   | M1-VS-6            | Every barrier command snapshots first and states that it cannot be undone                     |
 

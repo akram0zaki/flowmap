@@ -956,11 +956,35 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       scenarioId: input.scenarioId,
       payload: { commitmentId: input.commitmentId },
     });
+    // Validate each command against a projection that includes all of its
+    // predecessors. Recording the primary-team command before discovering that
+    // its footprint is invalid would leave a misleading half-placement behind.
+    const accepted: Command[] = [];
     for (const draft of drafts) {
+      const previewScenario = {
+        ...scenario,
+        commands: [
+          ...scenario.commands,
+          ...accepted.map((command, index) => ({
+            id: command.id,
+            sequence: scenario.commands.length + index + 1,
+            command,
+            recordedAt: command.issuedAt,
+            label: `scenario.command.${command.name}`,
+            baseFields: [],
+          })),
+        ],
+      };
+      const previewProjection = projectScenario(
+        baselineProjection(state),
+        previewScenario,
+        (projection, recorded) =>
+          runNamed(recorded.name, projection, recorded, makeContext(runtime, 1)),
+      );
       const preview =
         draft.name === 'PassCommitGate'
           ? { ok: true as const, effects: { changes: [], events: [], affectedProjections: [] } }
-          : runNamed(draft.name, projected, draft, makeContext(runtime, 1));
+          : runNamed(draft.name, previewProjection, draft, makeContext(runtime, 1));
       if (!preview.ok) {
         set({
           status: {
@@ -970,6 +994,9 @@ export const useWorkspace = create<StoreState>((set, get) => ({
         });
         return false;
       }
+      accepted.push(draft);
+    }
+    for (const draft of accepted) {
       const saved = await get().dispatch('RecordScenarioCommand', (baseline, cmd, ctx) =>
         recordScenarioCommand(
           baseline,
