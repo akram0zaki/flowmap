@@ -10,6 +10,7 @@ export default defineConfig({
       // The scale benchmark lives here because it needs both the fixtures and
       // the visual model, which no pure package is allowed to depend on.
       'apps/desktop/src/**/*.test.ts',
+      'scripts/**/*.test.ts',
     ],
     environment: 'node',
     clearMocks: true,

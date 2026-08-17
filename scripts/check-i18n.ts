@@ -177,6 +177,8 @@ const TOOLTIP_REQUIRED: readonly string[] = [
   'overflow',
   'externalLink',
   'managementNote',
+  'dataDirectory',
+  'portableMode',
 ];
 
 for (const locale of SUPPORTED_LOCALES) {

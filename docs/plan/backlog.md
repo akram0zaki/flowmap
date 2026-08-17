@@ -11,7 +11,7 @@ capability**, not by technical layer — each ticket should leave the product me
 > This file is kept current as work lands. A ticket is ✅ only when its acceptance criteria pass and
 > the [`AGENTS.md`](../../AGENTS.md) definition of done is met — not when the code merely exists.
 
-**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · **M3 13/14 done, 1 partial** · **M6 17/17 — complete** · M7–M9 not started
+**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · **M3 13/14 done, 1 partial** · **M6 17/17 — complete** · **M7 5/8 done, 2 signing-gated, 1 blocked on devices** · M8–M9 not started
 
 > **Closed out of M2.** The seven code-side gaps carried out of the first pass
 > are done, each with unit and Playwright coverage and verified in a browser:
@@ -288,16 +288,25 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 
 ## M7 — Desktop packaging
 
+Portable unzip-and-run: Settings shows the resolved data directory (env →
+`data/` beside the exe → per-user `Flowmap/`), native menus and `?` cover the
+keyboard model, clear-local-data confirms first, and a missing WebView2 names
+`Flowmap-<version>-win-x64-standalone.zip` instead of failing silently.
+`pnpm package:portable` writes the spec ZIP names; CI does the same on tags.
+Authenticode, notarisation, and managed-device unzip-and-run still need the
+certificates and the S-1/S-2 devices — the hooks are in the script and the
+checklist is in [`docs/ops/`](../ops/distribution.md).
+
 | St  | ID       | Title                                                                                   | Size | Dep                |
 | --- | -------- | --------------------------------------------------------------------------------------- | :--: | ------------------ |
-| ⬜  | M7-PKG-1 | Portable Windows ZIP + Authenticode-signed `Flowmap.exe`                                |  M   | M0-SPK-1           |
-| ⬜  | M7-PKG-2 | Second Windows ZIP embedding the fixed-version WebView2 runtime                         |  S   | M7-PKG-1           |
-| ⬜  | M7-PKG-3 | macOS ZIP: signed `.app` + notarisation + stapling                                      |  M   | M0-SPK-2           |
-| ⬜  | M7-PKG-4 | Portable data-directory resolution (env → `./data/` → app-data), path shown in Settings |  M   | M1-VS-1            |
-| ⬜  | M7-PKG-5 | Startup check: missing WebView2 explains itself and names the standalone build          |  S   | M7-PKG-1           |
-| ⬜  | M7-PKG-6 | Unzip-and-run verification on managed devices, both platforms                           |  M   | M7-PKG-1, M7-PKG-3 |
-| ⬜  | M7-PKG-7 | Native menus, shortcuts, clear-local-data                                               |  S   | M1-VS-1            |
-| ⬜  | M7-PKG-8 | Distribution + rollback runbook, release-note format                                    |  S   | M7-PKG-6           |
+| 🔵  | M7-PKG-1 | Portable Windows ZIP + Authenticode-signed `Flowmap.exe`                                |  M   | M0-SPK-1           |
+| ✅  | M7-PKG-2 | Second Windows ZIP embedding the fixed-version WebView2 runtime                         |  S   | M7-PKG-1           |
+| 🔵  | M7-PKG-3 | macOS ZIP: signed `.app` + notarisation + stapling                                      |  M   | M0-SPK-2           |
+| ✅  | M7-PKG-4 | Portable data-directory resolution (env → `./data/` → app-data), path shown in Settings |  M   | M1-VS-1            |
+| ✅  | M7-PKG-5 | Startup check: missing WebView2 explains itself and names the standalone build          |  S   | M7-PKG-1           |
+| ⏸   | M7-PKG-6 | Unzip-and-run verification on managed devices, both platforms                           |  M   | M7-PKG-1, M7-PKG-3 |
+| ✅  | M7-PKG-7 | Native menus, shortcuts, clear-local-data                                               |  S   | M1-VS-1            |
+| ✅  | M7-PKG-8 | Distribution + rollback runbook, release-note format                                    |  S   | M7-PKG-6           |
 
 ## M8 — Shared provider and sync
 

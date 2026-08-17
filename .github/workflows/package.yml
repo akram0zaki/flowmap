@@ -1,0 +1,88 @@
+# Portable ZIPs from the same commit (spec 10 §3, §8).
+#
+# Signing and notarisation run only when the repository secrets are present.
+# An unsigned ZIP is still a valid unzip-and-run artifact for verification.
+
+name: Portable packages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      standalone:
+        description: 'Also build the Windows standalone ZIP (needs a WebView2 runtime cache)'
+        type: boolean
+        default: false
+      universal:
+        description: 'Build a universal macOS ZIP (needs the x86_64 rust target)'
+        type: boolean
+        default: true
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  package:
+    name: Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Package portable ZIP
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ] && [ "${{ inputs.universal || true }}" != "false" ]; then
+            pnpm package:portable -- --universal
+          else
+            pnpm package:portable
+          fi
+        shell: bash
+
+      - name: Package Windows standalone ZIP
+        if: matrix.os == 'windows-latest' && (github.event.inputs.standalone == 'true')
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          FLOWMAP_WEBVIEW2_DIR: ${{ vars.FLOWMAP_WEBVIEW2_DIR }}
+        run: pnpm package:portable -- --standalone --skip-build
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flowmap-portable-${{ matrix.os }}
+          path: dist-portable/*.zip
+          if-no-files-found: error

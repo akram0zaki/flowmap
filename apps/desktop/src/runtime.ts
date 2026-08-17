@@ -15,6 +15,7 @@
 
 import { MemoryWorkspaceRepository, localStoragePersistence } from '@flowmap/storage';
 
+import { APP_VERSION } from './app-version.js';
 import type { Runtime } from './state/workspace-store.js';
 
 declare global {
@@ -51,5 +52,7 @@ export async function createRuntime(): Promise<Runtime> {
     repository: new MemoryWorkspaceRepository(localStoragePersistence()),
     now: () => new Date().toISOString(),
     newId,
+    version: APP_VERSION,
+    webview: 'browser',
   };
 }

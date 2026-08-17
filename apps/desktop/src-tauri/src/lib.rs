@@ -6,20 +6,41 @@
 //! opening an `https:` link. See docs/spec/10-desktop-security.md §2.
 
 mod db;
+mod menu;
+mod paths;
+mod webview;
 
 use tauri::Manager;
 
 use db::{DbState, OpenInfo, Param};
 
+pub fn prepare_webview() -> Result<webview::WebviewKind, String> {
+    webview::prepare_webview(env!("CARGO_PKG_VERSION"))
+}
+
 #[tauri::command]
-fn db_open(app: tauri::AppHandle, state: tauri::State<'_, DbState>) -> Result<OpenInfo, String> {
+fn db_open(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DbState>,
+    webview: tauri::State<'_, webview::WebviewKind>,
+) -> Result<OpenInfo, String> {
     let app_data = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("Cannot resolve the application data directory: {e}"))?;
 
-    let (dir, portable) = db::resolve_data_dir(app_data);
-    let (conn, info) = db::open_at(dir, portable)?;
+    let exe_parent = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|parent| parent.to_path_buf()));
+    let layout = paths::resolve_layout(
+        app_data.clone(),
+        std::env::var("FLOWMAP_DATA_DIR").ok(),
+        exe_parent,
+        paths::dir_is_writable,
+    );
+    paths::migrate_legacy_db(&layout, &[app_data])?;
+
+    let (conn, info) = db::open_at(&layout, *webview)?;
 
     *state
         .conn
@@ -29,7 +50,7 @@ fn db_open(app: tauri::AppHandle, state: tauri::State<'_, DbState>) -> Result<Op
         .path
         .lock()
         .map_err(|_| "database path lock poisoned".to_string())? =
-        Some(std::path::PathBuf::from(&info.data_dir).join("flowmap.db"));
+        Some(layout.workspaces_dir.join("flowmap.db"));
     Ok(info)
 }
 
@@ -88,9 +109,23 @@ fn db_backup(state: tauri::State<'_, DbState>, version: u32) -> Result<String, S
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let webview = prepare_webview().unwrap_or_else(|message| {
+        eprintln!("{message}");
+        std::process::exit(1);
+    });
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(DbState::default())
+        .manage(webview)
+        .setup(|app| {
+            let menu = menu::build(app.handle())?;
+            app.set_menu(menu)?;
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            menu::emit(app, event.id().as_ref());
+        })
         .invoke_handler(tauri::generate_handler![
             db_open,
             db_exec,

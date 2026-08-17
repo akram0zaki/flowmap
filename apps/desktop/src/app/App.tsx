@@ -73,11 +73,15 @@ import { RuleSettings } from '../components/RuleSettings.jsx';
 import { ScenarioDock } from '../components/ScenarioDock.jsx';
 import { DemandFlow } from '../components/DemandFlow.jsx';
 import { CommandPalette } from '../components/CommandPalette.jsx';
+import { ConfirmDialog } from '../components/ConfirmDialog.jsx';
 import { WorkspaceSwitcher } from '../components/WorkspaceSwitcher.jsx';
 import { PortabilityPanel } from '../components/PortabilityPanel.jsx';
 import { SavedViews } from '../components/SavedViews.jsx';
+import { SettingsPanel } from '../components/SettingsPanel.jsx';
+import { ShortcutReference } from '../components/ShortcutReference.jsx';
 import { SnapshotsPanel } from '../components/SnapshotsPanel.jsx';
 import { FirstRunGuide } from '../components/FirstRunGuide.jsx';
+import { useNativeMenu, type MenuCommand } from '../state/use-native-menu.js';
 import {
   DependencyMapView,
   HistoryView,
@@ -181,6 +185,9 @@ export function App() {
   const [showDemandFlow, setShowDemandFlow] = useState(false);
   const [activeLens, setActiveLens] = useState<ActiveLens>('PORTFOLIO');
   const [showPalette, setShowPalette] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const scenarioState = selectedScenarioId === null ? null : scenarioProjection(selectedScenarioId);
   const viewState = scenarioState ?? state;
   const scenarioRebase =
@@ -198,25 +205,69 @@ export function App() {
     announceTimer.current = setTimeout(() => setAnnouncement(message), 120);
   }, []);
 
+  const handleMenu = useCallback(
+    (command: MenuCommand) => {
+      switch (command) {
+        case 'clear-local-data':
+          setConfirmClear(true);
+          break;
+        case 'undo':
+          void undo();
+          break;
+        case 'redo':
+          void redo();
+          break;
+        case 'command-palette':
+          setShowPalette(true);
+          break;
+        case 'list-companion':
+          setShowList((visible) => !visible);
+          break;
+        case 'presentation':
+          announce(presentationMode ? t('presentation.off') : t('presentation.on'));
+          setPresentationMode(!presentationMode);
+          break;
+        case 'settings':
+        case 'about':
+          setShowSettings(true);
+          break;
+        case 'shortcuts':
+          setShowShortcuts(true);
+          break;
+      }
+    },
+    [undo, redo, announce, presentationMode, setPresentationMode],
+  );
+  const { once } = useNativeMenu(handleMenu);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey;
+      const typing = isTypingTarget(e.target);
       if (mod && e.key.toLowerCase() === 'z') {
         e.preventDefault();
-        void (e.shiftKey ? redo() : undo());
+        once(e.shiftKey ? 'redo' : 'undo', () => {
+          void (e.shiftKey ? redo() : undo());
+        });
       }
       if (mod && e.key.toLowerCase() === 'l') {
         e.preventDefault();
-        setShowList((v) => !v);
+        once('list-companion', () => setShowList((v) => !v));
       }
       if (mod && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setShowPalette(true);
+        once('command-palette', () => setShowPalette(true));
+      }
+      if (mod && e.key === ',') {
+        e.preventDefault();
+        once('settings', () => setShowSettings(true));
       }
       if (mod && e.shiftKey && e.key.toLowerCase() === 'p') {
         e.preventDefault();
-        announce(presentationMode ? t('presentation.off') : t('presentation.on'));
-        setPresentationMode(!presentationMode);
+        once('presentation', () => {
+          announce(presentationMode ? t('presentation.off') : t('presentation.on'));
+          setPresentationMode(!presentationMode);
+        });
       }
       if (e.key === 'Escape') {
         setFocusedCommitmentId(null);
@@ -226,6 +277,10 @@ export function App() {
           announce(t('presentation.off'));
         }
       }
+      if (!mod && e.key === '?' && !typing) {
+        e.preventDefault();
+        once('shortcuts', () => setShowShortcuts(true));
+      }
       if (!mod && /^[1-8]$/.test(e.key) && e.target === document.body) {
         const lens = LENSES[Number(e.key) - 1];
         if (lens) setActiveLens(lens);
@@ -233,7 +288,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, select, announce, presentationMode]);
+  }, [undo, redo, select, announce, presentationMode, setPresentationMode, once]);
 
   /**
    * Ctrl/Cmd + wheel, and pinch — which the browser also reports as a wheel
@@ -1161,11 +1216,21 @@ export function App() {
           onRestore={(id, confirmation) => void restoreSnapshot(id, confirmation)}
         />
         <span className="fm-header__spacer" />
-        <div className="fm-header__status" role="status">
+        <div className="fm-header__status">
+          <button
+            type="button"
+            className="fm-header__action"
+            aria-pressed={showSettings}
+            onClick={() => setShowSettings(true)}
+          >
+            {t('settings.open')}
+          </button>
           {/* Pending count is sync plumbing. With no shared provider there is
               nothing for it to be pending *to*, so it is noise rather than
               status — it returns in M8 when it means something. */}
-          <span aria-live="polite">{t('status.saved')}</span>
+          <span role="status" aria-live="polite">
+            {t('status.saved')}
+          </span>
           <span>{profileName}</span>
         </div>
       </header>
@@ -1273,7 +1338,7 @@ export function App() {
           onToggleList={() => setShowList((v) => !v)}
           onUndo={() => void undo()}
           onRedo={() => void redo()}
-          onClearLocalData={() => void clearLocalData()}
+          onClearLocalData={() => setConfirmClear(true)}
           radarCount={signals.visible.length}
           highCount={signals.visible.filter((signal) => signal.severity === 'HIGH').length}
           showRadar={showRadar}
@@ -1594,8 +1659,38 @@ export function App() {
           onSearch={search}
         />
       )}
+      {showSettings && runtime && (
+        <SettingsPanel
+          runtime={runtime}
+          onClearLocalData={() => {
+            setShowSettings(false);
+            setConfirmClear(true);
+          }}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+      {showShortcuts && <ShortcutReference onClose={() => setShowShortcuts(false)} />}
+      {confirmClear && (
+        <ConfirmDialog
+          title={t('settings.clear.title')}
+          body={t('settings.clear.body')}
+          confirmLabel={t('settings.clear.confirm')}
+          danger
+          onCancel={() => setConfirmClear(false)}
+          onConfirm={() => {
+            setConfirmClear(false);
+            void clearLocalData();
+          }}
+        />
+      )}
     </div>
   );
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
 }
 
 function removeChip(filter: FilterState, key: string): FilterState {

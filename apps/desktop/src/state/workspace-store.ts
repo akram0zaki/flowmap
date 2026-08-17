@@ -137,7 +137,12 @@ export type Runtime = {
   readonly newId: () => string;
   /** Where this instance keeps its data. Surfaced in Settings; absent in browser mode. */
   readonly dataDir?: string;
+  readonly workspacesDir?: string;
+  readonly logsDir?: string;
   readonly portable?: boolean;
+  readonly portableSource?: 'ENV' | 'BESIDE_EXE' | 'APP_DATA';
+  readonly version?: string;
+  readonly webview?: 'evergreen' | 'fixed' | 'wkwebview' | 'browser';
   readonly recoveryNotice?: 'CORRUPT_CACHE_RECOVERED';
   /**
    * Hands an https link to the operating system.

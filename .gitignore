@@ -13,6 +13,8 @@ coverage/
 
 # Tauri
 apps/desktop/src-tauri/target/
+apps/desktop/webview2-runtime/
+dist-portable/
 
 # Local workspace data — never commit portfolio data
 *.flowmap
