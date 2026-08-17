@@ -80,7 +80,14 @@ export function useSignals(
       actorId,
       ownedRefs,
       ...(personId !== undefined ? { personId } : {}),
-      ...(events ? { history: { quarterMovedLater: countQuarterMoves(events) } } : {}),
+      ...(events
+        ? {
+            history: {
+              quarterMovedLater: countQuarterMoves(events),
+              closedQuarters: closedQuarterReviews(events),
+            },
+          }
+        : {}),
     });
 
     // Dispositions are per user: this actor's opinions, nobody else's.
@@ -123,6 +130,27 @@ function countQuarterMoves(events: readonly DomainEvent[]): ReadonlyMap<string, 
   }
 
   return counts;
+}
+
+function closedQuarterReviews(events: readonly DomainEvent[]) {
+  return events
+    .filter((event) => event.eventType === 'QUARTER_CLOSED')
+    .map((event) => ({
+      quarterId: String(event.facts['quarterId'] ?? ''),
+      outcomes: Array.isArray(event.facts['outcomes'])
+        ? (event.facts['outcomes'] as Array<{
+            teamId: string;
+            operationalLoad: 'BELOW' | 'ABOUT' | 'ABOVE';
+            capacity: 'LOWER' | 'ABOUT' | 'HIGHER';
+          }>)
+        : [],
+      carriedByTeam:
+        (event.facts['carriedByTeam'] as Readonly<Record<string, number>> | undefined) ?? {},
+      sizeRatiosByTeam:
+        (event.facts['sizeRatiosByTeam'] as
+          Readonly<Record<string, readonly number[]>> | undefined) ?? {},
+    }))
+    .filter((review) => review.quarterId.length > 0);
 }
 
 /**

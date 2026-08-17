@@ -695,6 +695,65 @@ cases('PRD_NO_OWNER', heavyProduct, {
   products: [product('p-1', { ownerRef: { kind: 'TEAM', teamId: 't-1' } })],
 });
 
+// Closed-quarter patterns are event-derived, so every fixture supplies the
+// same small history explicitly instead of relying on an ambient store.
+const historyTeam: StateParts = { teams: [team('t-1')] };
+const historyReviews = [
+  {
+    quarterId: '2026-Q1',
+    outcomes: [{ teamId: 't-1', operationalLoad: 'ABOVE' as const, capacity: 'LOWER' as const }],
+    carriedByTeam: { 't-1': 20 },
+    sizeRatiosByTeam: { 't-1': [1.4] },
+  },
+  {
+    quarterId: '2026-Q2',
+    outcomes: [{ teamId: 't-1', operationalLoad: 'ABOVE' as const, capacity: 'LOWER' as const }],
+    carriedByTeam: { 't-1': 10 },
+    sizeRatiosByTeam: { 't-1': [1.5] },
+  },
+  {
+    quarterId: '2026-Q3',
+    outcomes: [{ teamId: 't-1', operationalLoad: 'BELOW' as const, capacity: 'ABOUT' as const }],
+    carriedByTeam: {},
+    sizeRatiosByTeam: { 't-1': [1.3] },
+  },
+];
+const quietHistory = historyReviews.map((review) => ({
+  ...review,
+  outcomes: [{ teamId: 't-1', operationalLoad: 'ABOUT' as const, capacity: 'ABOUT' as const }],
+  carriedByTeam: {},
+  sizeRatiosByTeam: { 't-1': [1] },
+}));
+const unusedHistory = historyReviews.map((review) => ({
+  ...review,
+  outcomes: [{ teamId: 't-1', operationalLoad: 'BELOW' as const, capacity: 'ABOUT' as const }],
+  carriedByTeam: {},
+  sizeRatiosByTeam: { 't-1': [1] },
+}));
+function historyCases(code: Extract<RuleCode, `HST_${string}`>, positive: typeof historyReviews) {
+  describe(code, () => {
+    it('fires on its recorded closed-quarter pattern', () => {
+      expect(
+        signalsFor(code, historyTeam, {
+          history: { quarterMovedLater: new Map(), closedQuarters: positive },
+        }),
+      ).not.toEqual([]);
+    });
+    it('stays silent without that recorded pattern', () => {
+      expect(
+        signalsFor(code, historyTeam, {
+          history: { quarterMovedLater: new Map(), closedQuarters: quietHistory },
+        }),
+      ).toEqual([]);
+    });
+  });
+}
+historyCases('HST_RESERVE_EXCEEDED', historyReviews);
+historyCases('HST_RESERVE_UNUSED', unusedHistory);
+historyCases('HST_CARRYOVER_PATTERN', historyReviews);
+historyCases('HST_CAPACITY_OPTIMISTIC', historyReviews);
+historyCases('HST_SIZE_DRIFT', historyReviews);
+
 // ── Integrity ──────────────────────────────────────────────────────────────
 
 cases(

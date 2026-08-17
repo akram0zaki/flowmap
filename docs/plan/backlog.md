@@ -249,20 +249,20 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 
 | St  | ID       | Title                                                   | Size | Dep      |
 | --- | -------- | ------------------------------------------------------- | :--: | -------- |
-| ⬜  | M5-TML-1 | Timeline: axis, presets, fragments per footprint        |  L   | M2-MAP-3 |
-| ⬜  | M5-TML-2 | Milestones and carry-over on the timeline               |  S   | M5-TML-1 |
-| ⬜  | M5-DEP-1 | Dependency Map: layered layout in a worker              |  L   | M0-SPK-4 |
-| ⬜  | M5-DEP-2 | Hub emphasis, neighbourhood expansion, cycle badges     |  M   | M5-DEP-1 |
-| ⬜  | M5-DEP-3 | Dependency table + per-node text descriptions           |  M   | M5-DEP-1 |
-| ⬜  | M5-PRD-1 | Products view + change-load strip + breakdown           |  M   | M3-RUL-7 |
-| ⬜  | M5-SRC-1 | Local search index (FTS) + `Ctrl/Cmd + K` palette       |  M   | M1-STO-3 |
-| ⬜  | M5-SRC-2 | Composable filter chips across all views                |  M   | M2-MAP-8 |
-| ⬜  | M5-HIS-1 | Domain history view                                     |  M   | M1-DOM-3 |
-| ⬜  | M5-HIS-2 | Quarter review draft + judgement inputs                 |  M   | M5-HIS-1 |
-| ⬜  | M5-HIS-3 | Carry-over proposal + Planner confirmation              |  M   | M5-HIS-2 |
-| ⬜  | M5-HIS-4 | Close quarter (auto-snapshot, freeze, advance) + reopen |  M   | M5-HIS-3 |
-| ⬜  | M5-HIS-5 | History rules + explainable recommendations             |  M   | M5-HIS-4 |
-| ⬜  | M5-HIS-6 | Recurrence metadata + manual duplication                |  S   | M2-COM-2 |
+| ✅  | M5-TML-1 | Timeline: axis, presets, fragments per footprint        |  L   | M2-MAP-3 |
+| ✅  | M5-TML-2 | Milestones and carry-over on the timeline               |  S   | M5-TML-1 |
+| ✅  | M5-DEP-1 | Dependency Map: layered layout in a worker              |  L   | M0-SPK-4 |
+| ✅  | M5-DEP-2 | Hub emphasis, neighbourhood expansion, cycle badges     |  M   | M5-DEP-1 |
+| ✅  | M5-DEP-3 | Dependency table + per-node text descriptions           |  M   | M5-DEP-1 |
+| ✅  | M5-PRD-1 | Products view + change-load strip + breakdown           |  M   | M3-RUL-7 |
+| ✅  | M5-SRC-1 | Local search index (FTS) + `Ctrl/Cmd + K` palette       |  M   | M1-STO-3 |
+| ✅  | M5-SRC-2 | Composable filter chips across all views                |  M   | M2-MAP-8 |
+| ✅  | M5-HIS-1 | Domain history view                                     |  M   | M1-DOM-3 |
+| ✅  | M5-HIS-2 | Quarter review draft + judgement inputs                 |  M   | M5-HIS-1 |
+| ✅  | M5-HIS-3 | Carry-over proposal + Planner confirmation              |  M   | M5-HIS-2 |
+| ✅  | M5-HIS-4 | Close quarter (auto-snapshot, freeze, advance) + reopen |  M   | M5-HIS-3 |
+| ✅  | M5-HIS-5 | History rules + explainable recommendations             |  M   | M5-HIS-4 |
+| ✅  | M5-HIS-6 | Recurrence metadata + manual duplication                |  S   | M2-COM-2 |
 
 ## M6 — Portability and workspaces
 

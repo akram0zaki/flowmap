@@ -31,6 +31,10 @@ import {
   recordScenarioCommand,
   rebaseScenario as rebaseScenarioDraft,
   classifyScenarioRebase,
+  closeQuarter,
+  reopenQuarter,
+  renewCommitment,
+  setRecurrence,
   restoreCapacityFootprint,
   setPrimaryTeam,
   splitCapacityFootprint,
@@ -47,6 +51,9 @@ import {
   type ScenarioProjection,
   type RebaseOutcome,
   type RebaseResolution,
+  type CarryOverDecision,
+  type QuarterOutcome,
+  type Recurrence,
 } from '@flowmap/domain';
 import {
   clearSignalDisposition,
@@ -69,7 +76,7 @@ import {
   updateMilestone,
   type RelationState,
 } from '@flowmap/domain';
-import type { WorkspaceRepository } from '@flowmap/storage';
+import type { SearchHit, WorkspaceRepository } from '@flowmap/storage';
 
 import { t } from '../i18n/t.js';
 import { seedSampleWorkspace } from './sample-workspace.js';
@@ -294,6 +301,15 @@ type StoreState = {
   applyScenario(scenarioId: EntityId, selectedCommandIds?: readonly EntityId[]): Promise<boolean>;
   getScenarioRebase(scenarioId: EntityId): readonly RebaseOutcome[];
   rebaseScenario(scenarioId: EntityId, resolutions: readonly RebaseResolution[]): Promise<boolean>;
+  closeQuarter(input: {
+    quarterId: QuarterId;
+    outcomes: readonly QuarterOutcome[];
+    carryOver: readonly CarryOverDecision[];
+  }): Promise<boolean>;
+  reopenQuarter(quarterId: QuarterId): Promise<boolean>;
+  setRecurrence(commitmentId: EntityId, recurrence?: Recurrence): Promise<boolean>;
+  renewCommitment(commitmentId: EntityId, name?: string): Promise<boolean>;
+  search(query: string): Promise<SearchHit[]>;
 };
 
 export const useWorkspace = create<StoreState>((set, get) => ({
@@ -1031,6 +1047,45 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       })) !== false
     );
   },
+
+  async closeQuarter(input) {
+    return (
+      (await get().dispatch('CloseQuarter', (state, cmd, ctx) =>
+        closeQuarter(state, input, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async reopenQuarter(quarterId) {
+    return (
+      (await get().dispatch('ReopenQuarter', (state, cmd, ctx) =>
+        // Local mode is the Planner's own workspace, so Admin recovery is the
+        // same person. Shared-role enforcement arrives with M8.
+        reopenQuarter(state, { quarterId, confirmed: true }, cmd, { ...ctx, role: 'ADMIN' }),
+      )) !== false
+    );
+  },
+
+  async setRecurrence(commitmentId, recurrence) {
+    return (
+      (await get().dispatch('SetRecurrence', (state, cmd, ctx) =>
+        setRecurrence(state, { commitmentId, ...(recurrence ? { recurrence } : {}) }, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async renewCommitment(commitmentId, name) {
+    return (
+      (await get().dispatch('RenewCommitment', (state, cmd, ctx) =>
+        renewCommitment(state, { commitmentId, ...(name ? { name } : {}) }, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async search(query) {
+    const { runtime } = get();
+    return runtime ? runtime.repository.search(WORKSPACE_ID, query) : [];
+  },
 }));
 
 const SCENARIO_METADATA_COMMANDS = new Set([
@@ -1119,6 +1174,14 @@ function runNamed(
       return setPrimaryTeam(state, payload as never, cmd, ctx);
     case 'UpdateCommitment':
       return updateCommitment(state, payload as never, cmd, ctx);
+    case 'SetRecurrence':
+      return setRecurrence(state, payload as never, cmd, ctx);
+    case 'RenewCommitment':
+      return renewCommitment(state, payload as never, cmd, ctx);
+    case 'CloseQuarter':
+      return closeQuarter(state, payload as never, cmd, ctx);
+    case 'ReopenQuarter':
+      return reopenQuarter(state, payload as never, cmd, { ...ctx, role: 'ADMIN' });
     case 'ReorderTeams':
       return reorderTeams(state, payload as never, cmd, ctx);
     // Split and merge are each other's inverse, so both have to be replayable
