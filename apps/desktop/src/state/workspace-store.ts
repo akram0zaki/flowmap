@@ -40,6 +40,7 @@ import {
   type EntityId,
   type QuarterId,
   type WorkspaceState,
+  type ScenarioProjection,
 } from '@flowmap/domain';
 import {
   clearSignalDisposition,
@@ -270,7 +271,7 @@ type StoreState = {
   loadSample(scale?: 25 | 100 | 500): Promise<void>;
   createScenario(): Promise<boolean>;
   discardScenario(scenarioId: EntityId): Promise<boolean>;
-  scenarioProjection(scenarioId: EntityId): WorkspaceState | null;
+  scenarioProjection(scenarioId: EntityId): ScenarioProjection | null;
   placeScenarioIdea(input: { scenarioId: EntityId; commitmentId: EntityId; teamId: EntityId; quarterId: string; units: number }): Promise<boolean>;
 };
 

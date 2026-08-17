@@ -21,6 +21,8 @@ import {
   setProductImpact,
   updateDependency,
   utilisationPercent,
+  baselineProjection,
+  compareScenario,
 } from '@flowmap/domain';
 import {
   NO_RULE_SETTINGS,
@@ -133,6 +135,7 @@ export function App() {
   const [presentationMode, setPresentationMode] = useState(false);
   const scenarioState = selectedScenarioId === null ? null : scenarioProjection(selectedScenarioId);
   const viewState = scenarioState ?? state;
+  const scenarioDiff = state && scenarioState ? compareScenario(baselineProjection(state), scenarioState) : null;
 
   // Announcements are debounced through a ref so rapid arrow-key movement does
   // not queue a dozen utterances.
@@ -931,6 +934,7 @@ export function App() {
             if (discarded) setSelectedScenarioId(null);
           });
         }}
+        {...(scenarioDiff ? { summary: scenarioDiff.summary } : {})}
       />
 
       {!presentationMode && <CaptureBar

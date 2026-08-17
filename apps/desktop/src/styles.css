@@ -164,6 +164,11 @@ body {
   font-size: var(--text-xs);
 }
 
+.fm-scenarios__diff { display: flex; flex-wrap: wrap; gap: var(--space-5); grid-column: 1 / -1; margin: 0; }
+.fm-scenarios__diff div { display: grid; gap: var(--space-1); }
+.fm-scenarios__diff dt { color: var(--ink-subtle); font-size: var(--text-2xs); }
+.fm-scenarios__diff dd { margin: 0; color: var(--info-fg); font-family: var(--font-data); font-size: var(--text-md); font-variant-numeric: tabular-nums; }
+
 .fm-shell[data-presentation] .fm-editing-chrome,
 .fm-shell[data-presentation] .fm-scenarios__head button,
 .fm-shell[data-presentation] .fm-scenarios__footer button,

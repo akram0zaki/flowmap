@@ -16,6 +16,7 @@ export type ScenarioDockProps = {
   readonly onSelect: (id: string | null) => void;
   readonly onCreate: () => void;
   readonly onDiscard: (id: string) => void;
+  readonly summary?: { teamsAffected: number; quartersAffected: number; netUnitsMoved: number; newOverflows: number; resolvedOverflows: number };
 };
 
 export function ScenarioDock({
@@ -24,6 +25,7 @@ export function ScenarioDock({
   onSelect,
   onCreate,
   onDiscard,
+  summary,
 }: ScenarioDockProps) {
   const active = scenarios.filter((scenario) => scenario.status === 'DRAFT' || scenario.status === 'SHARED');
   const selected = active.find((scenario) => scenario.id === selectedId) ?? null;
@@ -70,12 +72,22 @@ export function ScenarioDock({
       )}
 
       {selected && (
+        <>
+          {summary && (
+            <dl className="fm-scenarios__diff" aria-label={t('scenario.diffLabel')}>
+              <div><dt>{t('scenario.teamsAffected')}</dt><dd>{summary.teamsAffected}</dd></div>
+              <div><dt>{t('scenario.quartersAffected')}</dt><dd>{summary.quartersAffected}</dd></div>
+              <div><dt>{t('scenario.unitsMoved')}</dt><dd>{summary.netUnitsMoved}</dd></div>
+              <div><dt>{t('scenario.newOverflows')}</dt><dd>{summary.newOverflows}</dd></div>
+            </dl>
+          )}
         <div className="fm-scenarios__footer">
           <span>{t('scenario.commands', { count: selected.commands.length })}</span>
           <button type="button" className="fm-danger" onClick={() => onDiscard(selected.id)}>
             {t('scenario.discard')}
           </button>
         </div>
+        </>
       )}
     </section>
   );
