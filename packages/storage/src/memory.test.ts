@@ -157,6 +157,11 @@ describe('MemoryWorkspaceRepository', () => {
     const snapshots = await repo.listSnapshots(WS);
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]).toMatchObject({ id: 'snapshot-1', commandName: 'ApplyScenario' });
+    expect(snapshots[0]?.content).toMatchObject({
+      workspace: expect.any(Object),
+      teams: expect.any(Object),
+      commitments: expect.any(Object),
+    });
   });
 
   it('clears every bucket, leaving nothing behind from a previous sample', async () => {
@@ -246,6 +251,7 @@ describe('reading a snapshot written by an older build', () => {
   it('starts from empty rather than refusing to start when storage is corrupt', async () => {
     const repo = new MemoryWorkspaceRepository(persistence('{ this is not json'));
     expect(await repo.load(WS)).toBeNull();
+    expect(repo.getRecoveryNotice()).toBe('CORRUPT_CACHE_RECOVERED');
   });
 
   it('clears cleanly, even from an older snapshot', async () => {

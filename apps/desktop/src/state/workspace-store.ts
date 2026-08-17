@@ -35,6 +35,8 @@ import {
   reopenQuarter,
   renewCommitment,
   setRecurrence,
+  saveView,
+  removeSavedView,
   restoreCapacityFootprint,
   setPrimaryTeam,
   splitCapacityFootprint,
@@ -46,6 +48,8 @@ import {
   type CommandResult,
   type DomainEvent,
   type EntityId,
+  type EntityChange,
+  type ProjectionKey,
   type QuarterId,
   type WorkspaceState,
   type ScenarioProjection,
@@ -76,7 +80,7 @@ import {
   updateMilestone,
   type RelationState,
 } from '@flowmap/domain';
-import type { SearchHit, WorkspaceRepository } from '@flowmap/storage';
+import type { SearchHit, SnapshotRecord, WorkspaceRepository } from '@flowmap/storage';
 
 import { t } from '../i18n/t.js';
 import { seedSampleWorkspace } from './sample-workspace.js';
@@ -114,6 +118,7 @@ export type Runtime = {
       name: string,
       createdAt: string,
     ) => Promise<{ id: string; displayName: string }> | { id: string; displayName: string };
+    getRecoveryNotice?: () => 'CORRUPT_CACHE_RECOVERED' | null;
   };
   readonly now: () => string;
   readonly newId: () => string;
@@ -144,6 +149,8 @@ type HistoryMode = 'record' | 'undoing' | 'redoing';
 type StoreState = {
   runtime: Runtime | null;
   state: WorkspaceState | null;
+  activeWorkspaceId: EntityId | null;
+  workspaces: readonly { id: EntityId; name: string; updatedAt: string }[];
   profileName: string;
   selectedFootprintId: string | null;
   status: Status;
@@ -161,12 +168,23 @@ type StoreState = {
   setPresentationMode(enabled: boolean): void;
 
   init(runtime: Runtime, profileName: string): Promise<void>;
+  createWorkspace(name: string, timezone: string): Promise<boolean>;
+  switchWorkspace(workspaceId: EntityId): Promise<boolean>;
   dispatch(
     name: string,
     run: (state: WorkspaceState, cmd: Command, ctx: CommandContext) => CommandResult,
     history?: HistoryMode,
   ): Promise<Command | null | false>;
   captureIdea(name: string): Promise<boolean>;
+  /** CSV/XLSX/JSON imports are validated first, then written in one command transaction. */
+  importIdeas(names: readonly string[]): Promise<boolean>;
+  createSnapshot(): Promise<boolean>;
+  saveView(input: {
+    name: string;
+    lens: string;
+    filters: Record<string, readonly string[]>;
+  }): Promise<boolean>;
+  removeSavedView(viewId: string): Promise<boolean>;
   addTeam(name: string): Promise<boolean>;
   placeFootprint(input: {
     commitmentId: EntityId;
@@ -239,6 +257,7 @@ type StoreState = {
   clearSignal(signalKey: string): Promise<boolean>;
   /** Events, for the rules a snapshot cannot answer. Loaded alongside state. */
   events: DomainEvent[];
+  snapshots: readonly SnapshotRecord[];
   /**
    * Take work off the board.
    *
@@ -315,6 +334,8 @@ type StoreState = {
 export const useWorkspace = create<StoreState>((set, get) => ({
   runtime: null,
   state: null,
+  activeWorkspaceId: null,
+  workspaces: [],
   profileName: '',
   selectedFootprintId: null,
   status: null,
@@ -323,6 +344,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   pendingCount: 0,
   presentationMode: false,
   events: [],
+  snapshots: [],
 
   setPresentationMode(enabled) {
     set({ presentationMode: enabled });
@@ -332,9 +354,11 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     await runtime.repository.ensureLocalProfile?.(PROFILE_ID, profileName, runtime.now());
     set({ runtime, profileName });
 
-    let state = await runtime.repository.load(WORKSPACE_ID);
+    const workspaces = await runtime.repository.listWorkspaces();
+    const activeWorkspaceId = workspaces[0]?.id ?? WORKSPACE_ID;
+    let state = await runtime.repository.load(activeWorkspaceId);
     if (!state) {
-      const cmd = makeCommand(runtime, 'CreateWorkspace');
+      const cmd = makeCommand(runtime, 'CreateWorkspace', activeWorkspaceId);
       const result = createWorkspace(
         {
           name: 'My portfolio',
@@ -346,21 +370,78 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       );
       if (result.ok) {
         await runtime.repository.apply({
-          workspaceId: WORKSPACE_ID,
+          workspaceId: activeWorkspaceId,
           changes: result.effects.changes,
           events: result.effects.events,
           command: cmd,
         });
       }
-      state = await runtime.repository.load(WORKSPACE_ID);
+      state = await runtime.repository.load(activeWorkspaceId);
     }
-    set({ state, events: await runtime.repository.listEvents(WORKSPACE_ID, 500) });
+    set({
+      state,
+      activeWorkspaceId,
+      workspaces: await runtime.repository.listWorkspaces(),
+      events: await runtime.repository.listEvents(activeWorkspaceId, 500),
+      snapshots: await runtime.repository.listSnapshots(activeWorkspaceId),
+      ...(runtime.repository.getRecoveryNotice?.() === 'CORRUPT_CACHE_RECOVERED'
+        ? { status: { tone: 'warning' as const, message: t('recovery.corruptCache') } }
+        : {}),
+    });
     await refreshPending(get, set);
   },
 
+  async createWorkspace(name, timezone) {
+    const { runtime } = get();
+    if (!runtime) return false;
+    const workspaceId = runtime.newId();
+    const cmd = makeCommand(runtime, 'CreateWorkspace', workspaceId);
+    const result = createWorkspace(
+      { name, timezone, currentQuarterId: currentQuarter(runtime.now()) },
+      cmd,
+      makeContext(runtime, 1),
+    );
+    if (!result.ok) {
+      set({
+        status: {
+          tone: 'critical',
+          message: t(`errors.${result.error.code}`, result.error.params ?? {}),
+        },
+      });
+      return false;
+    }
+    await runtime.repository.apply({
+      workspaceId,
+      changes: result.effects.changes,
+      events: result.effects.events,
+      command: cmd,
+    });
+    return get().switchWorkspace(workspaceId);
+  },
+
+  async switchWorkspace(workspaceId) {
+    const { runtime } = get();
+    if (!runtime) return false;
+    const state = await runtime.repository.load(workspaceId);
+    if (!state) return false;
+    set({
+      activeWorkspaceId: workspaceId,
+      state,
+      events: await runtime.repository.listEvents(workspaceId, 500),
+      snapshots: await runtime.repository.listSnapshots(workspaceId),
+      workspaces: await runtime.repository.listWorkspaces(),
+      undoStack: [],
+      redoStack: [],
+      selectedFootprintId: null,
+      status: null,
+    });
+    await refreshPending(get, set);
+    return true;
+  },
+
   async dispatch(name, run, history = 'record') {
-    const { runtime, state } = get();
-    if (!runtime || !state) return false;
+    const { runtime, state, activeWorkspaceId } = get();
+    if (!runtime || !state || !activeWorkspaceId) return false;
     if (get().presentationMode) {
       set({ status: { tone: 'info', message: t('scenario.presentationBlocked') } });
       return false;
@@ -369,8 +450,8 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     // Whether this command joins the step already being built.
     const grouping = stepDepth > 0 && stepStarted;
 
-    const cmd = makeCommand(runtime, name);
-    const ctx = makeContext(runtime, await runtime.repository.nextSequence(WORKSPACE_ID));
+    const cmd = makeCommand(runtime, name, activeWorkspaceId);
+    const ctx = makeContext(runtime, await runtime.repository.nextSequence(activeWorkspaceId));
     let result = run(state, cmd, ctx);
 
     if (!result.ok) {
@@ -389,7 +470,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       result.effects.consequences?.some((consequence) => consequence.kind === 'IRREVERSIBLE') ??
       false;
     await runtime.repository.apply({
-      workspaceId: WORKSPACE_ID,
+      workspaceId: activeWorkspaceId,
       changes: result.effects.changes,
       events: result.effects.events,
       command: cmd,
@@ -397,7 +478,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
         ? {
             preSnapshot: {
               id: runtime.newId(),
-              workspaceId: WORKSPACE_ID,
+              workspaceId: activeWorkspaceId,
               workspaceRevision: state.workspace.revision,
               createdAt: runtime.now(),
               commandName: name,
@@ -454,11 +535,88 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     });
 
     set({
-      state: await runtime.repository.load(WORKSPACE_ID),
-      events: await runtime.repository.listEvents(WORKSPACE_ID, 500),
+      state: await runtime.repository.load(activeWorkspaceId),
+      events: await runtime.repository.listEvents(activeWorkspaceId, 500),
+      snapshots: await runtime.repository.listSnapshots(activeWorkspaceId),
+      workspaces: await runtime.repository.listWorkspaces(),
     });
     await refreshPending(get, set);
     return inverse;
+  },
+
+  async importIdeas(names) {
+    if (names.length === 0) return true;
+    const result = await get().dispatch('ImportIdeas', (_state, cmd, ctx) => {
+      const changes: EntityChange[] = [];
+      const events = [] as DomainEvent[];
+      const affectedProjections: ProjectionKey[] = [];
+      for (const name of names) {
+        const imported = createIdea({ name }, cmd, {
+          ...ctx,
+          nextSequence: ctx.nextSequence + events.length,
+        });
+        if (!imported.ok) return imported;
+        changes.push(...imported.effects.changes);
+        events.push(...imported.effects.events);
+        affectedProjections.push(...imported.effects.affectedProjections);
+      }
+      return { ok: true, effects: { changes, events, affectedProjections } };
+    });
+    return Boolean(result);
+  },
+
+  async createSnapshot() {
+    const { runtime, state, activeWorkspaceId } = get();
+    if (!runtime || !state || !activeWorkspaceId) return false;
+    const cmd = makeCommand(runtime, 'CreateSnapshot', activeWorkspaceId);
+    const createdAt = runtime.now();
+    await runtime.repository.apply({
+      workspaceId: activeWorkspaceId,
+      changes: [],
+      events: [
+        {
+          id: runtime.newId(),
+          workspaceId: activeWorkspaceId,
+          sequence: await runtime.repository.nextSequence(activeWorkspaceId),
+          occurredAt: createdAt,
+          actorId: cmd.actorId,
+          commandName: cmd.name,
+          eventType: 'SNAPSHOT_CREATED',
+          entityRefs: [{ kind: 'WORKSPACE', id: activeWorkspaceId }],
+          summaryKey: 'event.SNAPSHOT_CREATED',
+          facts: {},
+        },
+      ],
+      command: cmd,
+      preSnapshot: {
+        id: runtime.newId(),
+        workspaceId: activeWorkspaceId,
+        workspaceRevision: state.workspace.revision,
+        createdAt,
+        commandName: cmd.name,
+        state,
+      },
+    });
+    set({
+      snapshots: await runtime.repository.listSnapshots(activeWorkspaceId),
+      events: await runtime.repository.listEvents(activeWorkspaceId, 500),
+      status: { tone: 'info', message: t('snapshot.created') },
+    });
+    return true;
+  },
+
+  async saveView(input) {
+    const result = await get().dispatch('SaveView', (state, cmd, ctx) =>
+      saveView(state, input, cmd, ctx),
+    );
+    return Boolean(result);
+  },
+
+  async removeSavedView(viewId) {
+    const result = await get().dispatch('RemoveSavedView', (state, cmd, ctx) =>
+      removeSavedView(state, { viewId }, cmd, ctx),
+    );
+    return Boolean(result);
   },
 
   async captureIdea(name) {
@@ -832,13 +990,13 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   },
 
   async loadSample(scale) {
-    const { runtime, profileName } = get();
-    if (!runtime) return;
+    const { runtime, profileName, activeWorkspaceId } = get();
+    if (!runtime || !activeWorkspaceId) return;
 
     const report = await seedSampleWorkspace({
       ...(scale !== undefined ? { scale } : {}),
       repository: runtime.repository,
-      workspaceId: WORKSPACE_ID,
+      workspaceId: activeWorkspaceId,
       actorId: `local:${PROFILE_ID}`,
       now: runtime.now(),
       newId: runtime.newId,
@@ -847,7 +1005,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     // A sample replaces everything, so the history that produced the old state
     // no longer applies.
     set({ undoStack: [], redoStack: [], selectedFootprintId: null });
-    set({ state: await runtime.repository.load(WORKSPACE_ID) });
+    set({ state: await runtime.repository.load(activeWorkspaceId) });
     await refreshPending(get, set);
 
     set({
@@ -864,9 +1022,9 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   },
 
   async clearLocalData() {
-    const { runtime } = get();
-    if (!runtime) return;
-    await runtime.repository.clearLocalData(WORKSPACE_ID);
+    const { runtime, activeWorkspaceId } = get();
+    if (!runtime || !activeWorkspaceId) return;
+    await runtime.repository.clearLocalData(activeWorkspaceId);
     set({ state: null, undoStack: [], redoStack: [], selectedFootprintId: null, pendingCount: 0 });
     await get().init(runtime, get().profileName);
   },
@@ -922,8 +1080,8 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   },
 
   async placeScenarioIdea(input) {
-    const { runtime, state } = get();
-    if (!runtime || !state) return false;
+    const { runtime, state, activeWorkspaceId } = get();
+    if (!runtime || !state || !activeWorkspaceId) return false;
     const scenario = state.scenarios?.get(input.scenarioId);
     if (!scenario) return false;
     const projected = get().scenarioProjection(input.scenarioId);
@@ -933,13 +1091,13 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     const drafts: Command[] = [];
     if (idea.primaryTeamId !== input.teamId) {
       drafts.push({
-        ...makeCommand(runtime, 'SetPrimaryTeam'),
+        ...makeCommand(runtime, 'SetPrimaryTeam', activeWorkspaceId),
         scenarioId: input.scenarioId,
         payload: { commitmentId: input.commitmentId, teamId: input.teamId },
       });
     }
     drafts.push({
-      ...makeCommand(runtime, 'AssignCapacityFootprint'),
+      ...makeCommand(runtime, 'AssignCapacityFootprint', activeWorkspaceId),
       scenarioId: input.scenarioId,
       payload: {
         commitmentId: input.commitmentId,
@@ -952,7 +1110,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     // The gate remains an intent while projected, so the block is still a
     // ghost. It is realised only in the atomic apply batch.
     drafts.push({
-      ...makeCommand(runtime, 'PassCommitGate'),
+      ...makeCommand(runtime, 'PassCommitGate', activeWorkspaceId),
       scenarioId: input.scenarioId,
       payload: { commitmentId: input.commitmentId },
     });
@@ -1111,7 +1269,9 @@ export const useWorkspace = create<StoreState>((set, get) => ({
 
   async search(query) {
     const { runtime } = get();
-    return runtime ? runtime.repository.search(WORKSPACE_ID, query) : [];
+    return runtime && get().activeWorkspaceId
+      ? runtime.repository.search(get().activeWorkspaceId!, query)
+      : [];
   },
 }));
 
@@ -1166,7 +1326,12 @@ function withBaselineRevision(
 async function refreshPending(get: () => StoreState, set: (partial: Partial<StoreState>) => void) {
   const { runtime } = get();
   if (!runtime) return;
-  set({ pendingCount: (await runtime.repository.listOutbox(WORKSPACE_ID, 'PENDING')).length });
+  const workspaceId = get().activeWorkspaceId;
+  set({
+    pendingCount: workspaceId
+      ? (await runtime.repository.listOutbox(workspaceId, 'PENDING')).length
+      : 0,
+  });
 }
 
 /**
@@ -1205,6 +1370,10 @@ function runNamed(
       return setRecurrence(state, payload as never, cmd, ctx);
     case 'RenewCommitment':
       return renewCommitment(state, payload as never, cmd, ctx);
+    case 'SaveView':
+      return saveView(state, payload as never, cmd, ctx);
+    case 'RemoveSavedView':
+      return removeSavedView(state, payload as never, cmd, ctx);
     case 'CloseQuarter':
       return closeQuarter(state, payload as never, cmd, ctx);
     case 'ReopenQuarter':
@@ -1308,11 +1477,11 @@ function activeTeamOrder(state: WorkspaceState | null): EntityId[] {
     .map((team) => team.id);
 }
 
-function makeCommand(runtime: Runtime, name: string): Command {
+function makeCommand(runtime: Runtime, name: string, workspaceId = WORKSPACE_ID): Command {
   return {
     id: runtime.newId(),
     name,
-    workspaceId: WORKSPACE_ID,
+    workspaceId,
     payload: {},
     actorId: `local:${PROFILE_ID}`,
     issuedAt: runtime.now(),

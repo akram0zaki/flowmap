@@ -75,7 +75,9 @@ export type SearchHit = {
  * how local-first applications lose data.
  */
 export interface WorkspaceRepository {
-  listWorkspaces(): Promise<Array<{ id: WorkspaceId; name: string; updatedAt: string }>>;
+  listWorkspaces(options?: {
+    includeArchived?: boolean;
+  }): Promise<Array<{ id: WorkspaceId; name: string; updatedAt: string; archivedAt?: string }>>;
   load(workspaceId: WorkspaceId): Promise<WorkspaceState | null>;
   apply(input: ApplyInput): Promise<void>;
   listEvents(workspaceId: WorkspaceId, limit?: number): Promise<DomainEvent[]>;

@@ -92,6 +92,15 @@ export type WorkspaceSettings = {
   readonly valueDrivers: readonly string[];
   readonly noteMaxLength: 2000;
   readonly milestonesPerCommitment: 6;
+  /** View-only presets travel with a workspace but never contain portfolio data. */
+  readonly savedViews?: readonly SavedView[];
+};
+
+export type SavedView = {
+  readonly id: EntityId;
+  readonly name: string;
+  readonly lens: string;
+  readonly filters: Readonly<Record<string, readonly string[]>>;
 };
 
 export const DEFAULT_VALUE_DRIVERS: readonly string[] = [

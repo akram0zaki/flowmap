@@ -14,3 +14,5 @@ export * from './signals.js';
 export * from './scenarios.js';
 export * from './quarter-close.js';
 export * from './recurrence.js';
+export * from './saved-views.js';
+export * from './workspace-lifecycle.js';

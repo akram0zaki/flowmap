@@ -14,6 +14,8 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@flowmap/domain": "workspace:*"
+    "@flowmap/domain": "workspace:*",
+    "fflate": "^0.8.3",
+    "xlsx": "^0.18.5"
   }
 }

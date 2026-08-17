@@ -94,14 +94,20 @@ export function localStoragePersistence(key = 'flowmap.dev.workspace'): Persiste
  * Anyone who already had a workspace open hit this the moment schema v2 shipped.
  * The tests never did, because every one of them starts by clearing storage.
  */
-function readSnapshot(raw: string | null): Snapshot {
-  if (raw === null) return emptySnapshot();
+function readSnapshot(raw: string | null): {
+  readonly snapshot: Snapshot;
+  readonly recovered: boolean;
+} {
+  if (raw === null) return { snapshot: emptySnapshot(), recovered: false };
   try {
-    return { ...emptySnapshot(), ...(JSON.parse(raw) as Partial<Snapshot>) };
+    return {
+      snapshot: { ...emptySnapshot(), ...(JSON.parse(raw) as Partial<Snapshot>) },
+      recovered: false,
+    };
   } catch {
-    // Corrupt storage is not a reason to refuse to start. The workspace is
-    // rebuildable from the provider or the sample; a blank page is not.
-    return emptySnapshot();
+    // Corrupt storage is not a reason to refuse to start, but it must be
+    // visible to the caller: silently replacing a portfolio is unacceptable.
+    return { snapshot: emptySnapshot(), recovered: true };
   }
 }
 
@@ -169,15 +175,31 @@ const ENTITY_BUCKETS = [
 
 export class MemoryWorkspaceRepository implements WorkspaceRepository {
   #data: Snapshot;
+  #recoveredCorruptCache = false;
 
   constructor(private readonly persistence?: PersistenceAdapter) {
-    this.#data = readSnapshot(persistence?.read() ?? null);
+    const loaded = readSnapshot(persistence?.read() ?? null);
+    this.#data = loaded.snapshot;
+    this.#recoveredCorruptCache = loaded.recovered;
   }
 
-  async listWorkspaces(): Promise<Array<{ id: WorkspaceId; name: string; updatedAt: string }>> {
+  getRecoveryNotice(): 'CORRUPT_CACHE_RECOVERED' | null {
+    return this.#recoveredCorruptCache ? 'CORRUPT_CACHE_RECOVERED' : null;
+  }
+
+  async listWorkspaces(
+    options: { includeArchived?: boolean } = {},
+  ): Promise<Array<{ id: WorkspaceId; name: string; updatedAt: string; archivedAt?: string }>> {
     return Object.values(this.#data.workspaces)
-      .filter((w) => w.deletedAt === undefined)
-      .map((w) => ({ id: w.id, name: w.name, updatedAt: w.updatedAt }));
+      .filter(
+        (w) => w.deletedAt === undefined && (options.includeArchived || w.archivedAt === undefined),
+      )
+      .map((w) => ({
+        id: w.id,
+        name: w.name,
+        updatedAt: w.updatedAt,
+        ...(w.archivedAt ? { archivedAt: w.archivedAt } : {}),
+      }));
   }
 
   async load(workspaceId: WorkspaceId): Promise<WorkspaceState | null> {
@@ -234,7 +256,9 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
         workspaceRevision: input.preSnapshot.workspaceRevision,
         createdAt: input.preSnapshot.createdAt,
         commandName: input.preSnapshot.commandName,
-        content: structuredClone(this.#data),
+        // Match the SQLite representation: a portable baseline projection, not
+        // the repository's outbox/profile implementation detail.
+        content: snapshotContent(input.preSnapshot.state),
       });
     }
 
@@ -376,4 +400,13 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
     this.#data = draft;
     this.persistence?.write(JSON.stringify(draft));
   }
+}
+
+function snapshotContent(state: WorkspaceState): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(state).map(([key, value]) => [
+      key,
+      value instanceof Map ? Object.fromEntries(value) : structuredClone(value),
+    ]),
+  );
 }
