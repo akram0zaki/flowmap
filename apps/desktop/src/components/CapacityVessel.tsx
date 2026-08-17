@@ -50,6 +50,7 @@ export type VesselBlock = {
   readonly footprint: CapacityFootprint;
   readonly commitment: Commitment;
   readonly counted: boolean;
+  readonly scenarioGhost?: boolean;
   /**
    * Is this in trouble? Orthogonal to attention, and never merged with it into
    * one number or one colour (spec 04 §2). A user cannot dispose of it.
@@ -438,6 +439,7 @@ export function CapacityVessel({
                   data-health={block.health && block.health !== 'OK' ? block.health : undefined}
                   data-selected={selected || undefined}
                   data-counted={block.counted || undefined}
+                  data-scenario-ghost={block.scenarioGhost || undefined}
                   data-dimmed={dimmed || undefined}
                   onPointerDown={(e) => {
                     // Shift turns the move gesture into a link gesture: same

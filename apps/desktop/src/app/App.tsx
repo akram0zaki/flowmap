@@ -99,6 +99,8 @@ export function App() {
     clearSignal,
     createScenario,
     discardScenario,
+    scenarioProjection,
+    placeScenarioIdea,
   } = useWorkspace.getState();
 
   /**
@@ -128,6 +130,8 @@ export function App() {
    */
   const [ruleSettings, setRuleSettings] = useState<Settings>(NO_RULE_SETTINGS);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
+  const scenarioState = selectedScenarioId === null ? null : scenarioProjection(selectedScenarioId);
+  const viewState = scenarioState ?? state;
 
   // Announcements are debounced through a ref so rapid arrow-key movement does
   // not queue a dozen utterances.
@@ -177,16 +181,17 @@ export function App() {
 
   const board = useMemo(
     () =>
-      state
+      viewState
         ? buildBoard({
-            workspace: state.workspace,
-            teams: state.teams,
-            teamQuarters: state.teamQuarters,
-            commitments: state.commitments,
-            footprints: state.footprints,
+            workspace: viewState.workspace,
+            teams: viewState.teams,
+            teamQuarters: viewState.teamQuarters,
+            commitments: viewState.commitments,
+            footprints: viewState.footprints,
+            ...(selectedScenarioId !== null ? { scenario: true } : {}),
           })
         : null,
-    [state],
+    [viewState],
   );
 
   const events = useWorkspace((s) => s.events);
@@ -395,6 +400,14 @@ export function App() {
           teamId: target.teamId,
           quarterId: target.quarterId,
         });
+      } else if (selectedScenarioId !== null) {
+        void placeScenarioIdea({
+          scenarioId: selectedScenarioId,
+          commitmentId: payload.commitmentId,
+          teamId: target.teamId,
+          quarterId: target.quarterId,
+          units: payload.units,
+        });
       } else {
         void commitIdeaInto({
           commitmentId: payload.commitmentId,
@@ -407,7 +420,7 @@ export function App() {
         t('drop.placed', { name: payload.name, team: cell.teamName, quarter: cell.quarterId }),
       );
     },
-    [board, state, moveFootprint, commitIdeaInto, unplaceFootprint, relate, announce],
+    [board, state, moveFootprint, commitIdeaInto, unplaceFootprint, relate, announce, selectedScenarioId, placeScenarioIdea],
   );
 
   const { placement, carryRef, beginPointer, beginKeyboard, aim, drop, cancel } = usePlacement({
@@ -810,10 +823,10 @@ export function App() {
 
   const vesselBlocksFor = useCallback(
     (cell: CellModel): VesselBlock[] => {
-      if (!state) return [];
+      if (!viewState) return [];
       return cell.blocks.flatMap((block) => {
-        const footprint = state.footprints.get(block.footprintId);
-        const commitment = state.commitments.get(block.commitmentId);
+        const footprint = viewState.footprints.get(block.footprintId);
+        const commitment = viewState.commitments.get(block.commitmentId);
         if (!footprint || !commitment) return [];
         const milestones = milestonesByCommitment.get(commitment.id);
         const health = signals.health.get(commitment.id);
@@ -821,14 +834,15 @@ export function App() {
           {
             footprint,
             commitment,
-            counted: isCounted(footprint, commitment, state.workspace.currentQuarterId),
+            counted: isCounted(footprint, commitment, viewState.workspace.currentQuarterId),
+            ...(selectedScenarioId !== null && commitment.lifecycle === 'IDEA' ? { scenarioGhost: true } : {}),
             ...(milestones ? { milestones } : {}),
             ...(health ? { health } : {}),
           },
         ];
       });
     },
-    [state, milestonesByCommitment, signals.health],
+    [viewState, milestonesByCommitment, signals.health, selectedScenarioId],
   );
 
   if (!state || !board) {

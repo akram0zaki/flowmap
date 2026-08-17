@@ -783,6 +783,14 @@ label {
   stroke-dasharray: 3 3;
 }
 
+.fm-block[data-scenario-ghost] .fm-block__fill {
+  fill: var(--info-surface);
+  fill-opacity: 0.55;
+  stroke: var(--info-line);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
 /* The part of a block past the rule. A flat tint with a firm edge: the reader
    has to be able to read the name printed on it, which stripes prevented. */
 .fm-block__over {

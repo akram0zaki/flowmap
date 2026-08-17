@@ -257,6 +257,7 @@
   "scenario.baselineStatus": "Baseline is the committed portfolio. Create a scenario to explore a change without altering it.",
   "scenario.commands": "{count} planning changes",
   "scenario.commands.one": "{count} planning change",
+  "scenario.command.assignFootprint": "Place a scenario footprint",
   "scenario.discard": "Discard scenario",
   "scenario.draftStatus": "Draft changes stay separate from the baseline until you apply them.",
   "scenario.eyebrow": "Planning context",

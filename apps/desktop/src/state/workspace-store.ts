@@ -13,6 +13,7 @@ import { create } from 'zustand';
 import {
   applyTransition,
   assignCapacityFootprint,
+  baselineProjection,
   createIdea,
   createScenario,
   createTeam,
@@ -24,6 +25,8 @@ import {
   removeCapacityFootprint,
   reorderTeams,
   resizeCapacityFootprint,
+  projectScenario,
+  recordScenarioCommand,
   restoreCapacityFootprint,
   setPrimaryTeam,
   splitCapacityFootprint,
@@ -267,6 +270,8 @@ type StoreState = {
   loadSample(scale?: 25 | 100 | 500): Promise<void>;
   createScenario(): Promise<boolean>;
   discardScenario(scenarioId: EntityId): Promise<boolean>;
+  scenarioProjection(scenarioId: EntityId): WorkspaceState | null;
+  placeScenarioIdea(input: { scenarioId: EntityId; commitmentId: EntityId; teamId: EntityId; quarterId: string; units: number }): Promise<boolean>;
 };
 
 export const useWorkspace = create<StoreState>((set, get) => ({
@@ -816,6 +821,51 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     return (
       (await get().dispatch('DiscardScenario', (state, cmd, ctx) =>
         updateScenario(state, { scenarioId, status: 'DISCARDED' }, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  scenarioProjection(scenarioId) {
+    const { runtime, state } = get();
+    const scenario = state?.scenarios?.get(scenarioId);
+    if (!runtime || !state || !scenario) return null;
+    return projectScenario(baselineProjection(state), scenario, (projection, recorded) => {
+      const { scenarioId: _scenarioId, ...baselineCommand } = recorded;
+      return runNamed(recorded.name, projection, baselineCommand, makeContext(runtime, 1));
+    });
+  },
+
+  async placeScenarioIdea(input) {
+    const { runtime, state } = get();
+    if (!runtime || !state) return false;
+    const scenario = state.scenarios?.get(input.scenarioId);
+    if (!scenario) return false;
+    const draft = {
+      ...makeCommand(runtime, 'AssignCapacityFootprint'),
+      scenarioId: input.scenarioId,
+      payload: {
+        commitmentId: input.commitmentId,
+        teamId: input.teamId,
+        quarterId: input.quarterId as QuarterId,
+        units: input.units,
+        isPrimary: false,
+      },
+    };
+    const projected = get().scenarioProjection(input.scenarioId);
+    if (!projected) return false;
+    const preview = runNamed(draft.name, projected, draft, makeContext(runtime, 1));
+    if (!preview.ok) {
+      set({ status: { tone: 'critical', message: t(`errors.${preview.error.code}`, preview.error.params ?? {}) } });
+      return false;
+    }
+    return (
+      (await get().dispatch('RecordScenarioCommand', (baseline, cmd, ctx) =>
+        recordScenarioCommand(
+          baseline,
+          { scenarioId: input.scenarioId, command: draft, label: 'scenario.command.assignFootprint' },
+          cmd,
+          ctx,
+        ),
       )) !== false
     );
   },

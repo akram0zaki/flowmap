@@ -39,6 +39,8 @@ export type BlockModel = {
   readonly counted: boolean;
   readonly carriedFromQuarterId?: QuarterId;
   readonly isPrimary: boolean;
+  /** A draft placement for an Idea; rendered as a scenario ghost. */
+  readonly scenarioGhost?: boolean;
   /** Stacking position, in units from the top of the reserve plinth. */
   readonly bottomUnits: number;
   readonly topUnits: number;
@@ -117,6 +119,8 @@ export type BoardInput = {
   readonly footprints: ReadonlyMap<EntityId, CapacityFootprint>;
   readonly horizon?: HorizonPreset;
   readonly filter?: BlockFilter;
+  /** Scenario projections retain Idea lifecycle while showing ghost footprints. */
+  readonly scenario?: boolean;
 };
 
 /** Filters fade rather than remove, so the predicate is carried, not applied. */
@@ -160,7 +164,7 @@ export function buildBoard(input: BoardInput): BoardModel {
         : null;
 
       const blocks = teamQuarter
-        ? layOutBlocks(team.id, quarterId, liveFootprints, commitments, workspace, summary!)
+        ? layOutBlocks(team.id, quarterId, liveFootprints, commitments, workspace, summary!, input.scenario ?? false)
         : [];
 
       return {
@@ -215,6 +219,7 @@ function layOutBlocks(
   commitments: ReadonlyMap<EntityId, Commitment>,
   workspace: Workspace,
   summary: CapacitySummary,
+  scenario: boolean,
 ): BlockModel[] {
   const own = footprints
     .filter((f) => f.teamId === teamId && f.quarterId === quarterId)
@@ -251,6 +256,7 @@ function layOutBlocks(
       commitmentClass: commitment.class,
       counted,
       isPrimary: footprint.isPrimary,
+      ...(scenario && commitment.lifecycle === 'IDEA' ? { scenarioGhost: true } : {}),
       bottomUnits,
       topUnits,
       overflowing: counted && topUnits > ceiling,
