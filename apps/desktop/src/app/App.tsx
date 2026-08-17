@@ -998,6 +998,7 @@ export function App() {
           quarters={board.quarters}
           scenarioId={selectedScenarioId}
           defaultUnits={defaultDropUnits(state.workspace.settings.capacity.sizeMapping)}
+          headroomFor={(teamId, quarterId) => findCell(board!, teamId, quarterId as QuarterId)?.summary?.headroom ?? 0}
           onPlace={(input) => {
             if (selectedScenarioId !== null) {
               void placeScenarioIdea({ scenarioId: selectedScenarioId, ...input });

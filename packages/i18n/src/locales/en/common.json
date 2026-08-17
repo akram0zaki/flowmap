@@ -307,6 +307,7 @@
   "qbr.place": "Place ghost footprint",
   "qbr.scenarioRequired": "Create and select a scenario before placing demand.",
   "qbr.moveMode": "Move mode. Arrow keys choose a team and quarter. Enter places the ghost footprint. Escape cancels.",
+  "qbr.target": "{team}, {quarter}. {headroom} units of headroom.",
   "qbr.selected": "Selected: {name}",
   "scenario.discard": "Discard scenario",
   "scenario.diffLabel": "Scenario consequences",
