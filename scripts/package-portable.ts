@@ -19,14 +19,17 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  CARGO_MISSING,
   PORTABLE_README,
+  pathWithRust,
   portableArchiveName,
   readBundleVersion,
+  rustBinDir,
   type PortableArch,
   type PortablePlatform,
 } from './portable-package.js';
@@ -35,14 +38,35 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TAURI = join(ROOT, 'apps/desktop/src-tauri');
 const OUT = join(ROOT, 'dist-portable');
 
+function packagingEnv(): NodeJS.ProcessEnv {
+  const rustBin = rustBinDir(homedir(), process.env['CARGO_HOME'], process.platform);
+  const cargo = join(rustBin, process.platform === 'win32' ? 'cargo.exe' : 'cargo');
+  return {
+    ...process.env,
+    PATH: pathWithRust(process.env['PATH'], rustBin, existsSync(cargo)),
+  };
+}
+
 function run(command: string, args: readonly string[], cwd = ROOT): void {
   const result = spawnSync(command, [...args], {
     cwd,
+    env: packagingEnv(),
     stdio: 'inherit',
     shell: process.platform === 'win32',
   });
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(' ')} failed with status ${result.status}`);
+  }
+}
+
+function assertCargo(): void {
+  const result = spawnSync('cargo', ['--version'], {
+    env: packagingEnv(),
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
+  if (result.status !== 0) {
+    throw new Error(CARGO_MISSING);
   }
 }
 
@@ -178,6 +202,7 @@ function main(): void {
   const name = portableArchiveName({ version, platform: os, arch, standalone });
 
   if (!skipBuild) {
+    assertCargo();
     run('pnpm', ['--filter', '@flowmap/desktop', 'build']);
     const tauriArgs = ['tauri', 'build'];
     if (os === 'win32') tauriArgs.push('--no-bundle');
