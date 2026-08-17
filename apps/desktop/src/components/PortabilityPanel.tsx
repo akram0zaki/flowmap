@@ -29,6 +29,7 @@ export type PortabilityPanelProps = {
   readonly profileName: string;
   readonly now: () => string;
   readonly rows: readonly ExportRow[];
+  readonly radarRows: readonly ExportRow[];
   readonly onImportedIdeas: (names: readonly string[]) => Promise<boolean>;
   readonly announce: (message: string) => void;
 };
@@ -39,6 +40,7 @@ export function PortabilityPanel({
   profileName,
   now,
   rows,
+  radarRows,
   onImportedIdeas,
   announce,
 }: PortabilityPanelProps) {
@@ -133,6 +135,9 @@ export function PortabilityPanel({
             }
           >
             {t('portability.exportXlsx')}
+          </button>
+          <button type="button" onClick={() => download('flowmap-radar.csv', toCsv(radarRows))}>
+            {t('portability.exportRadar')}
           </button>
           <button type="button" className="fm-primary" onClick={() => void exportWorkspace()}>
             {t('portability.exportWorkspace')}

@@ -35,6 +35,7 @@
   "portability.sensitivity": "This file contains your portfolio's management data in plain text. Store and share it according to your organisation's data classification.",
   "portability.exportCsv": "Export current view as CSV",
   "portability.exportXlsx": "Export current view as XLSX",
+  "portability.exportRadar": "Export Radar as CSV",
   "portability.exportWorkspace": "Export workspace",
   "portability.exportedWorkspace": "Workspace exported.",
   "portability.chooseImport": "Choose file to import",

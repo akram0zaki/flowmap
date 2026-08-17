@@ -1094,6 +1094,12 @@ export function App() {
             profileName={profileName}
             now={runtime.now}
             rows={exportRows}
+            radarRows={signals.visible.map((signal) => ({
+              rule: signal.ruleCode,
+              severity: signal.severity,
+              entity: signal.entityRef.kind,
+              due: signal.dueOn ?? '',
+            }))}
             onImportedIdeas={importIdeas}
             announce={announce}
           />
