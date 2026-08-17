@@ -1,12 +1,18 @@
 /**
- * @flowmap/storage-file — safely versioned shared-document provider
+ * @flowmap/storage-file — versioned shared-document provider.
  *
- * Not implemented yet. Scheduled for M8 (backlog M8-PRV-4).
  * Contract: docs/spec/08-providers.md §3
- *
- * The package exists now so the dependency graph, boundary rules, and CI matrix
- * are real from the first commit rather than retrofitted.
  */
 
-export const PACKAGE_NAME = '@flowmap/storage-file';
-export const IMPLEMENTED = false;
+export { FileProvider, type FileProviderOptions } from './provider.js';
+export { MemoryFileSystem, type MemoryFsFaults } from './memory-fs.js';
+export { detectConflictCopies, isConflictCopyName } from './conflict-copies.js';
+export {
+  decodeDocument,
+  encodeDocument,
+  emptyDocument,
+  FILE_FORMAT_VERSION,
+  type FileDocument,
+} from './document.js';
+export type { FileSystemAdapter, FileInfo } from './filesystem.js';
+export { readMaterialised } from './filesystem.js';

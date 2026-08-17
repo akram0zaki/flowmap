@@ -35,6 +35,7 @@ import type {
   Theme,
   Workspace,
   WorkspaceRole,
+  WorkspaceUser,
 } from './entities.js';
 
 export type CommandName = string;
@@ -169,6 +170,7 @@ export type WorkspaceState = {
   readonly signalDispositions?: ReadonlyMap<EntityId, SignalDisposition>;
   /** Scenario metadata is persisted beside the baseline, but is never part of it. */
   readonly scenarios?: ReadonlyMap<EntityId, Scenario>;
+  readonly workspaceUsers?: ReadonlyMap<EntityId, WorkspaceUser>;
 };
 
 export const ROLE_ORDER: readonly WorkspaceRole[] = ['VIEWER', 'CONTRIBUTOR', 'PLANNER', 'ADMIN'];

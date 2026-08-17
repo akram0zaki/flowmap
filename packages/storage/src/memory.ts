@@ -32,15 +32,20 @@ import type {
   Workspace,
   WorkspaceId,
   WorkspaceState,
+  WorkspaceUser,
 } from '@flowmap/domain';
 import { DomainErrorException, domainError, refKey } from '@flowmap/domain';
 
 import type {
   ApplyInput,
+  ApplyRemoteInput,
+  ConflictRecord,
+  ConflictResolution,
   OutboxEntry,
   OutboxState,
   SearchHit,
   SnapshotRecord,
+  SyncStateRecord,
   WorkspaceRepository,
 } from './contracts.js';
 
@@ -61,9 +66,12 @@ type Snapshot = {
   signalDispositions: Record<string, SignalDisposition>;
   scenarios: Record<string, Scenario>;
   people: Record<string, Person>;
+  workspaceUsers: Record<string, WorkspaceUser>;
   events: DomainEvent[];
   outbox: OutboxEntry[];
   snapshots: SnapshotRecord[];
+  conflicts: ConflictRecord[];
+  syncStates: Record<string, SyncStateRecord>;
   profile?: { id: string; displayName: string };
 };
 
@@ -129,9 +137,12 @@ function emptySnapshot(): Snapshot {
     signalDispositions: {},
     scenarios: {},
     people: {},
+    workspaceUsers: {},
     events: [],
     outbox: [],
     snapshots: [],
+    conflicts: [],
+    syncStates: {},
   };
 }
 
@@ -152,6 +163,7 @@ const KIND_TO_BUCKET = {
   SIGNAL_DISPOSITION: 'signalDispositions',
   SCENARIO: 'scenarios',
   PERSON: 'people',
+  WORKSPACE_USER: 'workspaceUsers',
 } as const;
 
 /** Every bucket that holds workspace-scoped entities, for load and clear. */
@@ -171,6 +183,7 @@ const ENTITY_BUCKETS = [
   'signalDispositions',
   'scenarios',
   'people',
+  'workspaceUsers',
 ] as const;
 
 export class MemoryWorkspaceRepository implements WorkspaceRepository {
@@ -232,6 +245,7 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
       signalDispositions: scoped(this.#data.signalDispositions),
       scenarios: scoped(this.#data.scenarios),
       people: scoped(this.#data.people),
+      workspaceUsers: scoped(this.#data.workspaceUsers),
     };
   }
 
@@ -276,21 +290,28 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
         };
       }
 
-      draft.outbox.push({
-        id: `${input.command.id}:${refKey(change.ref)}`,
-        workspaceId: input.workspaceId,
-        commandId: input.command.id,
-        entityRef: change.ref,
-        op: change.op,
-        changedFields: change.changedFields,
-        patch: change.after,
-        createdAt: input.command.issuedAt,
-        attempts: 0,
-        state: 'PENDING',
-        ...(input.command.batchId !== undefined ? { batchId: input.command.batchId } : {}),
-        ...(change.fromVersion !== undefined ? { baseVersion: change.fromVersion } : {}),
-        ...(change.before !== undefined ? { baseSnapshot: change.before } : {}),
-      });
+      if (!isPrivateScenario(change.ref.kind, change.after)) {
+        draft.outbox.push({
+          id: `${input.command.id}:${refKey(change.ref)}`,
+          workspaceId: input.workspaceId,
+          commandId: input.command.id,
+          entityRef: change.ref,
+          op: change.op,
+          changedFields: change.changedFields,
+          patch: change.after,
+          createdAt: input.command.issuedAt,
+          attempts: 0,
+          state: 'PENDING',
+          ...(input.command.batchId !== undefined ? { batchId: input.command.batchId } : {}),
+          ...(change.fromVersion !== undefined ? { baseVersion: change.fromVersion } : {}),
+          ...(change.before !== undefined ? { baseSnapshot: change.before } : {}),
+          ...((change.before as { remoteVersion?: string } | undefined)?.remoteVersion !== undefined
+            ? {
+                baseRemoteVersion: (change.before as { remoteVersion: string }).remoteVersion,
+              }
+            : {}),
+        });
+      }
     }
 
     draft.events.push(...input.events);
@@ -353,6 +374,83 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
     this.#commit(draft);
   }
 
+  async rebaseOutbox(
+    ids: readonly EntityId[],
+    baseRemoteVersion: string,
+    patch?: unknown,
+  ): Promise<void> {
+    const draft = structuredClone(this.#data);
+    draft.outbox = draft.outbox.map((entry) =>
+      ids.includes(entry.id)
+        ? {
+            ...entry,
+            baseRemoteVersion,
+            ...(patch !== undefined ? { patch } : {}),
+          }
+        : entry,
+    );
+    this.#commit(draft);
+  }
+
+  async applyRemote(input: ApplyRemoteInput): Promise<void> {
+    const draft: Snapshot = structuredClone(this.#data);
+    for (const change of input.changes) {
+      const bucket = KIND_TO_BUCKET[change.entityRef.kind as keyof typeof KIND_TO_BUCKET];
+      if (!bucket) throw new Error(`No bucket for entity kind ${change.entityRef.kind}`);
+      const id = 'id' in change.entityRef ? change.entityRef.id : '';
+      if (change.deleted) {
+        delete (draft[bucket] as Record<string, unknown>)[id];
+        continue;
+      }
+      const payload = {
+        ...((change.payload as object | undefined) ?? {}),
+        workspaceId: bucket === 'workspaces' ? id : input.workspaceId,
+        remoteVersion: change.remoteVersion,
+      };
+      (draft[bucket] as Record<string, unknown>)[id] = payload;
+    }
+    this.#commit(draft);
+  }
+
+  async listConflicts(workspaceId: WorkspaceId): Promise<readonly ConflictRecord[]> {
+    return this.#data.conflicts.filter((row) => row.workspaceId === workspaceId);
+  }
+
+  async saveConflicts(
+    workspaceId: WorkspaceId,
+    conflicts: readonly ConflictRecord[],
+  ): Promise<void> {
+    const draft = structuredClone(this.#data);
+    const keep = draft.conflicts.filter(
+      (row) =>
+        row.workspaceId !== workspaceId || !conflicts.some((incoming) => incoming.id === row.id),
+    );
+    draft.conflicts = [...keep, ...conflicts];
+    this.#commit(draft);
+  }
+
+  async resolveConflict(
+    id: EntityId,
+    resolution: ConflictResolution,
+    resolvedAt: string,
+  ): Promise<void> {
+    const draft = structuredClone(this.#data);
+    draft.conflicts = draft.conflicts.map((row) =>
+      row.id === id ? { ...row, resolvedAt, resolution: resolution.action } : row,
+    );
+    this.#commit(draft);
+  }
+
+  async getSyncState(workspaceId: WorkspaceId): Promise<SyncStateRecord | null> {
+    return this.#data.syncStates[workspaceId] ?? null;
+  }
+
+  async setSyncState(state: SyncStateRecord): Promise<void> {
+    const draft = structuredClone(this.#data);
+    draft.syncStates[state.workspaceId] = state;
+    this.#commit(draft);
+  }
+
   async nextSequence(workspaceId: WorkspaceId): Promise<number> {
     const highest = this.#data.events
       .filter((e) => e.workspaceId === workspaceId)
@@ -400,6 +498,13 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
     this.#data = draft;
     this.persistence?.write(JSON.stringify(draft));
   }
+}
+
+function isPrivateScenario(kind: string, after: unknown): boolean {
+  if (kind !== 'SCENARIO' || after === undefined || after === null || typeof after !== 'object') {
+    return false;
+  }
+  return (after as { visibility?: string }).visibility === 'PRIVATE';
 }
 
 function snapshotContent(state: WorkspaceState): Record<string, unknown> {

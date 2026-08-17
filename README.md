@@ -96,7 +96,9 @@ This runs the desktop shell target in development mode and is typically served a
 
 - http://localhost:5173
 
-For the desktop app build workflow, install Rust first if needed and then run:
+For the desktop app build workflow, install Rust from https://rustup.rs/ first
+(`~/.cargo/bin` must exist; the packaging script adds it to PATH if your shell
+did not). Then run:
 
 ```bash
 pnpm build:desktop

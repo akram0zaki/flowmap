@@ -68,6 +68,7 @@ describe('SettingsPanel', () => {
 
     expect(screen.getByText('Browser development target.')).toBeTruthy();
     expect(screen.getByText(/stored in this browser/i)).toBeTruthy();
+    expect(screen.getByText(/Flowmap does not verify who you are/)).toBeTruthy();
   });
 
   it('names the standalone ZIP when the runtime is WebView2', () => {

@@ -30,11 +30,15 @@ import type {
   Workspace,
   WorkspaceId,
   WorkspaceState,
+  WorkspaceUser,
 } from '@flowmap/domain';
 import { DomainErrorException, domainError, refKey } from '@flowmap/domain';
 import {
   runMigrations,
   type ApplyInput,
+  type ApplyRemoteInput,
+  type ConflictRecord,
+  type ConflictResolution,
   type MigrationHost,
   type MigrationRecord,
   type MigrationReport,
@@ -42,6 +46,7 @@ import {
   type OutboxState,
   type SnapshotRecord,
   type SearchHit,
+  type SyncStateRecord,
   type WorkspaceRepository,
 } from '@flowmap/storage';
 
@@ -84,6 +89,7 @@ const TABLE_BY_KIND: Partial<Record<EntityRef['kind'], string>> = {
   SIGNAL_DISPOSITION: 'signal_disposition',
   PERSON: 'person',
   SCENARIO: 'scenario',
+  WORKSPACE_USER: 'workspace_user',
 };
 
 export class SqliteWorkspaceRepository implements WorkspaceRepository {
@@ -198,6 +204,9 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
       ),
       people: await this.#loadMap('person', workspaceId, (r) => this.#toPerson(r)),
       scenarios: await this.#loadMap('scenario', workspaceId, (r) => this.#toScenario(r)),
+      workspaceUsers: await this.#loadMap('workspace_user', workspaceId, (r) =>
+        this.#toWorkspaceUser(r),
+      ),
     };
   }
 
@@ -309,7 +318,150 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
           attempts: Number(row['attempts']),
           lastError: s(row['last_error']),
           state: String(row['state']) as OutboxState,
+          baseRemoteVersion: s(row['base_remote_version']),
         }) as OutboxEntry,
+    );
+  }
+
+  async rebaseOutbox(
+    ids: readonly EntityId[],
+    baseRemoteVersion: string,
+    patch?: unknown,
+  ): Promise<void> {
+    if (ids.length === 0) return;
+    await this.db.transaction(async () => {
+      for (const id of ids) {
+        if (patch !== undefined) {
+          await this.db.run(
+            'UPDATE outbox SET base_remote_version = ?, patch_json = ? WHERE id = ?',
+            [baseRemoteVersion, JSON.stringify(patch), id],
+          );
+        } else {
+          await this.db.run('UPDATE outbox SET base_remote_version = ? WHERE id = ?', [
+            baseRemoteVersion,
+            id,
+          ]);
+        }
+      }
+    });
+  }
+
+  async applyRemote(input: ApplyRemoteInput): Promise<void> {
+    await this.db.transaction(async () => {
+      for (const change of input.changes) {
+        const op = change.deleted ? 'DELETE' : 'UPDATE';
+        const after = change.deleted
+          ? undefined
+          : {
+              ...((change.payload as object | undefined) ?? {}),
+              remoteVersion: change.remoteVersion,
+            };
+        await this.#writeChange(input.workspaceId, {
+          ref: change.entityRef,
+          op,
+          toVersion: change.entityVersion,
+          ...(after !== undefined ? { after } : {}),
+          changedFields: [],
+        });
+      }
+    });
+  }
+
+  async listConflicts(workspaceId: WorkspaceId): Promise<readonly ConflictRecord[]> {
+    return (
+      await this.db.all('SELECT * FROM conflict WHERE workspace_id = ? ORDER BY detected_at', [
+        workspaceId,
+      ])
+    ).map(
+      (row): ConflictRecord =>
+        defined({
+          id: String(row['id']),
+          workspaceId: String(row['workspace_id']),
+          entityRef: p<EntityRef>(row['entity_ref_json'])!,
+          field: String(row['field']),
+          localValue: p(row['local_value_json']),
+          remoteValue: p(row['remote_value_json']),
+          localVersion: n(row['local_version']),
+          remoteVersion: s(row['remote_version']),
+          detectedAt: String(row['detected_at']),
+          resolvedAt: s(row['resolved_at']),
+          resolution: s(row['resolution']) as ConflictRecord['resolution'],
+        }) as ConflictRecord,
+    );
+  }
+
+  async saveConflicts(
+    workspaceId: WorkspaceId,
+    conflicts: readonly ConflictRecord[],
+  ): Promise<void> {
+    await this.db.transaction(async () => {
+      for (const row of conflicts) {
+        await this.db.run(
+          `INSERT OR REPLACE INTO conflict
+           (id, workspace_id, entity_ref_json, field, local_value_json, remote_value_json,
+            local_version, remote_version, detected_at, resolved_at, resolution)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            row.id,
+            workspaceId,
+            j(row.entityRef)!,
+            row.field,
+            j(row.localValue),
+            j(row.remoteValue),
+            row.localVersion ?? null,
+            row.remoteVersion ?? null,
+            row.detectedAt,
+            row.resolvedAt ?? null,
+            row.resolution ?? null,
+          ],
+        );
+      }
+    });
+  }
+
+  async resolveConflict(
+    id: EntityId,
+    resolution: ConflictResolution,
+    resolvedAt: string,
+  ): Promise<void> {
+    await this.db.run('UPDATE conflict SET resolved_at = ?, resolution = ? WHERE id = ?', [
+      resolvedAt,
+      resolution.action,
+      id,
+    ]);
+  }
+
+  async getSyncState(workspaceId: WorkspaceId): Promise<SyncStateRecord | null> {
+    const row = await this.db.get('SELECT * FROM sync_state WHERE workspace_id = ?', [workspaceId]);
+    if (!row) return null;
+    return defined({
+      workspaceId: String(row['workspace_id']),
+      providerId: String(row['provider_id']) as SyncStateRecord['providerId'],
+      pullCursor: s(row['pull_cursor']),
+      lastPullAt: s(row['last_pull_at']),
+      lastPushAt: s(row['last_push_at']),
+      lastKnownRemoteAt: s(row['last_known_remote_at']),
+      documentPath: s(row['document_path']),
+      shareMode: s(row['share_mode']) as SyncStateRecord['shareMode'],
+    }) as SyncStateRecord;
+  }
+
+  async setSyncState(state: SyncStateRecord): Promise<void> {
+    await this.db.run(
+      `INSERT OR REPLACE INTO sync_state
+       (workspace_id, provider_id, pull_cursor, last_pull_at, last_push_at,
+        last_known_remote_at, document_path, share_mode)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        state.workspaceId,
+        state.providerId,
+        state.pullCursor ?? null,
+        state.lastPullAt ?? null,
+        state.lastPushAt ?? null,
+        state.lastKnownRemoteAt ?? null,
+        state.documentPath ?? null,
+        state.shareMode ?? null,
+      ],
     );
   }
 
@@ -343,6 +495,8 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
       'outbox',
       'sync_state',
       'scenario',
+      'conflict',
+      'workspace_user',
       'workspace',
     ];
     await this.db.transaction(async () => {
@@ -638,6 +792,14 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
           actor_id: String(e['actorId']),
           note: (e['note'] as string) ?? null,
         };
+      case 'workspace_user':
+        return {
+          ...envelope,
+          identity_subject: String(e['identitySubject']),
+          display_name: String(e['displayName']),
+          person_id: (e['personId'] as string) ?? null,
+          role: String(e['role']),
+        };
       case 'scenario':
         return {
           ...envelope,
@@ -696,11 +858,14 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
   }
 
   async #writeOutbox(input: ApplyInput, change: EntityChange): Promise<void> {
+    const after = change.after as { visibility?: string } | undefined;
+    if (change.ref.kind === 'SCENARIO' && after?.visibility === 'PRIVATE') return;
     await this.db.run(
       `INSERT OR IGNORE INTO outbox
        (id, workspace_id, command_id, batch_id, entity_ref_json, op, base_version,
-        base_snapshot_json, changed_fields_json, patch_json, created_at, attempts, state)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'PENDING')`,
+        base_snapshot_json, changed_fields_json, patch_json, created_at, attempts, state,
+        base_remote_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'PENDING', ?)`,
       [
         `${input.command.id}:${refKey(change.ref)}`,
         input.workspaceId,
@@ -713,6 +878,7 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
         j(change.changedFields)!,
         j(change.after),
         input.command.issuedAt,
+        (change.before as { remoteVersion?: string } | undefined)?.remoteVersion ?? null,
       ],
     );
   }
@@ -785,6 +951,16 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
       appliedBy: s(row['applied_by']),
       appliedCommandIds: p<Scenario['appliedCommandIds']>(row['applied_command_ids_json']),
     }) as Scenario;
+  }
+
+  #toWorkspaceUser(row: Record<string, SqlValue>): WorkspaceUser {
+    return defined({
+      ...this.#envelope(row),
+      identitySubject: String(row['identity_subject']),
+      displayName: String(row['display_name']),
+      personId: s(row['person_id']),
+      role: String(row['role']) as WorkspaceUser['role'],
+    }) as WorkspaceUser;
   }
 
   #toTeamQuarter(row: Record<string, SqlValue>): TeamQuarter {

@@ -7,6 +7,7 @@
   "DUPLICATE_FOOTPRINT": "{name} already has a footprint on {team} in {quarter}. Edit that one instead.",
   "DUPLICATE_NAME": "{name} is already in use.",
   "ENTITY_ARCHIVED": "{name} is archived. Restore it before changing it.",
+  "ENTITY_HAS_UNRESOLVED_CONFLICT": "{name} has an unresolved sync conflict. Choose keep mine, take theirs, or edit a merged value before changing it again.",
   "ENTITY_NOT_FOUND": "That item no longer exists. It may have been removed by someone else.",
   "FOOTPRINT_UNITS_MUST_BE_POSITIVE": "A footprint needs more than zero units. To remove the load, remove the footprint.",
   "ILLEGAL_LIFECYCLE_TRANSITION": "A commitment cannot move from {from} to {to}.",

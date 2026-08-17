@@ -124,6 +124,9 @@ importers:
       '@flowmap/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@flowmap/storage-file':
+        specifier: workspace:*
+        version: link:../../packages/storage-file
       '@flowmap/storage-local':
         specifier: workspace:*
         version: link:../../packages/storage-local
@@ -187,6 +190,9 @@ importers:
       '@flowmap/storage':
         specifier: workspace:*
         version: link:../storage
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
 
   packages/storage-local:
     dependencies:

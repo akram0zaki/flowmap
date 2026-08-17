@@ -34,6 +34,38 @@ export function readBundleVersion(tauriConf: { readonly version?: string }): str
   return version;
 }
 
+/** rustup's default bin dir. `CARGO_HOME` wins when the toolchain was relocated. */
+export function rustBinDir(
+  home: string,
+  cargoHome: string | undefined,
+  platform: NodeJS.Platform,
+): string {
+  const root =
+    cargoHome && cargoHome.length > 0
+      ? cargoHome
+      : `${home}${platform === 'win32' ? '\\.cargo' : '/.cargo'}`;
+  return platform === 'win32' ? `${root}\\bin` : `${root}/bin`;
+}
+
+/**
+ * rustup installs cargo to ~/.cargo/bin, which many GUI terminals and
+ * non-login shells never put on PATH. Prepend it when the binary is there.
+ */
+export function pathWithRust(
+  pathEnv: string | undefined,
+  rustBin: string,
+  rustBinPresent: boolean,
+): string {
+  if (!rustBinPresent) return pathEnv ?? '';
+  const delimiter = rustBin.includes('\\') && !rustBin.includes('/') ? ';' : ':';
+  const parts = (pathEnv ?? '').split(delimiter).filter(Boolean);
+  if (parts.includes(rustBin)) return pathEnv ?? '';
+  return parts.length === 0 ? rustBin : `${rustBin}${delimiter}${parts.join(delimiter)}`;
+}
+
+export const CARGO_MISSING =
+  'Cannot find cargo. Install Rust from https://rustup.rs/ so ~/.cargo/bin/cargo exists, then run this again.';
+
 export const PORTABLE_README = `Flowmap — portable build
 ========================
 

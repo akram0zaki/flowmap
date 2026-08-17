@@ -18,6 +18,8 @@ import {
   type SqlValue,
 } from '@flowmap/storage-local';
 
+import { MemoryFileSystem } from '@flowmap/storage-file';
+
 import type { Runtime } from './state/workspace-store.js';
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -138,6 +140,7 @@ export async function createTauriRuntime(base: {
     openExternal: async (url: string) => {
       await invoke('plugin:opener|open_url', { url });
     },
+    files: new MemoryFileSystem(base.now),
     ...base,
   };
 }

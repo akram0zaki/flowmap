@@ -509,6 +509,55 @@ const V6_REINDEX: readonly [string, string][] = [
   ],
 ];
 
+/**
+ * Sync conflicts, extra sync_state columns, workspace users, and the outbox
+ * remote-version token. All statements are guarded so a second run is a no-op.
+ */
+const V7_SQL = `
+CREATE TABLE IF NOT EXISTS conflict (
+  id                TEXT PRIMARY KEY,
+  workspace_id      TEXT NOT NULL,
+  entity_ref_json   TEXT NOT NULL,
+  field             TEXT NOT NULL,
+  local_value_json  TEXT,
+  remote_value_json TEXT,
+  local_version     INTEGER,
+  remote_version    TEXT,
+  detected_at       TEXT NOT NULL,
+  resolved_at       TEXT,
+  resolution        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS workspace_user (
+  id                 TEXT PRIMARY KEY,
+  workspace_id       TEXT NOT NULL,
+  identity_subject   TEXT NOT NULL,
+  display_name       TEXT NOT NULL,
+  person_id          TEXT,
+  role               TEXT NOT NULL,
+  schema_version     INTEGER NOT NULL,
+  entity_version     INTEGER NOT NULL,
+  created_at         TEXT NOT NULL,
+  created_by         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL,
+  updated_by         TEXT NOT NULL,
+  archived_at        TEXT,
+  archived_by        TEXT,
+  deleted_at         TEXT,
+  remote_version     TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_conflict_workspace ON conflict(workspace_id, resolved_at);
+CREATE INDEX IF NOT EXISTS ix_workspace_user_subject ON workspace_user(workspace_id, identity_subject);
+`;
+
+const V7_COLUMNS: readonly { table: string; column: string; definition: string }[] = [
+  { table: 'sync_state', column: 'last_known_remote_at', definition: 'TEXT' },
+  { table: 'sync_state', column: 'document_path', definition: 'TEXT' },
+  { table: 'sync_state', column: 'share_mode', definition: 'TEXT' },
+  { table: 'outbox', column: 'base_remote_version', definition: 'TEXT' },
+];
+
 export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
@@ -592,6 +641,33 @@ export const MIGRATIONS: readonly Migration[] = [
         if (exists) {
           await ctx.exec(
             `INSERT INTO workspace_search (workspace_id, entity_id, kind, label, detail) ${select}`,
+          );
+        }
+      }
+    },
+  },
+  {
+    version: 7,
+    name: 'shared-sync',
+    checksumSource: V7_SQL + V7_COLUMNS.map((column) => column.column).join(','),
+    up: async (ctx) => {
+      for (const statement of V7_SQL.split(';')) {
+        const trimmed = statement.trim();
+        if (trimmed.length > 0) await ctx.exec(trimmed);
+      }
+      for (const column of V7_COLUMNS) {
+        const table = await ctx.get<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+          [column.table],
+        );
+        if (!table) continue;
+        const existing = await ctx.get<{ name: string }>(
+          `SELECT name FROM pragma_table_info('${column.table}') WHERE name = ?`,
+          [column.column],
+        );
+        if (!existing) {
+          await ctx.exec(
+            `ALTER TABLE ${column.table} ADD COLUMN ${column.column} ${column.definition}`,
           );
         }
       }

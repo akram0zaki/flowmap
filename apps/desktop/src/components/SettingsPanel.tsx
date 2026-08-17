@@ -9,11 +9,17 @@ import { Field } from './Field.jsx';
 
 export type SettingsPanelProps = {
   readonly runtime: Runtime;
+  readonly shared?: boolean;
   readonly onClearLocalData: () => void;
   readonly onClose: () => void;
 };
 
-export function SettingsPanel({ runtime, onClearLocalData, onClose }: SettingsPanelProps) {
+export function SettingsPanel({
+  runtime,
+  shared = false,
+  onClearLocalData,
+  onClose,
+}: SettingsPanelProps) {
   const version = runtime.version ?? t('settings.versionUnknown');
   const webview = runtime.webview ?? 'browser';
   const modeKey = modeMessageKey(runtime);
@@ -75,6 +81,10 @@ export function SettingsPanel({ runtime, onClearLocalData, onClose }: SettingsPa
           {t(`settings.webview.${webview}`)}
         </p>
         {webview !== 'wkwebview' && <p>{t('settings.webview.missingHint', { version })}</p>}
+
+        <h3>{t('settings.rolesTitle')}</h3>
+        <p>{t('settings.rolesAdvisory')}</p>
+        {shared && <p>{t('settings.filePropagation')}</p>}
 
         <div className="fm-dialog__actions">
           <button type="button" className="fm-danger" onClick={onClearLocalData}>

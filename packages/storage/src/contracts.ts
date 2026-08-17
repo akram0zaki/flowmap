@@ -36,6 +36,8 @@ export type OutboxEntry = {
   readonly attempts: number;
   readonly lastError?: string;
   readonly state: OutboxState;
+  /** Provider concurrency token seen when the local mutation was recorded. */
+  readonly baseRemoteVersion?: string;
 };
 
 export type ApplyInput = {
@@ -85,9 +87,21 @@ export interface WorkspaceRepository {
   search(workspaceId: WorkspaceId, query: string, limit?: number): Promise<SearchHit[]>;
   listOutbox(workspaceId: WorkspaceId, state?: OutboxState): Promise<OutboxEntry[]>;
   markOutbox(ids: readonly EntityId[], state: OutboxState, error?: string): Promise<void>;
+  /** Updates the provider token (and optional merged patch) after an auto-merge. */
+  rebaseOutbox(ids: readonly EntityId[], baseRemoteVersion: string, patch?: unknown): Promise<void>;
   nextSequence(workspaceId: WorkspaceId): Promise<number>;
   clearLocalData(workspaceId?: WorkspaceId): Promise<void>;
   close(): Promise<void>;
+  /**
+   * Apply already-validated remote facts. Does not write the outbox — these
+   * changes originated elsewhere and must not bounce back as local mutations.
+   */
+  applyRemote(input: ApplyRemoteInput): Promise<void>;
+  listConflicts(workspaceId: WorkspaceId): Promise<readonly ConflictRecord[]>;
+  saveConflicts(workspaceId: WorkspaceId, conflicts: readonly ConflictRecord[]): Promise<void>;
+  resolveConflict(id: EntityId, resolution: ConflictResolution, resolvedAt: string): Promise<void>;
+  getSyncState(workspaceId: WorkspaceId): Promise<SyncStateRecord | null>;
+  setSyncState(state: SyncStateRecord): Promise<void>;
 }
 
 // ── Provider ───────────────────────────────────────────────────────────────
@@ -103,6 +117,7 @@ export type ProviderCapabilities = {
   readonly tombstones: boolean;
   readonly transactional: boolean;
   readonly maxBatchOperations: number;
+  readonly maxRequestsPerMinute: number | null;
   readonly provisioning: 'AUTOMATIC' | 'MANUAL' | 'NONE';
 };
 
@@ -120,6 +135,22 @@ export type PullPage = {
   readonly changes: readonly RemoteEntityChange[];
   readonly cursor: SyncCursor;
   readonly hasMore: boolean;
+  readonly serverTime: string;
+};
+
+export type VersionedEntity = {
+  readonly entityRef: EntityRef;
+  readonly entityVersion: number;
+  readonly remoteVersion: string;
+  readonly deleted: boolean;
+  readonly payload?: unknown;
+};
+
+export type PortableWorkspaceBytes = {
+  readonly bytes: Uint8Array;
+  readonly workspaceId: WorkspaceId;
+  readonly formatVersion: number;
+  readonly schemaVersion: number;
 };
 
 export type MutationOperation = {
@@ -156,10 +187,20 @@ export type PushOperationResult =
 
 export type PushResult = { readonly results: readonly PushOperationResult[] };
 
+export type ShareMode = 'WRITABLE' | 'READ_ONLY' | 'VANISHED';
+
+export type ConflictCopy = {
+  readonly path: string;
+  readonly kind: 'NUMBERED' | 'MACHINE';
+  readonly detectedAt: string;
+};
+
 export type ProviderHealth = {
   readonly reachable: boolean;
   readonly lastCheckedAt: string;
   readonly detail?: string;
+  readonly shareMode?: ShareMode;
+  readonly conflictCopies?: readonly ConflictCopy[];
 };
 
 /**
@@ -183,7 +224,58 @@ export interface WorkspaceProvider {
     opts?: { pageSize?: number },
   ): Promise<PullPage>;
   push(workspaceId: WorkspaceId, batch: MutationBatch): Promise<PushResult>;
+  getEntity(workspaceId: WorkspaceId, ref: EntityRef): Promise<VersionedEntity | null>;
+  exportPortable(workspaceId: WorkspaceId): Promise<PortableWorkspaceBytes>;
+  importPortable(pkg: PortableWorkspaceBytes): Promise<WorkspaceId>;
 }
+
+export type ApplyRemoteInput = {
+  readonly workspaceId: WorkspaceId;
+  readonly changes: readonly RemoteEntityChange[];
+};
+
+export type ConflictRecord = {
+  readonly id: EntityId;
+  readonly workspaceId: WorkspaceId;
+  readonly entityRef: EntityRef;
+  readonly field: string;
+  readonly localValue: unknown;
+  readonly remoteValue: unknown;
+  readonly localVersion?: number;
+  readonly remoteVersion?: string;
+  readonly detectedAt: string;
+  readonly resolvedAt?: string;
+  readonly resolution?: ConflictResolution['action'];
+};
+
+export type ConflictResolution = {
+  readonly action: 'KEEP_MINE' | 'TAKE_THEIRS' | 'EDIT';
+  readonly value?: unknown;
+};
+
+export type SyncStateRecord = {
+  readonly workspaceId: WorkspaceId;
+  readonly providerId: ProviderId;
+  readonly pullCursor?: string;
+  readonly lastPullAt?: string;
+  readonly lastPushAt?: string;
+  readonly lastKnownRemoteAt?: string;
+  readonly documentPath?: string;
+  readonly shareMode?: ShareMode;
+};
+
+export type SyncStatus = {
+  readonly providerId: ProviderId;
+  readonly lastKnownRemoteAt: string | null;
+  readonly lastPullAt: string | null;
+  readonly lastPushAt: string | null;
+  readonly pendingCount: number;
+  readonly conflictCount: number;
+  readonly reachable: boolean;
+  readonly shareMode: ShareMode;
+  readonly detail?: string;
+  readonly conflictCopies: readonly ConflictCopy[];
+};
 
 export class ProviderError extends Error {
   constructor(

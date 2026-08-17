@@ -21,6 +21,10 @@ machine has no WebView2 — the app says so on startup and names that file.
 
 ## Build
 
+Rust must be installed (`https://rustup.rs/`). The script prepends
+`~/.cargo/bin` to PATH when cargo is missing from the shell — rustup does
+not add that directory to GUI-terminal PATH on its own.
+
 ```bash
 pnpm package:portable                 # current platform
 pnpm package:portable -- --universal  # macOS, both architectures

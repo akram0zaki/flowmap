@@ -26,6 +26,9 @@
       "path": "../../packages/storage"
     },
     {
+      "path": "../../packages/storage-file"
+    },
+    {
       "path": "../../packages/storage-local"
     },
     {

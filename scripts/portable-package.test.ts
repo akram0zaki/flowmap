@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { portableArchiveName, readBundleVersion } from './portable-package.js';
+import {
+  pathWithRust,
+  portableArchiveName,
+  readBundleVersion,
+  rustBinDir,
+} from './portable-package.js';
 
 describe('portable archive names', () => {
   it('matches spec 10 §3 for Windows evergreen and standalone', () => {
@@ -32,5 +37,23 @@ describe('portable archive names', () => {
   it('reads the version from tauri.conf.json', () => {
     expect(readBundleVersion({ version: '0.1.0' })).toBe('0.1.0');
     expect(() => readBundleVersion({})).toThrow(/missing a version/);
+  });
+});
+
+describe('rust PATH', () => {
+  it('uses CARGO_HOME when set, otherwise ~/.cargo/bin', () => {
+    expect(rustBinDir('/Users/x', undefined, 'darwin')).toBe('/Users/x/.cargo/bin');
+    expect(rustBinDir('/Users/x', '/opt/cargo', 'darwin')).toBe('/opt/cargo/bin');
+    expect(rustBinDir('C:\\Users\\x', undefined, 'win32')).toBe('C:\\Users\\x\\.cargo\\bin');
+  });
+
+  it('prepends the rustup bin dir when cargo lives there and PATH omitted it', () => {
+    expect(pathWithRust('/usr/bin:/bin', '/Users/x/.cargo/bin', true)).toBe(
+      '/Users/x/.cargo/bin:/usr/bin:/bin',
+    );
+    expect(pathWithRust('/Users/x/.cargo/bin:/usr/bin', '/Users/x/.cargo/bin', true)).toBe(
+      '/Users/x/.cargo/bin:/usr/bin',
+    );
+    expect(pathWithRust('/usr/bin', '/Users/x/.cargo/bin', false)).toBe('/usr/bin');
   });
 });

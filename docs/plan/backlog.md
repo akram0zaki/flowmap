@@ -11,7 +11,7 @@ capability**, not by technical layer — each ticket should leave the product me
 > This file is kept current as work lands. A ticket is ✅ only when its acceptance criteria pass and
 > the [`AGENTS.md`](../../AGENTS.md) definition of done is met — not when the code merely exists.
 
-**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · **M3 13/14 done, 1 partial** · **M6 17/17 — complete** · **M7 5/8 done, 2 signing-gated, 1 blocked on devices** · M8–M9 not started
+**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · **M3 13/14 done, 1 partial** · **M6 17/17 — complete** · **M7 5/8 done, 2 signing-gated, 1 blocked on devices** · **M8 14/14 — complete** · M9 not started
 
 > **Closed out of M2.** The seven code-side gaps carried out of the first pass
 > are done, each with unit and Playwright coverage and verified in a browser:
@@ -310,22 +310,27 @@ checklist is in [`docs/ops/`](../ops/distribution.md).
 
 ## M8 — Shared provider and sync
 
+The File provider is the shared provider: a versioned `.flowmap` document with
+`sync.json`, atomic replace, field-level merge, and an explicit conflict UI.
+Roles are enforced in the domain and described as advisory in Settings. Private
+scenarios stay local; sharing them publishes them on the next push.
+
 | St  | ID       | Title                                                                                       | Size | Dep      |
 | --- | -------- | ------------------------------------------------------------------------------------------- | :--: | -------- |
-| ⬜  | M8-PRV-1 | Capability-aware provider contract hardened + contract suite                                |  M   | M1-STO-1 |
-| ⬜  | M8-PRV-2 | File provider: versioned `.flowmap` document, read → version check → atomic replace         |  L   | M8-PRV-1 |
-| ⬜  | M8-PRV-3 | Conflict-copy detection and recovery (`* (1).flowmap`, `*-<machine>.flowmap`)               |  M   | M8-PRV-2 |
-| ⬜  | M8-PRV-4 | Files-on-demand placeholder materialisation; read-only-share handling                       |  M   | M8-PRV-2 |
-| ⬜  | M8-SYN-1 | Pull cursor, pagination, resumable apply                                                    |  M   | M8-PRV-1 |
-| ⬜  | M8-SYN-2 | Idempotent write, retries, backoff                                                          |  M   | M8-SYN-1 |
-| ⬜  | M8-SYN-3 | Field-level merge + conflict rows                                                           |  L   | M8-SYN-2 |
-| ⬜  | M8-SYN-4 | Conflict resolution UI                                                                      |  M   | M8-SYN-3 |
-| ⬜  | M8-SYN-5 | Sync status showing last-known-remote time, pending and conflict counts                     |  S   | M8-SYN-2 |
-| ⬜  | M8-SYN-6 | Multi-client + fault-injection harness (kill mid-write, concurrent writers, share vanishes) |  L   | M8-SYN-3 |
-| ⬜  | M8-SYN-7 | Read-only-share and vanished-share recovery paths                                           |  M   | M8-PRV-4 |
-| ⬜  | M8-COL-1 | Role authorisation enforced in the domain                                                   |  M   | M6-SEC-1 |
-| ⬜  | M8-COL-2 | UI copy stating plainly that roles are advisory and folder permissions are the boundary     |  S   | M8-COL-1 |
-| ⬜  | M8-COL-3 | Shared baseline + shared scenario publication                                               |  M   | M4-SCN-3 |
+| ✅  | M8-PRV-1 | Capability-aware provider contract hardened + contract suite                                |  M   | M1-STO-1 |
+| ✅  | M8-PRV-2 | File provider: versioned `.flowmap` document, read → version check → atomic replace         |  L   | M8-PRV-1 |
+| ✅  | M8-PRV-3 | Conflict-copy detection and recovery (`* (1).flowmap`, `*-<machine>.flowmap`)               |  M   | M8-PRV-2 |
+| ✅  | M8-PRV-4 | Files-on-demand placeholder materialisation; read-only-share handling                       |  M   | M8-PRV-2 |
+| ✅  | M8-SYN-1 | Pull cursor, pagination, resumable apply                                                    |  M   | M8-PRV-1 |
+| ✅  | M8-SYN-2 | Idempotent write, retries, backoff                                                          |  M   | M8-SYN-1 |
+| ✅  | M8-SYN-3 | Field-level merge + conflict rows                                                           |  L   | M8-SYN-2 |
+| ✅  | M8-SYN-4 | Conflict resolution UI                                                                      |  M   | M8-SYN-3 |
+| ✅  | M8-SYN-5 | Sync status showing last-known-remote time, pending and conflict counts                     |  S   | M8-SYN-2 |
+| ✅  | M8-SYN-6 | Multi-client + fault-injection harness (kill mid-write, concurrent writers, share vanishes) |  L   | M8-SYN-3 |
+| ✅  | M8-SYN-7 | Read-only-share and vanished-share recovery paths                                           |  M   | M8-PRV-4 |
+| ✅  | M8-COL-1 | Role authorisation enforced in the domain                                                   |  M   | M6-SEC-1 |
+| ✅  | M8-COL-2 | UI copy stating plainly that roles are advisory and folder permissions are the boundary     |  S   | M8-COL-1 |
+| ✅  | M8-COL-3 | Shared baseline + shared scenario publication                                               |  M   | M4-SCN-3 |
 
 ## M9 — Enterprise readiness
 

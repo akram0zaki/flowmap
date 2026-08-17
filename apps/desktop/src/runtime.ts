@@ -14,6 +14,7 @@
  */
 
 import { MemoryWorkspaceRepository, localStoragePersistence } from '@flowmap/storage';
+import { MemoryFileSystem } from '@flowmap/storage-file';
 
 import { APP_VERSION } from './app-version.js';
 import type { Runtime } from './state/workspace-store.js';
@@ -54,5 +55,6 @@ export async function createRuntime(): Promise<Runtime> {
     newId,
     version: APP_VERSION,
     webview: 'browser',
+    files: new MemoryFileSystem(() => new Date().toISOString()),
   };
 }
