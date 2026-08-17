@@ -261,6 +261,8 @@
   "scenario.command.PassCommitGate": "Pass Commit Gate when applied",
   "scenario.command.SetPrimaryTeam": "Set accountable team",
   "scenario.apply": "Apply scenario",
+  "scenario.clone": "Clone scenario",
+  "scenario.share": "Share for review",
   "scenario.applyDescription": "Apply all changes to the baseline. This creates a snapshot and clears undo history.",
   "scenario.comparison": "Baseline and scenario comparison",
   "scenario.diff.capacity": "Capacity changes",

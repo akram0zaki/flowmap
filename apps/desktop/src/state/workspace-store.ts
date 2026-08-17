@@ -17,6 +17,7 @@ import {
   baselineProjection,
   createIdea,
   createScenario,
+  cloneScenario,
   createTeam,
   createWorkspace,
   ensureTeamQuarter,
@@ -279,6 +280,8 @@ type StoreState = {
   loadSample(scale?: 25 | 100 | 500): Promise<void>;
   createScenario(): Promise<boolean>;
   discardScenario(scenarioId: EntityId): Promise<boolean>;
+  shareScenario(scenarioId: EntityId): Promise<boolean>;
+  cloneScenario(scenarioId: EntityId): Promise<boolean>;
   scenarioProjection(scenarioId: EntityId): ScenarioProjection | null;
   placeScenarioIdea(input: { scenarioId: EntityId; commitmentId: EntityId; teamId: EntityId; quarterId: string; units: number }): Promise<boolean>;
   /** Applies a current scenario atomically. An irreversible apply clears local undo history. */
@@ -854,6 +857,22 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     return (
       (await get().dispatch('DiscardScenario', (state, cmd, ctx) =>
         updateScenario(state, { scenarioId, status: 'DISCARDED' }, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async shareScenario(scenarioId) {
+    return (
+      (await get().dispatch('ShareScenario', (state, cmd, ctx) =>
+        updateScenario(state, { scenarioId, visibility: 'SHARED', status: 'SHARED' }, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async cloneScenario(scenarioId) {
+    return (
+      (await get().dispatch('CloneScenario', (state, cmd, ctx) =>
+        cloneScenario(state, scenarioId, cmd, ctx),
       )) !== false
     );
   },

@@ -462,6 +462,42 @@ export function createScenario(
   });
 }
 
+/** An independent private copy always starts from the current baseline. */
+export function cloneScenario(
+  state: WorkspaceState,
+  sourceScenarioId: EntityId,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'CONTRIBUTOR');
+  if (unauthorised) return unauthorised;
+  const source = state.scenarios?.get(sourceScenarioId);
+  if (!source) return domainFail('ENTITY_NOT_FOUND', { entityRef: { kind: 'SCENARIO', id: sourceScenarioId } });
+  if (source.status !== 'DRAFT' && source.status !== 'SHARED') {
+    return domainFail('SCENARIO_COMMAND_NOT_ALLOWED', { params: { command: 'CloneScenario' } });
+  }
+  const id = ctx.ids.next();
+  const commands = source.commands.map((record, index) => {
+    const command = record.command as unknown as Command;
+    return {
+      ...record,
+      id: ctx.ids.next(),
+      sequence: index + 1,
+      command: { ...command, id: ctx.ids.next(), scenarioId: id } as unknown as Readonly<Record<string, unknown>>,
+    };
+  });
+  const clone: Scenario = {
+    ...newEnvelope(id, cmd, ctx), name: source.name, ownerUserId: ctx.actorId,
+    visibility: 'PRIVATE', baseRevision: state.workspace.revision, commands, status: 'DRAFT',
+  };
+  const ref = { kind: 'SCENARIO', id } as const;
+  return succeed({
+    changes: [created(ref, clone)],
+    events: [event(cmd, ctx, 0, 'SCENARIO_CLONED', [ref], { scenarioId: source.id, cloneId: id })],
+    affectedProjections: ['radar'],
+  });
+}
+
 export function updateScenario(
   state: WorkspaceState,
   payload: { scenarioId: EntityId; name?: string; visibility?: Scenario['visibility']; status?: Scenario['status'] },

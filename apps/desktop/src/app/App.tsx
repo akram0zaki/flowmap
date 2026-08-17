@@ -103,6 +103,8 @@ export function App() {
     clearSignal,
     createScenario,
     discardScenario,
+    shareScenario,
+    cloneScenario,
     applyScenario,
     getScenarioRebase,
     rebaseScenario,
@@ -955,6 +957,16 @@ export function App() {
         onApply={(scenarioId) => {
           void applyScenario(scenarioId).then((applied) => {
             if (applied) setSelectedScenarioId(null);
+          });
+        }}
+        onShare={(scenarioId) => void shareScenario(scenarioId)}
+        onClone={(scenarioId) => {
+          void cloneScenario(scenarioId).then((cloned) => {
+            if (!cloned) return;
+            const newest = [...(useWorkspace.getState().state?.scenarios?.values() ?? [])]
+              .filter((scenario) => scenario.status === 'DRAFT')
+              .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+            if (newest) setSelectedScenarioId(newest.id);
           });
         }}
         onRebase={(scenarioId, resolutions) => void rebaseScenario(scenarioId, resolutions)}

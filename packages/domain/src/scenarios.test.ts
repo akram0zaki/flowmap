@@ -5,6 +5,7 @@ import {
   baselineProjection,
   applyScenario,
   classifyScenarioRebase,
+  cloneScenario,
   createScenario,
   projectScenario,
   recordScenarioCommand,
@@ -37,6 +38,21 @@ describe('scenario overlays', () => {
     if (result.ok) {
       const scenario = result.effects.changes[0]?.after as { visibility: string; baseRevision: number; status: string };
       expect(scenario).toMatchObject({ visibility: 'PRIVATE', baseRevision: 4, status: 'DRAFT' });
+    }
+  });
+
+  it('clones an active scenario as an independent private draft at the live revision', () => {
+    const base = state();
+    const ctx = context();
+    const made = createScenario(base, { name: 'Option', ownerUserId: 'person' }, command('CreateScenario'), ctx);
+    if (!made.ok) throw new Error('scenario should be created');
+    const source = made.effects.changes[0]!.after as Scenario;
+    const result = cloneScenario({ ...base, workspace: { ...base.workspace, revision: 8 }, scenarios: new Map([[source.id, source]]) }, source.id, command('CloneScenario'), ctx);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const clone = result.effects.changes[0]!.after as Scenario;
+      expect(clone).toMatchObject({ visibility: 'PRIVATE', status: 'DRAFT', baseRevision: 8 });
+      expect(clone.id).not.toBe(source.id);
     }
   });
 

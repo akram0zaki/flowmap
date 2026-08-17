@@ -18,6 +18,8 @@ export type ScenarioDockProps = {
   readonly onCreate: () => void;
   readonly onDiscard: (id: string) => void;
   readonly onApply: (id: string) => void;
+  readonly onShare: (id: string) => void;
+  readonly onClone: (id: string) => void;
   readonly summary?: { teamsAffected: number; quartersAffected: number; netUnitsMoved: number; newOverflows: number; resolvedOverflows: number };
   readonly diff?: ScenarioDiff;
   readonly rebase?: readonly RebaseOutcome[];
@@ -31,6 +33,8 @@ export function ScenarioDock({
   onCreate,
   onDiscard,
   onApply,
+  onShare,
+  onClone,
   summary,
   diff,
   rebase,
@@ -156,6 +160,8 @@ export function ScenarioDock({
           <button type="button" className="fm-primary" disabled={stale} onClick={() => setConfirmingApply(true)}>
             {t('scenario.apply')}
           </button>
+          {selected.visibility === 'PRIVATE' && <button type="button" onClick={() => onShare(selected.id)}>{t('scenario.share')}</button>}
+          <button type="button" onClick={() => onClone(selected.id)}>{t('scenario.clone')}</button>
           <button type="button" className="fm-danger" onClick={() => onDiscard(selected.id)}>
             {t('scenario.discard')}
           </button>
