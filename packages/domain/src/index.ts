@@ -18,3 +18,4 @@ export * from './saved-views.js';
 export * from './workspace-lifecycle.js';
 export * from './workspace-settings.js';
 export * from './permissions.js';
+export * from './workspace-users.js';

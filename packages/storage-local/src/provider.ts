@@ -12,14 +12,17 @@
 
 import type { WorkspaceId } from '@flowmap/domain';
 import { refKey } from '@flowmap/domain';
+import type { EntityRef } from '@flowmap/domain';
 import type {
   MutationBatch,
+  PortableWorkspaceBytes,
   ProviderCapabilities,
   ProviderHealth,
   PullPage,
   PushOperationResult,
   PushResult,
   SyncCursor,
+  VersionedEntity,
   WorkspaceProvider,
 } from '@flowmap/storage';
 
@@ -64,6 +67,7 @@ export class LocalProvider implements WorkspaceProvider {
     tombstones: true,
     transactional: true,
     maxBatchOperations: 500,
+    maxRequestsPerMinute: null,
     provisioning: 'AUTOMATIC',
   };
 
@@ -89,7 +93,7 @@ export class LocalProvider implements WorkspaceProvider {
     ).map((row) => ({ id: String(row.id), name: String(row.name) }));
   }
 
-  async provision(): Promise<{ ok: boolean }> {
+  async provision(_workspaceId?: WorkspaceId, _schemaVersion?: number): Promise<{ ok: boolean }> {
     return { ok: true };
   }
 
@@ -125,7 +129,62 @@ export class LocalProvider implements WorkspaceProvider {
       // pull resumes with no gap and no duplicate.
       cursor: String(page.at(-1)?.['updated_seq'] ?? after),
       hasMore,
+      serverTime: new Date(0).toISOString(),
     };
+  }
+
+  async getEntity(workspaceId: WorkspaceId, ref: EntityRef): Promise<VersionedEntity | null> {
+    const row = await this.db.get(
+      `SELECT entity_ref_json, entity_version, remote_version, deleted, payload_json
+       FROM origin_entity WHERE workspace_id = ? AND ref_key = ?`,
+      [workspaceId, refKey(ref)],
+    );
+    if (!row) return null;
+    return {
+      entityRef: JSON.parse(String(row['entity_ref_json'])) as EntityRef,
+      entityVersion: Number(row['entity_version']),
+      remoteVersion: String(row['remote_version']),
+      deleted: Number(row['deleted']) === 1,
+      ...(row['payload_json'] ? { payload: JSON.parse(String(row['payload_json'])) } : {}),
+    };
+  }
+
+  async exportPortable(workspaceId: WorkspaceId): Promise<PortableWorkspaceBytes> {
+    const rows = await this.db.all(
+      `SELECT entity_ref_json, entity_version, remote_version, deleted, payload_json, updated_seq
+       FROM origin_entity WHERE workspace_id = ?`,
+      [workspaceId],
+    );
+    const bytes = new TextEncoder().encode(JSON.stringify({ workspaceId, rows }));
+    return { bytes, workspaceId, formatVersion: 1, schemaVersion: 1 };
+  }
+
+  async importPortable(pkg: PortableWorkspaceBytes): Promise<WorkspaceId> {
+    const parsed = JSON.parse(new TextDecoder().decode(pkg.bytes)) as {
+      workspaceId: WorkspaceId;
+      rows: Array<Record<string, unknown>>;
+    };
+    for (const row of parsed.rows) {
+      const ref = JSON.parse(String(row['entity_ref_json'])) as EntityRef;
+      await this.db.run(
+        `INSERT OR REPLACE INTO origin_entity
+         (workspace_id, ref_key, entity_ref_json, entity_version, remote_version, deleted, payload_json, updated_seq)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          parsed.workspaceId,
+          refKey(ref),
+          String(row['entity_ref_json']),
+          Number(row['entity_version']),
+          String(row['remote_version']),
+          Number(row['deleted']),
+          row['payload_json'] === undefined || row['payload_json'] === null
+            ? null
+            : String(row['payload_json']),
+          Number(row['updated_seq']),
+        ],
+      );
+    }
+    return parsed.workspaceId;
   }
 
   /**

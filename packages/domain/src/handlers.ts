@@ -21,6 +21,7 @@ import {
   type Team,
   type TeamQuarter,
   type Workspace,
+  type WorkspaceUser,
 } from './entities.js';
 import type {
   Command,
@@ -57,6 +58,7 @@ export type CreateWorkspacePayload = {
   readonly timezone: string;
   readonly currentQuarterId: QuarterId;
   readonly isSample?: boolean;
+  readonly ownerDisplayName?: string;
 };
 
 /**
@@ -95,9 +97,16 @@ export function createWorkspace(
   };
 
   const ref = { kind: 'WORKSPACE', id: workspace.id } as const;
+  const owner: WorkspaceUser = {
+    ...newEnvelope(ctx.ids.next(), cmd, ctx),
+    identitySubject: cmd.actorId,
+    displayName: payload.ownerDisplayName?.trim() || cmd.actorId,
+    role: 'ADMIN',
+  };
+  const ownerRef = { kind: 'WORKSPACE_USER', id: owner.id } as const;
   return succeed({
-    changes: [created(ref, workspace)],
-    events: [event(cmd, ctx, 0, 'WORKSPACE_CREATED', [ref], { name: workspace.name })],
+    changes: [created(ref, workspace), created(ownerRef, owner)],
+    events: [event(cmd, ctx, 0, 'WORKSPACE_CREATED', [ref, ownerRef], { name: workspace.name })],
     affectedProjections: [],
   });
 }

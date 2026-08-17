@@ -34,6 +34,7 @@ const STORED_KINDS: readonly EntityKind[] = [
   'COMMITMENT_THEME',
   'EXTERNAL_LINK',
   'PERSON',
+  'WORKSPACE_USER',
   'SCENARIO',
 ];
 
@@ -69,6 +70,34 @@ function change(kind: EntityKind, id: string): EntityChange {
 }
 
 describe('MemoryWorkspaceRepository', () => {
+  it('keeps a private scenario out of the outbox until it is shared', async () => {
+    const repo = new MemoryWorkspaceRepository();
+    await repo.apply({
+      workspaceId: WS,
+      changes: [
+        {
+          ...change('SCENARIO', 'scn-1'),
+          after: {
+            id: 'scn-1',
+            workspaceId: WS,
+            name: 'Draft',
+            visibility: 'PRIVATE',
+            status: 'DRAFT',
+            schemaVersion: 1,
+            entityVersion: 1,
+            createdAt: NOW,
+            createdBy: 'a',
+            updatedAt: NOW,
+            updatedBy: 'a',
+          },
+        },
+      ],
+      events: [],
+      command: command('CreateScenario'),
+    });
+    expect(await repo.listOutbox(WS)).toHaveLength(0);
+  });
+
   it('accepts a change for every stored entity kind', async () => {
     const repo = new MemoryWorkspaceRepository();
 

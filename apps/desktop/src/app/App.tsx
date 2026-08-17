@@ -78,6 +78,8 @@ import { WorkspaceSwitcher } from '../components/WorkspaceSwitcher.jsx';
 import { PortabilityPanel } from '../components/PortabilityPanel.jsx';
 import { SavedViews } from '../components/SavedViews.jsx';
 import { SettingsPanel } from '../components/SettingsPanel.jsx';
+import { SyncStatus } from '../components/SyncStatus.jsx';
+import { ConflictResolver } from '../components/ConflictResolver.jsx';
 import { ShortcutReference } from '../components/ShortcutReference.jsx';
 import { SnapshotsPanel } from '../components/SnapshotsPanel.jsx';
 import { FirstRunGuide } from '../components/FirstRunGuide.jsx';
@@ -105,6 +107,8 @@ export function App() {
   const activeWorkspaceId = useWorkspace((s) => s.activeWorkspaceId);
   const selectedFootprintId = useWorkspace((s) => s.selectedFootprintId);
   const presentationMode = useWorkspace((s) => s.presentationMode);
+  const syncStatus = useWorkspace((s) => s.syncStatus);
+  const conflicts = useWorkspace((s) => s.conflicts);
   const {
     undo,
     redo,
@@ -114,6 +118,8 @@ export function App() {
     switchWorkspace,
     archiveActiveWorkspace,
     restoreArchivedWorkspace,
+    syncNow,
+    resolveConflict,
     importIdeas,
     createSnapshot,
     restoreSnapshot,
@@ -186,6 +192,7 @@ export function App() {
   const [activeLens, setActiveLens] = useState<ActiveLens>('PORTFOLIO');
   const [showPalette, setShowPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showConflicts, setShowConflicts] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const scenarioState = selectedScenarioId === null ? null : scenarioProjection(selectedScenarioId);
@@ -204,6 +211,20 @@ export function App() {
     if (announceTimer.current) clearTimeout(announceTimer.current);
     announceTimer.current = setTimeout(() => setAnnouncement(message), 120);
   }, []);
+
+  useEffect(() => {
+    const onFocus = () => {
+      void syncNow();
+    };
+    window.addEventListener('focus', onFocus);
+    const interval = window.setInterval(() => {
+      void syncNow();
+    }, 60_000);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.clearInterval(interval);
+    };
+  }, [syncNow]);
 
   const handleMenu = useCallback(
     (command: MenuCommand) => {
@@ -1158,7 +1179,9 @@ export function App() {
           activeWorkspaceId={activeWorkspaceId}
           timezone={state.workspace.timezone}
           onSwitch={(workspaceId) => void switchWorkspace(workspaceId)}
-          onCreate={(name) => void createWorkspace(name, state.workspace.timezone)}
+          onCreate={(name, location) =>
+            void createWorkspace(name, state.workspace.timezone, location)
+          }
           onArchive={() => void archiveActiveWorkspace()}
           onRestore={(workspaceId) => void restoreArchivedWorkspace(workspaceId)}
         />
@@ -1225,12 +1248,11 @@ export function App() {
           >
             {t('settings.open')}
           </button>
-          {/* Pending count is sync plumbing. With no shared provider there is
-              nothing for it to be pending *to*, so it is noise rather than
-              status — it returns in M8 when it means something. */}
-          <span role="status" aria-live="polite">
-            {t('status.saved')}
-          </span>
+          <SyncStatus
+            status={syncStatus}
+            onSync={() => void syncNow()}
+            onOpenConflicts={() => setShowConflicts(true)}
+          />
           <span>{profileName}</span>
         </div>
       </header>
@@ -1662,11 +1684,19 @@ export function App() {
       {showSettings && runtime && (
         <SettingsPanel
           runtime={runtime}
+          shared={syncStatus?.providerId === 'FILE'}
           onClearLocalData={() => {
             setShowSettings(false);
             setConfirmClear(true);
           }}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+      {showConflicts && (
+        <ConflictResolver
+          conflicts={conflicts}
+          onResolve={(conflict, action, value) => void resolveConflict(conflict, action, value)}
+          onClose={() => setShowConflicts(false)}
         />
       )}
       {showShortcuts && <ShortcutReference onClose={() => setShowShortcuts(false)} />}

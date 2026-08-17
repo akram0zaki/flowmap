@@ -66,6 +66,10 @@ import {
   type NotificationSettings,
   type SavedImportMapping,
   domainError,
+  mayRunCommand,
+  refKey,
+  resolveSyncConflict,
+  roleFor,
 } from '@flowmap/domain';
 import {
   clearSignalDisposition,
@@ -92,8 +96,12 @@ import {
   snapshotState,
   type SearchHit,
   type SnapshotRecord,
+  type ConflictRecord,
+  type SyncStatus,
   type WorkspaceRepository,
+  SyncEngine,
 } from '@flowmap/storage';
+import { FileProvider, type FileSystemAdapter } from '@flowmap/storage-file';
 
 import { t } from '../i18n/t.js';
 import { seedSampleWorkspace } from './sample-workspace.js';
@@ -152,6 +160,8 @@ export type Runtime = {
    * desktop this is the Tauri opener plugin; in the browser it is a new tab.
    */
   readonly openExternal?: (url: string) => Promise<void>;
+  /** Injected filesystem for the File provider. Absent means local-only. */
+  readonly files?: FileSystemAdapter;
 };
 
 type Status = { readonly tone: 'info' | 'warning' | 'critical'; readonly message: string } | null;
@@ -188,12 +198,20 @@ type StoreState = {
   undoStack: Command[][];
   redoStack: Command[][];
   pendingCount: number;
+  syncStatus: SyncStatus | null;
+  conflicts: readonly ConflictRecord[];
   /** Presentation is a hard edit boundary, not merely hidden chrome. */
   presentationMode: boolean;
   setPresentationMode(enabled: boolean): void;
 
   init(runtime: Runtime, profileName: string): Promise<void>;
-  createWorkspace(name: string, timezone: string): Promise<boolean>;
+  createWorkspace(name: string, timezone: string, location?: 'LOCAL' | 'FILE'): Promise<boolean>;
+  syncNow(): Promise<void>;
+  resolveConflict(
+    conflict: ConflictRecord,
+    action: 'KEEP_MINE' | 'TAKE_THEIRS' | 'EDIT',
+    value?: unknown,
+  ): Promise<boolean>;
   switchWorkspace(workspaceId: EntityId): Promise<boolean>;
   archiveActiveWorkspace(): Promise<boolean>;
   restoreArchivedWorkspace(workspaceId: EntityId): Promise<boolean>;
@@ -379,6 +397,8 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   undoStack: [],
   redoStack: [],
   pendingCount: 0,
+  syncStatus: null,
+  conflicts: [],
   presentationMode: false,
   events: [],
   snapshots: [],
@@ -403,7 +423,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
           currentQuarterId: currentQuarter(runtime.now()),
         },
         cmd,
-        makeContext(runtime, 1),
+        makeContext(runtime, 1, state),
       );
       if (result.ok) {
         await runtime.repository.apply({
@@ -435,17 +455,23 @@ export const useWorkspace = create<StoreState>((set, get) => ({
         : {}),
     });
     await refreshPending(get, set);
+    await refreshSync(get, set);
   },
 
-  async createWorkspace(name, timezone) {
+  async createWorkspace(name, timezone, location = 'LOCAL') {
     const { runtime } = get();
     if (!runtime) return false;
     const workspaceId = runtime.newId();
     const cmd = makeCommand(runtime, 'CreateWorkspace', workspaceId);
     const result = createWorkspace(
-      { name, timezone, currentQuarterId: currentQuarter(runtime.now()) },
+      {
+        name,
+        timezone,
+        currentQuarterId: currentQuarter(runtime.now()),
+        ownerDisplayName: get().profileName,
+      },
       cmd,
-      makeContext(runtime, 1),
+      makeContext(runtime, 1, get().state),
     );
     if (!result.ok) {
       set({
@@ -462,6 +488,22 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       events: result.effects.events,
       command: cmd,
     });
+    if (location === 'FILE' && runtime.files) {
+      const documentPath = `/shared/${workspaceId}.flowmap`;
+      const provider = new FileProvider({
+        fs: runtime.files,
+        path: documentPath,
+        writerId: `local:${PROFILE_ID}`,
+        clock: runtime.now,
+      });
+      await provider.provision(workspaceId, 1);
+      await runtime.repository.setSyncState({
+        workspaceId,
+        providerId: 'FILE',
+        documentPath,
+        shareMode: 'WRITABLE',
+      });
+    }
     return get().switchWorkspace(workspaceId);
   },
 
@@ -482,6 +524,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       status: null,
     });
     await refreshPending(get, set);
+    await refreshSync(get, set);
     return true;
   },
 
@@ -547,7 +590,20 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     const grouping = stepDepth > 0 && stepStarted;
 
     const cmd = makeCommand(runtime, name, activeWorkspaceId);
-    const ctx = makeContext(runtime, await runtime.repository.nextSequence(activeWorkspaceId));
+    const ctx = makeContext(
+      runtime,
+      await runtime.repository.nextSequence(activeWorkspaceId),
+      state,
+    );
+    if (!mayRunCommand(ctx.role, name)) {
+      set({
+        status: {
+          tone: 'critical',
+          message: t('errors.UNAUTHORISED', { required: name, actual: ctx.role }),
+        },
+      });
+      return false;
+    }
     let result = run(state, cmd, ctx);
 
     if (!result.ok) {
@@ -555,6 +611,24 @@ export const useWorkspace = create<StoreState>((set, get) => ({
         status: {
           tone: 'critical',
           message: t(`errors.${result.error.code}`, result.error.params ?? {}),
+        },
+      });
+      return false;
+    }
+
+    const openConflicts = get().conflicts.filter((row) => row.resolvedAt === undefined);
+    if (
+      name !== 'ResolveSyncConflict' &&
+      openConflicts.some((row) =>
+        result.ok
+          ? result.effects.changes.some((change) => refKey(change.ref) === refKey(row.entityRef))
+          : false,
+      )
+    ) {
+      set({
+        status: {
+          tone: 'critical',
+          message: t('errors.ENTITY_HAS_UNRESOLVED_CONFLICT', { name }),
         },
       });
       return false;
@@ -637,6 +711,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       workspaces: await runtime.repository.listWorkspaces(),
     });
     await refreshPending(get, set);
+    await refreshSync(get, set);
     return inverse;
   },
 
@@ -1505,6 +1580,43 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       ? runtime.repository.search(get().activeWorkspaceId!, query)
       : [];
   },
+
+  async syncNow() {
+    await refreshSync(get, set);
+  },
+
+  async resolveConflict(conflict, action, value) {
+    const chosen =
+      action === 'KEEP_MINE'
+        ? conflict.localValue
+        : action === 'TAKE_THEIRS'
+          ? conflict.remoteValue
+          : value;
+    const applied = await get().dispatch('ResolveSyncConflict', (state, cmd, ctx) =>
+      resolveSyncConflict(
+        state,
+        {
+          kind: conflict.entityRef.kind,
+          id: 'id' in conflict.entityRef ? conflict.entityRef.id : '',
+          field: conflict.field === '*' ? 'name' : conflict.field,
+          value: chosen,
+        },
+        cmd,
+        ctx,
+      ),
+    );
+    if (!applied) return false;
+    const { runtime, activeWorkspaceId } = get();
+    if (runtime && activeWorkspaceId) {
+      await runtime.repository.resolveConflict(
+        conflict.id,
+        { action, ...(value !== undefined ? { value } : {}) },
+        runtime.now(),
+      );
+    }
+    await refreshSync(get, set);
+    return true;
+  },
 }));
 
 const SCENARIO_METADATA_COMMANDS = new Set([
@@ -1563,6 +1675,37 @@ async function refreshPending(get: () => StoreState, set: (partial: Partial<Stor
     pendingCount: workspaceId
       ? (await runtime.repository.listOutbox(workspaceId, 'PENDING')).length
       : 0,
+  });
+}
+
+async function refreshSync(get: () => StoreState, set: (partial: Partial<StoreState>) => void) {
+  const { runtime, activeWorkspaceId } = get();
+  if (!runtime || !activeWorkspaceId) {
+    set({ syncStatus: null, conflicts: [] });
+    return;
+  }
+  const stored = await runtime.repository.getSyncState(activeWorkspaceId);
+  const conflicts = await runtime.repository.listConflicts(activeWorkspaceId);
+  if (!runtime.files || stored?.providerId !== 'FILE' || stored.documentPath === undefined) {
+    set({ syncStatus: null, conflicts });
+    return;
+  }
+  const engine = new SyncEngine({
+    repository: runtime.repository,
+    provider: new FileProvider({
+      fs: runtime.files,
+      path: stored.documentPath,
+      writerId: `local:${PROFILE_ID}`,
+      clock: runtime.now,
+    }),
+    clock: { now: runtime.now },
+    ids: { next: runtime.newId },
+  });
+  const syncStatus = await engine.sync(activeWorkspaceId);
+  set({
+    syncStatus,
+    conflicts: await runtime.repository.listConflicts(activeWorkspaceId),
+    pendingCount: (await runtime.repository.listOutbox(activeWorkspaceId, 'PENDING')).length,
   });
 }
 
@@ -1720,12 +1863,16 @@ function makeCommand(runtime: Runtime, name: string, workspaceId = WORKSPACE_ID)
   };
 }
 
-function makeContext(runtime: Runtime, nextSequence: number): CommandContext {
+function makeContext(
+  runtime: Runtime,
+  nextSequence: number,
+  state: WorkspaceState | null = null,
+): CommandContext {
   return {
     clock: { now: runtime.now, today: () => runtime.now().slice(0, 10) },
     ids: { next: runtime.newId },
     actorId: `local:${PROFILE_ID}`,
-    role: 'PLANNER',
+    role: roleFor(state, `local:${PROFILE_ID}`),
     nextSequence,
   };
 }

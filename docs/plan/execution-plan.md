@@ -279,7 +279,7 @@ folder.
 
 ---
 
-## M8 — Shared workspaces via the File provider
+## M8 — Shared workspaces via the File provider ✅ **built; Gate I needs two clients on a real share**
 
 **Prerequisite:** S-3 has characterised the chosen shared folder's behaviour. No approval gate —
 there is nothing to approve, because there is no service to integrate with.

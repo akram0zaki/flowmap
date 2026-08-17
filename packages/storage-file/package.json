@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@flowmap/domain": "workspace:*",
-    "@flowmap/storage": "workspace:*"
+    "@flowmap/storage": "workspace:*",
+    "fflate": "^0.8.3"
   }
 }

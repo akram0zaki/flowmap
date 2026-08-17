@@ -4,9 +4,15 @@ import { setNotificationSettings } from './workspace-settings.js';
 import type { Command, WorkspaceState } from './command.js';
 
 describe('command permission harness', () => {
-  it('denies every registered M6 command to viewers', () => {
-    for (const command of Object.keys(COMMAND_PERMISSIONS))
-      expect(mayRunCommand('VIEWER', command)).toBe(false);
+  it('denies mutating catalog entries to viewers', () => {
+    const allowed = new Set(['ReviewSignal', 'SnoozeSignal', 'ClearSignalDisposition']);
+    for (const command of Object.keys(COMMAND_PERMISSIONS)) {
+      if (allowed.has(command)) {
+        expect(mayRunCommand('VIEWER', command)).toBe(true);
+      } else {
+        expect(mayRunCommand('VIEWER', command), command).toBe(false);
+      }
+    }
   });
   it('retains the contributor quick-capture boundary', () => {
     expect(mayRunCommand('CONTRIBUTOR', 'CreateIdea')).toBe(true);

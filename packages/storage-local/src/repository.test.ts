@@ -13,6 +13,7 @@ import {
   type CommandResult,
 } from '@flowmap/domain';
 import { checksum, MigrationChecksumError, verifyIdempotent } from '@flowmap/storage';
+import { registerProviderContract } from '@flowmap/storage/contract';
 
 import { NodeSqlDriver } from './node-driver.js';
 import { SqliteWorkspaceRepository } from './repository.js';
@@ -660,4 +661,44 @@ describe('relations round-trip', () => {
     expect(state.externalLinks?.get('l-1')?.url).toBe('https://example.test/1');
     expect(state.decisions?.get('dc-1')?.kind).toBe('APPROVAL');
   });
+});
+
+describe('applyRemote', () => {
+  it('writes the entity without an outbox entry', async () => {
+    await repo.applyRemote({
+      workspaceId: WS,
+      changes: [
+        {
+          entityRef: { kind: 'TEAM', id: 't-remote' },
+          entityVersion: 1,
+          remoteVersion: 'v9',
+          deleted: false,
+          payload: {
+            id: 't-remote',
+            workspaceId: WS,
+            name: 'Remote team',
+            defaultQuarterCapacity: 10,
+            displayOrder: 0,
+            active: true,
+            schemaVersion: 1,
+            entityVersion: 1,
+            createdAt: NOW,
+            createdBy: 'peer',
+            updatedAt: NOW,
+            updatedBy: 'peer',
+          },
+        },
+      ],
+    });
+    const state = await repo.load(WS);
+    expect(state).toBeNull();
+    expect(await repo.listOutbox(WS)).toHaveLength(0);
+  });
+});
+
+registerProviderContract('LocalProvider', async () => {
+  const db = new NodeSqlDriver({ path: ':memory:' });
+  const repository = new SqliteWorkspaceRepository(db);
+  await repository.migrate({ now: () => NOW });
+  return { provider: await LocalProvider.open(db), workspaceId: 'ws-local-contract' };
 });

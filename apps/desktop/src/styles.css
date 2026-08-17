@@ -271,6 +271,24 @@ body {
   color: var(--ink-subtle);
 }
 
+.fm-sync {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.fm-conflicts__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fm-conflicts__list li {
+  padding-block: var(--space-4);
+  border-block-end: var(--border-width) solid var(--rule);
+}
+
 .fm-first-run {
   display: flex;
   align-items: start;

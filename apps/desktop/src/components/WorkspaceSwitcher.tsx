@@ -10,13 +10,15 @@ export type WorkspaceOption = {
   readonly updatedAt: string;
 };
 
+export type WorkspaceLocation = 'LOCAL' | 'FILE';
+
 export type WorkspaceSwitcherProps = {
   readonly workspaces: readonly WorkspaceOption[];
   readonly archivedWorkspaces: readonly (WorkspaceOption & { readonly archivedAt: string })[];
   readonly activeWorkspaceId: string | null;
   readonly timezone: string;
   readonly onSwitch: (workspaceId: string) => void;
-  readonly onCreate: (name: string) => void;
+  readonly onCreate: (name: string, location: WorkspaceLocation) => void;
   readonly onArchive: () => void;
   readonly onRestore: (workspaceId: string) => void;
 };
@@ -32,6 +34,7 @@ export function WorkspaceSwitcher({
   onRestore,
 }: WorkspaceSwitcherProps) {
   const [name, setName] = useState('');
+  const [location, setLocation] = useState<WorkspaceLocation>('LOCAL');
   const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
 
   return (
@@ -71,7 +74,7 @@ export function WorkspaceSwitcher({
           onSubmit={(event) => {
             event.preventDefault();
             if (!name.trim()) return;
-            onCreate(name.trim());
+            onCreate(name.trim(), location);
             setName('');
           }}
         >
@@ -83,6 +86,28 @@ export function WorkspaceSwitcher({
               placeholder={t('workspace.nameHint')}
             />
           </label>
+          <fieldset>
+            <legend>{t('workspace.location')}</legend>
+            <label>
+              <input
+                type="radio"
+                name="workspace-location"
+                checked={location === 'LOCAL'}
+                onChange={() => setLocation('LOCAL')}
+              />
+              {t('workspace.location.local')}
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="workspace-location"
+                checked={location === 'FILE'}
+                onChange={() => setLocation('FILE')}
+              />
+              {t('workspace.location.file')}
+            </label>
+          </fieldset>
+          {location === 'FILE' && <p>{t('workspace.location.fileHint')}</p>}
           <p>{t('workspace.timezone', { timezone })}</p>
           <button type="submit" className="fm-primary">
             {t('workspace.create')}
