@@ -164,6 +164,17 @@ body {
   font-size: var(--text-xs);
 }
 
+.fm-shell[data-presentation] .fm-editing-chrome,
+.fm-shell[data-presentation] .fm-scenarios__head button,
+.fm-shell[data-presentation] .fm-scenarios__footer button,
+.fm-shell[data-presentation] .fm-header__status {
+  display: none;
+}
+
+.fm-shell[data-presentation] .fm-header {
+  padding-block: var(--space-6);
+}
+
 /* Segmented control: one outline, dividers inside, no gaps. */
 .fm-levels {
   display: inline-flex;

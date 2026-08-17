@@ -265,6 +265,8 @@
   "scenario.new": "New scenario",
   "scenario.visibility.PRIVATE": "Private",
   "scenario.visibility.SHARED": "Shared",
+  "presentation.off": "Presentation mode off. Editing controls are available again.",
+  "presentation.on": "Presentation mode on. Editing controls are hidden. Press Escape to exit.",
   "tooltip.size.definition": "Approximate relative capacity for this team and quarter.",
   "tooltip.size.example": "For example: work that would occupy about a third of one team's quarter.",
   "tooltip.size.isNot": "It is not a story-point or person-day estimate.",

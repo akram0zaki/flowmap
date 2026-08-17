@@ -130,6 +130,7 @@ export function App() {
    */
   const [ruleSettings, setRuleSettings] = useState<Settings>(NO_RULE_SETTINGS);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
+  const [presentationMode, setPresentationMode] = useState(false);
   const scenarioState = selectedScenarioId === null ? null : scenarioProjection(selectedScenarioId);
   const viewState = scenarioState ?? state;
 
@@ -152,9 +153,20 @@ export function App() {
         e.preventDefault();
         setShowList((v) => !v);
       }
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setPresentationMode((enabled) => {
+          announce(enabled ? t('presentation.off') : t('presentation.on'));
+          return !enabled;
+        });
+      }
       if (e.key === 'Escape') {
         setFocusedCommitmentId(null);
         select(null);
+        if (presentationMode) {
+          setPresentationMode(false);
+          announce(t('presentation.off'));
+        }
       }
       if (!mod && ['1', '2', '3'].includes(e.key) && e.target === document.body) {
         setLevelState(Number(e.key) as ZoomLevel);
@@ -162,7 +174,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, select]);
+  }, [undo, redo, select, announce, presentationMode]);
 
   /**
    * Ctrl/Cmd + wheel, and pinch — which the browser also reports as a wheel
@@ -868,7 +880,7 @@ export function App() {
   }, [scenarios, selectedScenarioId]);
 
   return (
-    <div className="fm-shell">
+    <div className="fm-shell" data-presentation={presentationMode || undefined}>
       <header className="fm-header">
         <h1 className="fm-header__brand">{t('app.name')}</h1>
         <span className="fm-header__workspace">{state.workspace.name}</span>
@@ -894,7 +906,7 @@ export function App() {
         </div>
       )}
 
-      <div className="fm-controlbar">
+      <div className="fm-controlbar fm-editing-chrome">
         <LensStrip
           level={level}
           filter={filter}
@@ -921,7 +933,7 @@ export function App() {
         }}
       />
 
-      <CaptureBar
+      {!presentationMode && <CaptureBar
         teams={teams.map((team) => ({ id: team.id, name: team.name }))}
         ideas={ideas.map((c) => ({ id: c.id, name: c.name }))}
         currentQuarter={state.workspace.currentQuarterId}
@@ -935,7 +947,7 @@ export function App() {
         showRadar={showRadar}
         onToggleRadar={() => setShowRadar((v) => !v)}
         onOpenRuleSettings={() => setShowRuleSettings(true)}
-      />
+      />}
 
       <div className="fm-workspace">
         <IdeasLane
@@ -1051,7 +1063,7 @@ export function App() {
         {/* Inside the workspace row, not floating over it: the board narrows
             rather than being hidden. Editing a field and watching the figure
             move is the point, and a panel covering the board defeats it. */}
-        {panelCommitment && state && (
+        {panelCommitment && state && !presentationMode && (
           <DetailPanel
             commitment={panelCommitment}
             health={signals.health.get(panelCommitment.id) ?? 'OK'}
