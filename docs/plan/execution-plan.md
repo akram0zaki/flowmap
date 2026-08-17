@@ -196,7 +196,7 @@ Deliverables:
 
 - [ ] A lead runs the agreed QBR exercise end to end: intake → place → compare → selectively apply
 - [ ] Scenario edits cannot mutate baseline before apply (property-tested)
-- [ ] A stale scenario cannot silently overwrite a newer baseline
+- [x] A stale scenario cannot silently overwrite a newer baseline
 - [ ] Capacity, product impacts, dependency effects, and attention changes all appear in the diff
 
 **► Product Validation Alpha complete. Continue only if observed use validates the product thesis.**
