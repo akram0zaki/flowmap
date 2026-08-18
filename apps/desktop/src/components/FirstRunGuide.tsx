@@ -3,7 +3,13 @@
 import { useState } from 'react';
 import { t } from '../i18n/t.js';
 
-export function FirstRunGuide() {
+export function FirstRunGuide({
+  onExploreSample,
+  onDismiss,
+}: {
+  readonly onExploreSample: () => void;
+  readonly onDismiss?: () => void;
+}) {
   const [open, setOpen] = useState(true);
   if (!open) return null;
   return (
@@ -13,10 +19,29 @@ export function FirstRunGuide() {
         <p>{t('firstRun.definition')}</p>
         <p>{t('firstRun.not')}</p>
         <p>{t('firstRun.example')}</p>
+        <p>{t('firstRun.sampleHint')}</p>
       </div>
-      <button type="button" onClick={() => setOpen(false)}>
-        {t('firstRun.dismiss')}
-      </button>
+      <div className="fm-first-run__actions">
+        <button
+          type="button"
+          className="fm-primary"
+          onClick={() => {
+            onExploreSample();
+            setOpen(false);
+          }}
+        >
+          {t('action.exploreSample')}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            onDismiss?.();
+          }}
+        >
+          {t('firstRun.dismiss')}
+        </button>
+      </div>
     </aside>
   );
 }

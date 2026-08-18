@@ -13,6 +13,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { applyTheme } from '@flowmap/ui';
+import { readStoredAppearance } from './state/appearance.js';
 
 import '@flowmap/ui/fonts.css';
 import '@flowmap/ui/tokens.css';
@@ -28,7 +29,7 @@ async function bootstrap(): Promise<void> {
   if (!root) throw new Error('Missing #root element');
 
   applyTheme(document.documentElement, {
-    mode: 'system',
+    mode: readStoredAppearance() ?? 'system',
     contrast: 'normal',
     motion: 'system',
     density: 'default',

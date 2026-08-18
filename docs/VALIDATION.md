@@ -16,7 +16,9 @@ pnpm install
 pnpm dev
 ```
 
-Open <http://localhost:5173>. Click **Load sample workspace**.
+Open <http://localhost:5173>. The app starts on an empty workspace. Open the
+workspace switcher and choose **Retail Payments & Channels (sample)**, or click
+**Explore sample workspace** on first run.
 
 State lives in `localStorage`, so a reload is a genuine restart. "Clear local
 data" resets it.

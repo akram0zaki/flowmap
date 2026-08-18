@@ -30,6 +30,7 @@ import {
 } from '@flowmap/import-export';
 
 import { t } from '../i18n/t.js';
+import { HEADER_MENU_NAME, useDismissibleDetails } from '../state/use-dismissible-details.js';
 
 type ExportRow = Readonly<Record<string, string | number | boolean>>;
 
@@ -69,6 +70,8 @@ export function PortabilityPanel({
   announce,
 }: PortabilityPanelProps) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const menu = useRef<HTMLDetailsElement>(null);
+  useDismissibleDetails(menu);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [importing, setImporting] = useState(false);
   const [sourceRows, setSourceRows] = useState<readonly Readonly<Record<string, string>>[]>([]);
@@ -174,7 +177,7 @@ export function PortabilityPanel({
   }
 
   return (
-    <details className="fm-portability">
+    <details ref={menu} className="fm-header-menu fm-portability" name={HEADER_MENU_NAME}>
       <summary>{t('portability.summary')}</summary>
       <section aria-label={t('portability.summary')}>
         <h2>{t('portability.title')}</h2>
@@ -185,105 +188,126 @@ export function PortabilityPanel({
           {t('portability.sensitivity')}
         </p>
         <div className="fm-portability__actions">
-          <button type="button" onClick={() => download('flowmap-view.csv', toCsv(rows))}>
-            {t('portability.exportCsv')}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              void download(
-                'flowmap-view.xlsx',
-                toXlsx(
-                  rows.map((row) => ({ ...row })),
-                  t('portability.sheetName'),
-                ),
-              )
-            }
-          >
-            {t('portability.exportXlsx')}
-          </button>
-          <button type="button" onClick={() => download('flowmap-radar.csv', toCsv(radarRows))}>
-            {t('portability.exportRadar')}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              void download(
-                'flowmap-radar.xlsx',
-                toXlsx(radarRows, t('portability.radarSheetName')),
-              )
-            }
-          >
-            {t('portability.exportRadarXlsx')}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              void download(
-                `${safeName(state.workspace.name)}-data.xlsx`,
-                toWorkbook(workspaceDataSheets(state), {
-                  workspace: state.workspace.name,
-                  exportedAt: now(),
-                  schemaVersion: state.workspace.schemaVersion,
-                }),
-              )
-            }
-          >
-            {t('portability.exportDataXlsx')}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              void download(
-                `${safeName(state.workspace.name)}-data.json`,
-                workspaceDataJson(state, now()),
-              )
-            }
-          >
-            {t('portability.exportDataJson')}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const reviews = events
-                .filter((event) => event.eventType === 'QUARTER_CLOSED')
-                .map((event) => ({
-                  quarter: String(event.facts['quarterId'] ?? ''),
-                  outcomes: JSON.stringify(event.facts['outcomes'] ?? []),
-                  carryOver: JSON.stringify(event.facts['carryOver'] ?? []),
-                }));
-              void download(
-                'flowmap-quarter-review.xlsx',
-                toWorkbook([{ name: t('portability.reviewSheetName'), rows: reviews }], {
-                  workspace: state.workspace.name,
-                  exportedAt: now(),
-                  schemaVersion: state.workspace.schemaVersion,
-                }),
-              );
-            }}
-          >
-            {t('portability.exportQuarterReview')}
-          </button>
-          <button type="button" className="fm-primary" onClick={() => void exportWorkspace()}>
-            {t('portability.exportWorkspace')}
-          </button>
-          <button type="button" onClick={() => fileRef.current?.click()}>
-            {t('portability.chooseImport')}
-          </button>
-          <input
-            ref={fileRef}
-            className="fm-visually-hidden"
-            type="file"
-            accept=".csv,.json,.xlsx"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              if (file) void previewFile(file);
-              event.currentTarget.value = '';
-            }}
+          <FormatGroup
+            label={t('portability.group.view')}
+            actions={[
+              {
+                name: t('portability.exportCsv'),
+                format: t('portability.format.csv'),
+                onClick: () => download('flowmap-view.csv', toCsv(rows)),
+              },
+              {
+                name: t('portability.exportXlsx'),
+                format: t('portability.format.xlsx'),
+                onClick: () =>
+                  void download(
+                    'flowmap-view.xlsx',
+                    toXlsx(
+                      rows.map((row) => ({ ...row })),
+                      t('portability.sheetName'),
+                    ),
+                  ),
+              },
+            ]}
           />
+          <FormatGroup
+            label={t('portability.group.radar')}
+            actions={[
+              {
+                name: t('portability.exportRadar'),
+                format: t('portability.format.csv'),
+                onClick: () => download('flowmap-radar.csv', toCsv(radarRows)),
+              },
+              {
+                name: t('portability.exportRadarXlsx'),
+                format: t('portability.format.xlsx'),
+                onClick: () =>
+                  void download(
+                    'flowmap-radar.xlsx',
+                    toXlsx(radarRows, t('portability.radarSheetName')),
+                  ),
+              },
+            ]}
+          />
+          <FormatGroup
+            label={t('portability.group.data')}
+            actions={[
+              {
+                name: t('portability.exportDataXlsx'),
+                format: t('portability.format.xlsx'),
+                onClick: () =>
+                  void download(
+                    `${safeName(state.workspace.name)}-data.xlsx`,
+                    toWorkbook(workspaceDataSheets(state), {
+                      workspace: state.workspace.name,
+                      exportedAt: now(),
+                      schemaVersion: state.workspace.schemaVersion,
+                    }),
+                  ),
+              },
+              {
+                name: t('portability.exportDataJson'),
+                format: t('portability.format.json'),
+                onClick: () =>
+                  void download(
+                    `${safeName(state.workspace.name)}-data.json`,
+                    workspaceDataJson(state, now()),
+                  ),
+              },
+            ]}
+          />
+          <FormatGroup
+            label={t('portability.group.review')}
+            actions={[
+              {
+                name: t('portability.exportQuarterReview'),
+                format: t('portability.format.xlsx'),
+                onClick: () => {
+                  const reviews = events
+                    .filter((event) => event.eventType === 'QUARTER_CLOSED')
+                    .map((event) => ({
+                      quarter: String(event.facts['quarterId'] ?? ''),
+                      outcomes: JSON.stringify(event.facts['outcomes'] ?? []),
+                      carryOver: JSON.stringify(event.facts['carryOver'] ?? []),
+                    }));
+                  void download(
+                    'flowmap-quarter-review.xlsx',
+                    toWorkbook([{ name: t('portability.reviewSheetName'), rows: reviews }], {
+                      workspace: state.workspace.name,
+                      exportedAt: now(),
+                      schemaVersion: state.workspace.schemaVersion,
+                    }),
+                  );
+                },
+              },
+            ]}
+          />
+          <div className="fm-portability__group">
+            <h3>{t('portability.group.package')}</h3>
+            <button type="button" className="fm-primary" onClick={() => void exportWorkspace()}>
+              {t('portability.exportWorkspace')}
+            </button>
+          </div>
+          <div className="fm-portability__group">
+            <h3>{t('portability.group.import')}</h3>
+            <button type="button" className="fm-quiet" onClick={() => fileRef.current?.click()}>
+              {t('portability.chooseImport')}
+            </button>
+            <input
+              ref={fileRef}
+              className="fm-visually-hidden"
+              type="file"
+              accept=".csv,.json,.xlsx"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) void previewFile(file);
+                event.currentTarget.value = '';
+              }}
+            />
+          </div>
         </div>
         <label className="fm-portability__notifications">
-          {t('notifications.preference')}
+          <span>{t('notifications.preference')}</span>
           <select
             value={notificationSettings?.mode ?? 'MY_ACTIONS'}
             onChange={(event) => {
@@ -367,6 +391,7 @@ export function PortabilityPanel({
             ))}
             <button
               type="button"
+              className="fm-quiet"
               onClick={() => {
                 const name = window.prompt(t('portability.mappingName'));
                 if (name)
@@ -418,6 +443,7 @@ export function PortabilityPanel({
             {preview.errors.length > 0 && (
               <button
                 type="button"
+                className="fm-quiet"
                 onClick={() => download('flowmap-import-errors.csv', errorCsv(preview.errors))}
               >
                 {t('portability.exportErrors')}
@@ -444,6 +470,37 @@ export function PortabilityPanel({
         )}
       </section>
     </details>
+  );
+}
+
+function FormatGroup({
+  label,
+  actions,
+}: {
+  readonly label: string;
+  readonly actions: readonly {
+    readonly name: string;
+    readonly format: string;
+    readonly onClick: () => void;
+  }[];
+}) {
+  return (
+    <div className="fm-portability__group">
+      <h3>{label}</h3>
+      <div className="fm-portability__formats" role="group" aria-label={label}>
+        {actions.map((action) => (
+          <button
+            key={action.name}
+            type="button"
+            className="fm-quiet"
+            aria-label={action.name}
+            onClick={action.onClick}
+          >
+            {action.format}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

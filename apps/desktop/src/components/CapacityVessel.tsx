@@ -603,7 +603,7 @@ export function CapacityVessel({
                     </g>
                   )}
 
-                  {!compact && blockHeight >= 15 && (
+                  {(!compact || selected) && blockHeight >= 15 && (
                     <text
                       x={14 + milestoneWidth}
                       y={labelY}

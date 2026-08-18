@@ -88,7 +88,7 @@ function resolve(tokens: Record<string, string>, name: string): string {
  * `--surface` is how `--ink-subtle` shipped at 4.28:1 on `--ground` and was
  * caught by axe in the browser rather than here.
  */
-const BACKGROUNDS = ['--surface', '--ground', '--surface-sunken'] as const;
+const BACKGROUNDS = ['--surface', '--ground', '--surface-sunken', '--surface-raised'] as const;
 const INKS = ['--ink', '--ink-muted', '--ink-subtle'] as const;
 
 const TEXT_PAIRS: ReadonlyArray<readonly [string, string, number]> = [

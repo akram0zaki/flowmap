@@ -9,6 +9,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+import { openSampleWorkspace } from './helpers.js';
+
 async function freshApp(page: Page) {
   await page.goto('/');
   await page.evaluate(() => globalThis.localStorage.clear());
@@ -176,7 +178,7 @@ test('the map is accessible at every zoom level', async ({ page }) => {
 
 test('the sample workspace makes the map worth looking at', async ({ page }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
 
   const grid = page.getByRole('grid');
 
@@ -208,10 +210,10 @@ test('the sample workspace makes the map worth looking at', async ({ page }) => 
   await expectNoUnresolvedKeys(page);
 });
 
-test('loading the sample twice replaces rather than duplicates', async ({ page }) => {
+test('resetting the sample replaces rather than duplicates', async ({ page }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
+  await openSampleWorkspace(page);
 
   await expect(page.getByRole('grid').getByRole('rowheader')).toHaveCount(5);
 });
@@ -219,7 +221,7 @@ test('loading the sample twice replaces rather than duplicates', async ({ page }
 test('the map gets the space, not the chrome around it', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await expect(page.getByRole('grid').getByRole('rowheader')).toHaveCount(5);
 
   const shell = (await page.locator('.fm-shell').boundingBox())!;
@@ -241,7 +243,7 @@ test('the map gets the space, not the chrome around it', async ({ page }) => {
 test('the reasons behind a number are on screen, not only in the data', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   // The caption no longer repeats the team and quarter — the row and column
@@ -260,7 +262,7 @@ test('the reasons behind a number are on screen, not only in the data', async ({
 test('held capacity is a labelled band, not invisible headroom', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const held = page.getByRole('gridcell', { name: /^Payments\. 2027-Q1/ });
@@ -270,7 +272,7 @@ test('held capacity is a labelled band, not invisible headroom', async ({ page }
 test('overflow is drawn as a measured excess, not a red block', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const payments = page.getByRole('gridcell', { name: /^Payments\. 2026-Q3/ });
@@ -295,7 +297,7 @@ test('overflow is drawn as a measured excess, not a red block', async ({ page })
 test('the overview level says where the load is concentrated', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
 
   const payments = page.getByRole('gridcell', { name: /^Payments\. 2026-Q3/ });
@@ -317,7 +319,7 @@ test('the overview level says where the load is concentrated', async ({ page }) 
 test('the ideas rail is a queue, ordered by how far each idea is worked up', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
 
   const rail = page.getByRole('region', { name: /ideas/i });
   await expect(rail.getByText('3 ready to place')).toBeVisible();
@@ -336,7 +338,7 @@ test('a quarter column is never left half-hidden under the pinned team column', 
 }) => {
   await page.setViewportSize({ width: 1200, height: 900 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   // A partial scroll used to park a column under the pinned column, and the
@@ -364,7 +366,7 @@ test('a quarter column is never left half-hidden under the pinned team column', 
 test('a reduced quarter says which way it moved, in words', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const payments = page.getByRole('gridcell', { name: /^Payments\. 2026-Q3/ });
@@ -396,7 +398,7 @@ test('an Idea dragged onto a quarter shows what it would do before it does it', 
 }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const idea = page.locator('.fm-idea').filter({ hasText: 'Request to pay' });
@@ -433,7 +435,7 @@ test('a drop the model would refuse is refused during the drag, with the reason'
 }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   // Instant payments regulation already holds a block in Payments 2026-Q4, so
@@ -465,7 +467,7 @@ test('a drop the model would refuse is refused during the drag, with the reason'
 test('work can be placed with the keyboard alone', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const idea = page.locator('.fm-idea').filter({ hasText: 'Request to pay' });
@@ -488,7 +490,7 @@ test('work can be placed with the keyboard alone', async ({ page }) => {
 test('Escape abandons a drag without changing anything', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
 
   const before = await page.locator('.fm-idea').count();
   await page.locator('.fm-idea').first().focus();
@@ -509,7 +511,7 @@ test('Escape abandons a drag without changing anything', async ({ page }) => {
 test('a drag with a single move event still places the work', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const idea = page.locator('.fm-idea').filter({ hasText: 'Request to pay' });
@@ -533,7 +535,7 @@ test('a drag held against the edge scrolls the board to reach the far quarters',
 }) => {
   await page.setViewportSize({ width: 1100, height: 900 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
 
   const scroller = page.locator('.fm-map__scroll');
   await scroller.evaluate((n) => {
@@ -570,7 +572,7 @@ test('a drag held against the edge scrolls the board to reach the far quarters',
 test('an Idea can be dropped on a team that does not already own it', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   // "Request to pay" belongs to Payments. Platform is the second row.
@@ -607,7 +609,7 @@ test('an Idea can be dropped on a team that does not already own it', async ({ p
 test('a block dragged back to the lane returns to demand', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   // Place an Idea first, so there is something with exactly one placement.
@@ -648,7 +650,7 @@ test('a block dragged back to the lane returns to demand', async ({ page }) => {
 test('work already in delivery is refused, with the reason, not silently', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   // "Legacy gateway decommission" is IN_DELIVERY in the fixture.
@@ -683,7 +685,7 @@ test('work already in delivery is refused, with the reason, not silently', async
 test('Delete on a focused block unplaces it from that quarter only', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const platform = page.getByRole('gridcell', { name: /^Platform\. 2026-Q3/ });
@@ -706,7 +708,7 @@ test('Delete on a focused block unplaces it from that quarter only', async ({ pa
 test('Delete returns work to demand when it was its last placement', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   // "TLS and cipher currency" is COMMITTED on Security alone.
@@ -723,7 +725,7 @@ test('Delete returns work to demand when it was its last placement', async ({ pa
 test('a closed quarter refuses to give work up, and says so', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   // 2026-Q2 is settled history; the domain will not edit it.
@@ -756,7 +758,7 @@ test('a closed quarter refuses to give work up, and says so', async ({ page }) =
 test('one undo puts unplaced work back, not half of it', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const cell = page.getByRole('gridcell', { name: /^Security\. 2026-Q4/ });
@@ -789,7 +791,7 @@ test('one undo puts unplaced work back, not half of it', async ({ page }) => {
 test('a block can be resized by dragging its top edge', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const cell = page.getByRole('gridcell', { name: /^Security\. 2026-Q4/ });
@@ -816,7 +818,7 @@ test('a block can be resized by dragging its top edge', async ({ page }) => {
 test('a block can be resized from the keyboard, and undone', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const cell = page.getByRole('gridcell', { name: /^Security\. 2026-Q4/ });
@@ -836,7 +838,7 @@ test('a block can be resized from the keyboard, and undone', async ({ page }) =>
 test('a resize is never allowed to reach zero units', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const block = page
@@ -859,7 +861,7 @@ test('a resize is never allowed to reach zero units', async ({ page }) => {
 test('selecting work opens a panel that can edit it', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   await page
@@ -898,7 +900,7 @@ test('selecting work opens a panel that can edit it', async ({ page }) => {
 test('every explained field says what it is not, as well as what it is', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   await page
@@ -919,7 +921,7 @@ test('every explained field says what it is not, as well as what it is', async (
 test('the target quarter is chosen on a strip, not typed', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   await page
@@ -953,7 +955,7 @@ test('the target quarter is chosen on a strip, not typed', async ({ page }) => {
 test('the panel shows the relations the workspace actually holds', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   await page
@@ -976,7 +978,7 @@ test('the panel shows the relations the workspace actually holds', async ({ page
 test('a link must be https, and says so before it is refused', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   await page
@@ -1001,7 +1003,7 @@ test('a link must be https, and says so before it is refused', async ({ page }) 
 test('milestones stop at six, and say why', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   await page
@@ -1024,7 +1026,7 @@ test('milestones stop at six, and say why', async ({ page }) => {
 test('a focused commitment draws its dependencies on the board', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   // Nothing focused: no connectors, because drawing the whole graph at once is
@@ -1050,7 +1052,7 @@ test('a focused commitment draws its dependencies on the board', async ({ page }
 test('the gate names what is blocking, and what is merely worth asking', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
 
   // An Idea, which by definition has not been placed.
   await page.locator('.fm-idea').filter({ hasText: 'FX pricing transparency' }).click();
@@ -1070,7 +1072,7 @@ test('the gate names what is blocking, and what is merely worth asking', async (
 test('the gate stops blocking once the work is placed', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const idea = page.locator('.fm-idea').filter({ hasText: 'Request to pay' });
@@ -1097,7 +1099,7 @@ test('the gate stops blocking once the work is placed', async ({ page }) => {
 test('unplanned work is captured, placed and committed in one action', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
   await openEditor(page);
 
@@ -1123,7 +1125,7 @@ test('unplanned work is captured, placed and committed in one action', async ({ 
 test('shift-dragging between two blocks draws a dependency', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const source = page
@@ -1162,7 +1164,7 @@ test('shift-dragging between two blocks draws a dependency', async ({ page }) =>
 test('work cannot be made to depend on itself', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   const block = page
@@ -1268,7 +1270,7 @@ test('splitting a placement divides it across quarters and conserves the total',
 
 test('milestones are drawn on blocks and announced with them', async ({ page }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
 
   // Drawn: shape carries the state, so there is a marker per milestone.
@@ -1288,7 +1290,7 @@ test('a refinement link names its Ideas in the reserve, and moves no capacity', 
   page,
 }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
 
   const figuresBefore = await page.locator('.fm-vessel__percent').allTextContents();
 
@@ -1324,7 +1326,7 @@ test('a refinement link names its Ideas in the reserve, and moves no capacity', 
 
 test('the panel carries all three confidences, value drivers, and themes', async ({ page }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await page.getByRole('button', { name: 'Detail', exact: true }).click();
   await page
     .getByRole('gridcell', { name: /SEPA instant payments/ })

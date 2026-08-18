@@ -14,6 +14,7 @@ import {
   assessCommitGate,
   createTheme,
   isCounted,
+  isQuarterId,
   removeDependency,
   removeExternalLink,
   removeMilestone,
@@ -51,6 +52,7 @@ import {
   toggleFilterValue,
   allBlocks,
   LENSES,
+  type BoardReveal,
   type CellModel,
   type DragPayload,
   type FilterState,
@@ -83,6 +85,8 @@ import { ConflictResolver } from '../components/ConflictResolver.jsx';
 import { ShortcutReference } from '../components/ShortcutReference.jsx';
 import { SnapshotsPanel } from '../components/SnapshotsPanel.jsx';
 import { FirstRunGuide } from '../components/FirstRunGuide.jsx';
+import { FlowmapMark } from '../components/FlowmapMark.jsx';
+import { ThemeToggle } from '../components/ThemeToggle.jsx';
 import { useNativeMenu, type MenuCommand } from '../state/use-native-menu.js';
 import {
   DependencyMapView,
@@ -128,6 +132,7 @@ export function App() {
     saveImportMapping,
     setNotificationSettings,
     clearLocalData,
+    loadSample,
     commitIdeaInto,
     moveFootprint,
     unplaceFootprint,
@@ -167,11 +172,13 @@ export function App() {
    * and the level has to follow, not the other way about — a level that owned
    * the scale would snap the board back the moment you nudged the wheel.
    */
-  const [scale, setScale] = useState(() => scaleForLevel(2));
+  const [scale, setScale] = useState(() => scaleForLevel(3));
+  const [welcome, setWelcome] = useState(true);
   const level = levelForScale(scale);
   const setLevelState = useCallback((next: ZoomLevel) => setScale(scaleForLevel(next)), []);
   const [filter, setFilter] = useState<FilterState>(NO_FILTER);
   const [focusedCommitmentId, setFocusedCommitmentId] = useState<string | null>(null);
+  const [reveal, setReveal] = useState<BoardReveal | null>(null);
   const [showList, setShowList] = useState(true);
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [announcement, setAnnouncement] = useState('');
@@ -412,17 +419,31 @@ export function App() {
         target.kind === 'COMMITMENT'
           ? target.id
           : String(signal.facts['commitmentId'] ?? signal.facts['sourceCommitmentId'] ?? '');
+      const teamId = String(signal.facts['teamId'] ?? '');
+      const quarterId = String(signal.facts['quarterId'] ?? '');
+      const landing: BoardReveal = {
+        ...(commitmentId !== '' ? { commitmentId } : {}),
+        ...(teamId !== '' ? { teamId } : {}),
+        ...(isQuarterId(quarterId) ? { quarterId } : {}),
+      };
 
-      if (commitmentId) {
-        setFocusedCommitmentId(commitmentId);
-        setShowRadar(false);
+      if (commitmentId === '' && teamId === '') {
+        announce(t('radar.noTarget'));
         return;
       }
 
-      // Nothing to open — say so rather than appearing to do nothing.
-      announce(t('radar.noTarget'));
+      setActiveLens('PORTFOLIO');
+      if (commitmentId !== '') {
+        setFocusedCommitmentId(commitmentId);
+        if (state?.commitments.get(commitmentId)?.lifecycle === 'IDEA') {
+          setRailCollapsed(false);
+        }
+      }
+      setReveal(landing);
+      setShowRadar(false);
+      setShowRuleSettings(false);
     },
-    [announce],
+    [announce, state],
   );
 
   const readiness = useMemo(
@@ -1172,7 +1193,10 @@ export function App() {
   return (
     <div className="fm-shell" data-presentation={presentationMode || undefined}>
       <header className="fm-header">
-        <h1 className="fm-header__brand">{t('app.name')}</h1>
+        <h1 className="fm-header__brand">
+          <FlowmapMark />
+          <span>{t('app.name')}</span>
+        </h1>
         <WorkspaceSwitcher
           workspaces={workspaces}
           archivedWorkspaces={archivedWorkspaces}
@@ -1185,61 +1209,66 @@ export function App() {
           onArchive={() => void archiveActiveWorkspace()}
           onRestore={(workspaceId) => void restoreArchivedWorkspace(workspaceId)}
         />
-        {runtime && (
-          <PortabilityPanel
-            state={state}
-            events={events}
-            profileName={profileName}
-            now={runtime.now}
-            rows={exportRows}
-            radarRows={signals.visible.map((signal) => ({
-              rule: signal.ruleCode,
-              severity: signal.severity,
-              entity: signal.entityRef.kind,
-              due: signal.dueOn ?? '',
-            }))}
-            onImportedIdeas={importIdeas}
-            savedMappings={state.workspace.settings.importMappings ?? []}
-            onSaveMapping={saveImportMapping}
-            notificationSettings={state.workspace.settings.notifications ?? { mode: 'MY_ACTIONS' }}
-            onNotificationSettings={setNotificationSettings}
-            announce={announce}
+        <div className="fm-header__tools" role="group" aria-label={t('header.tools')}>
+          {runtime && (
+            <PortabilityPanel
+              state={state}
+              events={events}
+              profileName={profileName}
+              now={runtime.now}
+              rows={exportRows}
+              radarRows={signals.visible.map((signal) => ({
+                rule: signal.ruleCode,
+                severity: signal.severity,
+                entity: signal.entityRef.kind,
+                due: signal.dueOn ?? '',
+              }))}
+              onImportedIdeas={importIdeas}
+              savedMappings={state.workspace.settings.importMappings ?? []}
+              onSaveMapping={saveImportMapping}
+              notificationSettings={
+                state.workspace.settings.notifications ?? { mode: 'MY_ACTIONS' }
+              }
+              onNotificationSettings={setNotificationSettings}
+              announce={announce}
+            />
+          )}
+          <SavedViews
+            views={state.workspace.settings.savedViews ?? []}
+            onSave={(name) =>
+              void saveView({
+                name,
+                lens: activeLens,
+                filters: {
+                  quarters: filter.quarters,
+                  teams: filter.teams,
+                  lifecycles: filter.lifecycles,
+                  classes: filter.classes,
+                },
+              })
+            }
+            onApply={(view) => {
+              setActiveLens(view.lens as ActiveLens);
+              setFilter({
+                ...NO_FILTER,
+                quarters: (view.filters['quarters'] ?? []) as FilterState['quarters'],
+                teams: (view.filters['teams'] ?? []) as FilterState['teams'],
+                lifecycles: (view.filters['lifecycles'] ?? []) as FilterState['lifecycles'],
+                classes: (view.filters['classes'] ?? []) as FilterState['classes'],
+              });
+              announce(t('savedViews.applied', { name: view.name }));
+            }}
+            onRemove={(viewId) => void removeSavedView(viewId)}
           />
-        )}
-        <SavedViews
-          views={state.workspace.settings.savedViews ?? []}
-          onSave={(name) =>
-            void saveView({
-              name,
-              lens: activeLens,
-              filters: {
-                quarters: filter.quarters,
-                teams: filter.teams,
-                lifecycles: filter.lifecycles,
-                classes: filter.classes,
-              },
-            })
-          }
-          onApply={(view) => {
-            setActiveLens(view.lens as ActiveLens);
-            setFilter({
-              ...NO_FILTER,
-              quarters: (view.filters['quarters'] ?? []) as FilterState['quarters'],
-              teams: (view.filters['teams'] ?? []) as FilterState['teams'],
-              lifecycles: (view.filters['lifecycles'] ?? []) as FilterState['lifecycles'],
-              classes: (view.filters['classes'] ?? []) as FilterState['classes'],
-            });
-            announce(t('savedViews.applied', { name: view.name }));
-          }}
-          onRemove={(viewId) => void removeSavedView(viewId)}
-        />
-        <SnapshotsPanel
-          snapshots={snapshots}
-          onCreate={() => void createSnapshot()}
-          onRestore={(id, confirmation) => void restoreSnapshot(id, confirmation)}
-        />
+          <SnapshotsPanel
+            snapshots={snapshots}
+            onCreate={() => void createSnapshot()}
+            onRestore={(id, confirmation) => void restoreSnapshot(id, confirmation)}
+          />
+        </div>
         <span className="fm-header__spacer" />
         <div className="fm-header__status">
+          <ThemeToggle />
           <button
             type="button"
             className="fm-header__action"
@@ -1268,7 +1297,17 @@ export function App() {
           </button>
         </div>
       )}
-      {state.teams.size === 0 && state.commitments.size === 0 && <FirstRunGuide />}
+      {state.teams.size === 0 && state.commitments.size === 0 && welcome && (
+        <FirstRunGuide
+          onExploreSample={() => {
+            const sampleId = workspaces.find((workspace) => workspace.isSample)?.id;
+            if (sampleId) void switchWorkspace(sampleId);
+            else void loadSample();
+            setWelcome(false);
+          }}
+          onDismiss={() => setWelcome(false)}
+        />
+      )}
 
       <div className="fm-controlbar fm-editing-chrome">
         <nav className="fm-lens-nav" aria-label={t('lens.switch')}>
@@ -1360,12 +1399,19 @@ export function App() {
           onToggleList={() => setShowList((v) => !v)}
           onUndo={() => void undo()}
           onRedo={() => void redo()}
-          onClearLocalData={() => setConfirmClear(true)}
           radarCount={signals.visible.length}
           highCount={signals.visible.filter((signal) => signal.severity === 'HIGH').length}
           showRadar={showRadar}
-          onToggleRadar={() => setShowRadar((v) => !v)}
-          onOpenRuleSettings={() => setShowRuleSettings(true)}
+          onToggleRadar={() => {
+            setShowRadar((open) => !open);
+            setShowRuleSettings(false);
+          }}
+          showRules={showRuleSettings}
+          onToggleRules={() => {
+            setShowRuleSettings((open) => !open);
+            setShowRadar(false);
+          }}
+          showResetSample={state.workspace.isSample}
         />
       )}
 
@@ -1452,6 +1498,12 @@ export function App() {
               onPickUp={pickUpIdea}
               collapsed={railCollapsed}
               onToggleCollapsed={() => setRailCollapsed((was) => !was)}
+              revealCommitmentId={
+                reveal?.commitmentId !== undefined &&
+                state?.commitments.get(reveal.commitmentId)?.lifecycle === 'IDEA'
+                  ? reveal.commitmentId
+                  : null
+              }
             />
 
             <PortfolioMap
@@ -1495,6 +1547,7 @@ export function App() {
               dependencyEdges={dependencyEdges}
               onMoveRow={(teamId, direction) => void moveTeamRow(teamId, direction)}
               ideaNames={ideaNames}
+              reveal={reveal}
             />
 
             {showRadar && (

@@ -6,6 +6,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+import { openSampleWorkspace } from './helpers.js';
+
 async function freshApp(page: Page) {
   await page.goto('/');
   await page.evaluate(() => globalThis.localStorage.clear());
@@ -25,6 +27,17 @@ async function expectNoAxeViolations(page: Page, context: string) {
   expect(detail, `axe violations in ${context}`).toEqual([]);
 }
 
+test('the appearance toggle switches the document between light and dark', async ({ page }) => {
+  await freshApp(page);
+  const toggle = page.getByRole('button', { name: /use (light|dark) appearance/i });
+  await expect(toggle).toBeVisible();
+  const before = await toggle.getAttribute('aria-label');
+  await toggle.click();
+  await expect(toggle).not.toHaveAttribute('aria-label', before ?? '');
+  const theme = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+  expect(theme === 'light' || theme === 'dark').toBe(true);
+});
+
 test('Settings shows the browser data location and how to go portable', async ({ page }) => {
   await freshApp(page);
   await page.getByRole('button', { name: 'Settings' }).click();
@@ -39,21 +52,52 @@ test('Settings shows the browser data location and how to go portable', async ({
 
 test('clear local data asks first and keeps the work if cancelled', async ({ page }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
-  await expect(page.getByRole('grid').first().getByRole('rowheader')).toHaveCount(5);
+  await page.getByText('Add and place work').click();
+  await page.locator('#team-name').fill('Payments');
+  await page.getByRole('button', { name: 'Add team' }).click();
+  await expect(page.getByRole('grid').first().getByRole('rowheader')).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'Clear local data' }).click();
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page
+    .getByRole('dialog', { name: 'Settings' })
+    .getByRole('button', { name: 'Clear local data' })
+    .click();
   const confirm = page.getByRole('alertdialog', { name: 'Clear local data' });
   await expect(confirm).toBeVisible();
   await confirm.getByRole('button', { name: 'Cancel' }).click();
-  await expect(page.getByRole('grid').first().getByRole('rowheader')).toHaveCount(5);
+  await expect(page.getByRole('grid').first().getByRole('rowheader')).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'Clear local data' }).click();
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page
+    .getByRole('dialog', { name: 'Settings' })
+    .getByRole('button', { name: 'Clear local data' })
+    .click();
   await page
     .getByRole('alertdialog', { name: 'Clear local data' })
     .getByRole('button', { name: 'Clear local data' })
     .click();
   await expect(page.getByRole('grid').first().getByRole('rowheader')).toHaveCount(0);
+});
+
+test('the sample workspace stays in the switcher and does not overwrite the empty portfolio', async ({
+  page,
+}) => {
+  await freshApp(page);
+  await expect(page.getByRole('grid').first().getByRole('rowheader')).toHaveCount(0);
+
+  await page.locator('details.fm-workspace-switcher > summary').click();
+  await expect(
+    page.getByRole('button', { name: 'Retail Payments & Channels (sample)' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Retail Payments & Channels (sample)' }).click();
+  await expect(page.getByRole('grid').first().getByRole('rowheader')).toHaveCount(5);
+
+  await page.locator('details.fm-workspace-switcher > summary').click();
+  await page.getByRole('button', { name: 'My portfolio' }).click();
+  await expect(page.getByRole('grid').first().getByRole('rowheader')).toHaveCount(0);
+
+  await openSampleWorkspace(page);
+  await expect(page.getByRole('grid').first().getByRole('rowheader')).toHaveCount(5);
 });
 
 test('keyboard shortcut reference opens from ? and is accessible', async ({ page }) => {

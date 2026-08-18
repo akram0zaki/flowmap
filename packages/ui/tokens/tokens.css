@@ -16,6 +16,8 @@
   --surface-sunken: #eceae4;
   --surface-hover: #f2f1ed;
   --surface-active: #e9e7e1;
+  /* Same paper as --surface; elevation comes from --shadow-overlay. */
+  --surface-raised: #ffffff;
 
   /* ── Ink ───────────────────────────────────────────────────────────── */
   --ink: #16181c; /* 17.2:1 on surface */
@@ -110,6 +112,10 @@
   --space-8: 2rem; /* 32 */
   --space-9: 3rem; /* 48 */
   --space-10: 4rem; /* 64 */
+  --space-11: 20rem; /* 320 — popover min width, not a layout gutter */
+  --space-12: 24rem; /* 384 — popover max width */
+
+  --border-width: 1px;
 
   /* ── Shape ─────────────────────────────────────────────────────────── */
   --radius-sm: 2px; /* blocks, containers, inputs — drawn with a fine pen */
@@ -181,6 +187,7 @@
   --surface-sunken: #0c0e11;
   --surface-hover: #1e2228;
   --surface-active: #242931;
+  --surface-raised: #181b20;
 
   --ink: #edeef0;
   --ink-muted: #a2a8b2;
@@ -235,6 +242,7 @@
     --surface-sunken: #0c0e11;
     --surface-hover: #1e2228;
     --surface-active: #242931;
+    --surface-raised: #181b20;
 
     --ink: #edeef0;
     --ink-muted: #a2a8b2;

@@ -70,6 +70,35 @@ function change(kind: EntityKind, id: string): EntityChange {
 }
 
 describe('MemoryWorkspaceRepository', () => {
+  it('lists whether a workspace is the sample', async () => {
+    const repo = new MemoryWorkspaceRepository();
+    await repo.apply({
+      workspaceId: WS,
+      changes: [
+        {
+          ...change('WORKSPACE', WS),
+          after: {
+            id: WS,
+            workspaceId: WS,
+            schemaVersion: 2,
+            entityVersion: 1,
+            createdAt: NOW,
+            createdBy: 'a',
+            updatedAt: NOW,
+            updatedBy: 'a',
+            name: 'Sample',
+            isSample: true,
+          },
+        },
+      ],
+      events: [],
+      command: command('Seed'),
+    });
+    expect(await repo.listWorkspaces()).toEqual([
+      expect.objectContaining({ id: WS, name: 'Sample', isSample: true }),
+    ]);
+  });
+
   it('keeps a private scenario out of the outbox until it is shared', async () => {
     const repo = new MemoryWorkspaceRepository();
     await repo.apply({

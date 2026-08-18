@@ -177,6 +177,43 @@ export function isProductFocused(focus: FocusModel, productServiceId: EntityId):
   return focus.commitmentId === null || focus.relatedProductIds.has(productServiceId);
 }
 
+/** Where Open should land: a specific cell, not merely its quarter column. */
+export type BoardReveal = {
+  readonly commitmentId?: EntityId;
+  readonly teamId?: EntityId;
+  readonly quarterId?: QuarterId;
+};
+
+/**
+ * The team-quarter cell that contains the revealed work.
+ *
+ * A named team and quarter win, so a multi-team commitment opens on the cell
+ * the signal is about. Otherwise the first block of the commitment.
+ */
+export function locateReveal(
+  board: BoardModel,
+  target: BoardReveal,
+): { readonly row: number; readonly col: number } | null {
+  if (target.teamId !== undefined && target.quarterId !== undefined) {
+    const row = board.rows.findIndex((entry) => entry.teamId === target.teamId);
+    const col =
+      row >= 0
+        ? (board.rows[row]?.cells.findIndex((cell) => cell.quarterId === target.quarterId) ?? -1)
+        : -1;
+    if (row >= 0 && col >= 0) return { row, col };
+  }
+  if (target.commitmentId !== undefined) {
+    for (let row = 0; row < board.rows.length; row += 1) {
+      const col =
+        board.rows[row]?.cells.findIndex((cell) =>
+          cell.blocks.some((block) => block.commitmentId === target.commitmentId),
+        ) ?? -1;
+      if (col >= 0) return { row, col };
+    }
+  }
+  return null;
+}
+
 export function isMilestoneFocused(focus: FocusModel, milestoneId: EntityId): boolean {
   return focus.commitmentId === null || focus.relatedMilestoneIds.has(milestoneId);
 }
