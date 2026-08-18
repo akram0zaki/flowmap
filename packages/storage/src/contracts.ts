@@ -61,6 +61,15 @@ export type SnapshotWrite = {
 
 export type SnapshotRecord = Omit<SnapshotWrite, 'state'> & { readonly content: unknown };
 
+/** One row in the workspace switcher. */
+export type WorkspaceListing = {
+  readonly id: WorkspaceId;
+  readonly name: string;
+  readonly updatedAt: string;
+  readonly archivedAt?: string;
+  readonly isSample: boolean;
+};
+
 /** Local-only index hit used by the deterministic command palette. */
 export type SearchHit = {
   readonly kind: string;
@@ -77,9 +86,7 @@ export type SearchHit = {
  * how local-first applications lose data.
  */
 export interface WorkspaceRepository {
-  listWorkspaces(options?: {
-    includeArchived?: boolean;
-  }): Promise<Array<{ id: WorkspaceId; name: string; updatedAt: string; archivedAt?: string }>>;
+  listWorkspaces(options?: { includeArchived?: boolean }): Promise<WorkspaceListing[]>;
   load(workspaceId: WorkspaceId): Promise<WorkspaceState | null>;
   apply(input: ApplyInput): Promise<void>;
   listEvents(workspaceId: WorkspaceId, limit?: number): Promise<DomainEvent[]>;

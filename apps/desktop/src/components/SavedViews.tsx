@@ -1,9 +1,10 @@
 /** Small, keyboard-first entry point for data-free workspace view presets. */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { SavedView } from '@flowmap/domain';
 
 import { t } from '../i18n/t.js';
+import { HEADER_MENU_NAME, useDismissibleDetails } from '../state/use-dismissible-details.js';
 
 export function SavedViews({
   views,
@@ -17,8 +18,10 @@ export function SavedViews({
   readonly onRemove: (viewId: string) => void;
 }) {
   const [name, setName] = useState('');
+  const menu = useRef<HTMLDetailsElement>(null);
+  useDismissibleDetails(menu);
   return (
-    <details className="fm-saved-views">
+    <details ref={menu} className="fm-header-menu fm-saved-views" name={HEADER_MENU_NAME}>
       <summary>{t('savedViews.summary')}</summary>
       <section aria-label={t('savedViews.summary')}>
         <h2>{t('savedViews.title')}</h2>

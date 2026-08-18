@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { openSampleWorkspace } from './helpers.js';
+
 /**
  * The upgrade path, end to end: a workspace saved by a build that predates the
  * relation buckets must still open. Every other test starts by clearing
@@ -13,7 +15,7 @@ test('a workspace saved by an older build still opens', async ({ page }) => {
 
   // Build a real workspace, then strip it back to the shape an older build
   // would have written — no relation buckets at all.
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await expect(page.getByRole('grid').first().getByRole('rowheader')).toHaveCount(5);
 
   const key = 'flowmap.dev.workspace';

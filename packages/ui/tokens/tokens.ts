@@ -15,6 +15,7 @@ export const color = {
   surfaceSunken: 'var(--surface-sunken)',
   surfaceHover: 'var(--surface-hover)',
   surfaceActive: 'var(--surface-active)',
+  surfaceRaised: 'var(--surface-raised)',
 
   ink: 'var(--ink)',
   inkMuted: 'var(--ink-muted)',
@@ -119,6 +120,8 @@ export const space = {
   8: 'var(--space-8)',
   9: 'var(--space-9)',
   10: 'var(--space-10)',
+  11: 'var(--space-11)',
+  12: 'var(--space-12)',
 } as const;
 
 export const radius = {

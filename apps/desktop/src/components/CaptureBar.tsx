@@ -20,13 +20,15 @@ export type CaptureBarProps = {
   readonly onToggleList: () => void;
   readonly onUndo: () => void;
   readonly onRedo: () => void;
-  readonly onClearLocalData: () => void;
   /** Signals awaiting attention. Shown as a figure, never as a red dot alone. */
   readonly radarCount: number;
   readonly highCount: number;
   readonly showRadar: boolean;
   readonly onToggleRadar: () => void;
-  readonly onOpenRuleSettings: () => void;
+  readonly showRules: boolean;
+  readonly onToggleRules: () => void;
+  /** Reset only exists on the sample workspace — it is not a load-over-current. */
+  readonly showResetSample?: boolean;
 };
 
 export function CaptureBar({
@@ -37,12 +39,13 @@ export function CaptureBar({
   onToggleList,
   onUndo,
   onRedo,
-  onClearLocalData,
   radarCount,
   highCount,
   showRadar,
   onToggleRadar,
-  onOpenRuleSettings,
+  showRules,
+  onToggleRules,
+  showResetSample = false,
 }: CaptureBarProps) {
   const { captureIdea, addTeam, placeFootprint, loadSample, captureUnplanned } =
     useWorkspace.getState();
@@ -77,9 +80,11 @@ export function CaptureBar({
           {t('nav.listCompanion')}
         </button>
         <span className="fm-controlbar__spacer" />
-        <button type="button" className="fm-quiet" onClick={() => void loadSample()}>
-          {t('action.loadSample')}
-        </button>
+        {showResetSample && (
+          <button type="button" className="fm-quiet" onClick={() => void loadSample()}>
+            {t('action.resetSample')}
+          </button>
+        )}
         {/* The count is the whole point: a badge with no number tells a lead
             there is something wrong without telling them how much. */}
         <button
@@ -96,12 +101,13 @@ export function CaptureBar({
           )}
         </button>
 
-        <button type="button" onClick={onOpenRuleSettings}>
+        <button
+          type="button"
+          className="fm-rules__open"
+          aria-pressed={showRules}
+          onClick={onToggleRules}
+        >
           {t('settings.rules')}
-        </button>
-
-        <button type="button" className="fm-danger" onClick={onClearLocalData}>
-          {t('action.clearLocalData')}
         </button>
       </div>
 

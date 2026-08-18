@@ -155,22 +155,30 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
     return runMigrations(host, MIGRATIONS);
   }
 
-  async listWorkspaces(
-    options: { includeArchived?: boolean } = {},
-  ): Promise<Array<{ id: WorkspaceId; name: string; updatedAt: string; archivedAt?: string }>> {
+  async listWorkspaces(options: { includeArchived?: boolean } = {}): Promise<
+    Array<{
+      id: WorkspaceId;
+      name: string;
+      updatedAt: string;
+      archivedAt?: string;
+      isSample: boolean;
+    }>
+  > {
     return (
       await this.db.all<{
         id: string;
         name: string;
         updated_at: string;
         archived_at: string | null;
+        is_sample: number | null;
       }>(
-        `SELECT id, name, updated_at, archived_at FROM workspace WHERE deleted_at IS NULL${options.includeArchived ? '' : ' AND archived_at IS NULL'} ORDER BY updated_at DESC`,
+        `SELECT id, name, updated_at, archived_at, is_sample FROM workspace WHERE deleted_at IS NULL${options.includeArchived ? '' : ' AND archived_at IS NULL'} ORDER BY updated_at DESC`,
       )
     ).map((row) => ({
       id: String(row.id),
       name: String(row.name),
       updatedAt: String(row.updated_at),
+      isSample: Number(row.is_sample) === 1,
       ...(row.archived_at ? { archivedAt: String(row.archived_at) } : {}),
     }));
   }

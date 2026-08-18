@@ -9,11 +9,13 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+import { openSampleWorkspace } from './helpers.js';
+
 async function freshSample(page: Page) {
   await page.goto('/');
   await page.evaluate(() => globalThis.localStorage.clear());
   await page.reload();
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await expect(page.getByRole('button', { name: /^Radar/ })).toBeVisible();
 }
 
@@ -176,6 +178,57 @@ test('My Radar holds only work owned individually', async ({ page }) => {
 
   await radar.getByRole('radio', { name: 'Portfolio' }).click();
   await expect(radar.locator('.fm-signal').first()).toBeVisible();
+});
+
+test("Open scrolls to the signal's cell, not only its quarter column", async ({ page }) => {
+  await freshSample(page);
+  await page.setViewportSize({ width: 1100, height: 540 });
+  const radar = await openRadar(page);
+
+  const titles = radar.locator('.fm-signal__title');
+  let opened = false;
+  for (let i = 0; i < 16 && !opened; i += 1) {
+    await titles.nth(i).click();
+    const open = radar.getByRole('button', { name: /^Open/ });
+    if (
+      await open
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      await open.first().click();
+      opened = true;
+    }
+  }
+  expect(opened, 'found a signal with Open').toBe(true);
+
+  const cell = page.locator('.fm-grid__cell[data-cursor]');
+  await expect(cell).toBeVisible();
+  await expect
+    .poll(async () =>
+      cell.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const view = el.closest('.fm-map__scroll')?.getBoundingClientRect();
+        if (!view) return false;
+        const x = box.left + box.width / 2;
+        const y = box.top + box.height / 2;
+        return x >= view.left && x <= view.right && y >= view.top && y <= view.bottom;
+      }),
+    )
+    .toBe(true);
+});
+
+test('Radar and Rules are a single toggle — opening one closes the other', async ({ page }) => {
+  await freshSample(page);
+  await openRadar(page);
+  await expect(page.getByRole('region', { name: 'Radar' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Rules', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Rules' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Radar' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Rules', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Rules' })).toHaveCount(0);
 });
 
 test('the radar is reachable and operable by keyboard', async ({ page }) => {

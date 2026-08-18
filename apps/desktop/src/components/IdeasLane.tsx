@@ -14,7 +14,7 @@
  * See docs/spec/06-views-interaction.md §3.1 and 05-scenarios-qbr.md §8.
  */
 
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, type PointerEvent as ReactPointerEvent } from 'react';
 import { READINESS_GAPS, type IdeaModel, type IdeaReadinessMap } from '@flowmap/visual-model';
 
 import { t } from '../i18n/t.js';
@@ -48,6 +48,8 @@ export type IdeasLaneProps = {
   }>;
   readonly onLinkRefinement: (reserveId: string, commitmentId: string) => void;
   readonly onUnlinkRefinement: (reserveId: string, commitmentId: string) => void;
+  /** When Open lands on an Idea, scroll that row into view in the lane. */
+  readonly revealCommitmentId?: string | null;
 };
 
 /** Ideas that need a decision to be made rank above ones that need a name. */
@@ -67,7 +69,22 @@ export function IdeasLane({
   refinementReserves,
   onLinkRefinement,
   onUnlinkRefinement,
+  revealCommitmentId = null,
 }: IdeasLaneProps) {
+  useEffect(() => {
+    if (!revealCommitmentId) return;
+    const idea = document.querySelector<HTMLElement>(
+      `[data-idea="${CSS.escape(revealCommitmentId)}"]`,
+    );
+    if (!idea) return;
+    const motion =
+      document.documentElement.getAttribute('data-motion') === 'reduced' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth';
+    idea.scrollIntoView({ block: 'center', behavior: motion });
+  }, [revealCommitmentId]);
+
   const ready = ideas.filter((idea) => readiness.get(idea.commitmentId)?.readyToPlace).length;
 
   const ordered = [...ideas].sort((a, b) => {
@@ -127,6 +144,7 @@ export function IdeasLane({
                   <button
                     type="button"
                     className="fm-idea"
+                    data-idea={idea.commitmentId}
                     data-ready={readyToPlace || undefined}
                     data-importance={idea.importance}
                     data-dragging={draggingCommitmentId === idea.commitmentId || undefined}

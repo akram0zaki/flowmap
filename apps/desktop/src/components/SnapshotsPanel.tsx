@@ -1,9 +1,10 @@
 /** Recovery points are explicit, local-only records; the event history remains intact. */
 
 import type { SnapshotRecord } from '@flowmap/storage';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { t } from '../i18n/t.js';
+import { HEADER_MENU_NAME, useDismissibleDetails } from '../state/use-dismissible-details.js';
 
 export function SnapshotsPanel({
   snapshots,
@@ -15,8 +16,10 @@ export function SnapshotsPanel({
   readonly onRestore: (snapshotId: string, confirmation: string) => void;
 }) {
   const [confirmation, setConfirmation] = useState<Record<string, string>>({});
+  const menu = useRef<HTMLDetailsElement>(null);
+  useDismissibleDetails(menu);
   return (
-    <details className="fm-snapshots">
+    <details ref={menu} className="fm-header-menu fm-snapshots" name={HEADER_MENU_NAME}>
       <summary>{t('snapshot.summary')}</summary>
       <section aria-label={t('snapshot.summary')}>
         <h2>{t('snapshot.title')}</h2>

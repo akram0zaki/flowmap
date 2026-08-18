@@ -16,6 +16,7 @@ import { allBlocks, buildBoard, findCell, type BoardInput } from './layout.js';
 import {
   describeFocus,
   focusOn,
+  locateReveal,
   isBlockFocused,
   isCellFocused,
   isDependencyFocused,
@@ -469,6 +470,17 @@ describe('focus mode', () => {
       ),
     ).toBe(false);
     expect(isCellFocused(focus, findCell(board, 't-a', '2027-Q1')!)).toBe(false);
+  });
+
+  it('locates a reveal on the named team-quarter, not just the commitment', () => {
+    const board = buildBoard(multiTeam);
+    expect(
+      locateReveal(board, { commitmentId: 'c-1', teamId: 't-b', quarterId: '2026-Q3' }),
+    ).toEqual({ row: 1, col: expect.any(Number) });
+    const atB = locateReveal(board, { teamId: 't-b', quarterId: '2026-Q3' });
+    const atA = locateReveal(board, { commitmentId: 'c-1', teamId: 't-a', quarterId: '2026-Q3' });
+    expect(atB?.row).not.toBe(atA?.row);
+    expect(locateReveal(board, { commitmentId: 'c-1' })?.row).toBe(atA?.row);
   });
 
   it('emphasises everything when nothing is focused', () => {

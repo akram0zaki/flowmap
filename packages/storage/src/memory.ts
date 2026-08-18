@@ -46,6 +46,7 @@ import type {
   SearchHit,
   SnapshotRecord,
   SyncStateRecord,
+  WorkspaceListing,
   WorkspaceRepository,
 } from './contracts.js';
 
@@ -200,9 +201,7 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
     return this.#recoveredCorruptCache ? 'CORRUPT_CACHE_RECOVERED' : null;
   }
 
-  async listWorkspaces(
-    options: { includeArchived?: boolean } = {},
-  ): Promise<Array<{ id: WorkspaceId; name: string; updatedAt: string; archivedAt?: string }>> {
+  async listWorkspaces(options: { includeArchived?: boolean } = {}): Promise<WorkspaceListing[]> {
     return Object.values(this.#data.workspaces)
       .filter(
         (w) => w.deletedAt === undefined && (options.includeArchived || w.archivedAt === undefined),
@@ -211,6 +210,7 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
         id: w.id,
         name: w.name,
         updatedAt: w.updatedAt,
+        isSample: w.isSample === true,
         ...(w.archivedAt ? { archivedAt: w.archivedAt } : {}),
       }));
   }

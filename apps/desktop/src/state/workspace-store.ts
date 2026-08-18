@@ -98,15 +98,17 @@ import {
   type SnapshotRecord,
   type ConflictRecord,
   type SyncStatus,
+  type WorkspaceListing,
   type WorkspaceRepository,
   SyncEngine,
 } from '@flowmap/storage';
 import { FileProvider, type FileSystemAdapter } from '@flowmap/storage-file';
 
 import { t } from '../i18n/t.js';
-import { seedSampleWorkspace } from './sample-workspace.js';
+import { SAMPLE_WORKSPACE_ID, seedSampleWorkspace } from './sample-workspace.js';
 
 const WORKSPACE_ID = 'flowmap-local-workspace';
+const LAST_WORKSPACE_KEY = 'flowmap.activeWorkspaceId';
 
 /**
  * One user action, however many commands it takes.
@@ -179,13 +181,8 @@ type StoreState = {
   runtime: Runtime | null;
   state: WorkspaceState | null;
   activeWorkspaceId: EntityId | null;
-  workspaces: readonly { id: EntityId; name: string; updatedAt: string }[];
-  archivedWorkspaces: readonly {
-    id: EntityId;
-    name: string;
-    updatedAt: string;
-    archivedAt: string;
-  }[];
+  workspaces: readonly WorkspaceListing[];
+  archivedWorkspaces: readonly (WorkspaceListing & { archivedAt: string })[];
   profileName: string;
   selectedFootprintId: string | null;
   status: Status;
@@ -411,42 +408,20 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     await runtime.repository.ensureLocalProfile?.(PROFILE_ID, profileName, runtime.now());
     set({ runtime, profileName });
 
-    const workspaces = await runtime.repository.listWorkspaces();
-    const activeWorkspaceId = workspaces[0]?.id ?? WORKSPACE_ID;
-    let state = await runtime.repository.load(activeWorkspaceId);
-    if (!state) {
-      const cmd = makeCommand(runtime, 'CreateWorkspace', activeWorkspaceId);
-      const result = createWorkspace(
-        {
-          name: 'My portfolio',
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          currentQuarterId: currentQuarter(runtime.now()),
-        },
-        cmd,
-        makeContext(runtime, 1, state),
-      );
-      if (result.ok) {
-        await runtime.repository.apply({
-          workspaceId: activeWorkspaceId,
-          changes: result.effects.changes,
-          events: result.effects.events,
-          command: cmd,
-        });
-      }
-      state = await runtime.repository.load(activeWorkspaceId);
-    }
+    await ensureSampleWorkspace(runtime);
+    const personalId = await ensurePersonalWorkspace(runtime);
+    const { workspaces, archivedWorkspaces } = await loadWorkspaceLists(runtime.repository);
+    const lastId = readLastWorkspaceId();
+    const lastExists = lastId !== null && workspaces.some((workspace) => workspace.id === lastId);
+    const firstPersonal = workspaces.find((workspace) => !workspace.isSample)?.id;
+    const activeWorkspaceId = (lastExists ? lastId : firstPersonal) ?? personalId;
+    const state = await runtime.repository.load(activeWorkspaceId);
+    writeLastWorkspaceId(activeWorkspaceId);
     set({
       state,
       activeWorkspaceId,
-      workspaces: await runtime.repository.listWorkspaces(),
-      archivedWorkspaces: (
-        await runtime.repository.listWorkspaces({ includeArchived: true })
-      ).filter(
-        (
-          workspace,
-        ): workspace is { id: EntityId; name: string; updatedAt: string; archivedAt: string } =>
-          workspace.archivedAt !== undefined,
-      ),
+      workspaces,
+      archivedWorkspaces,
       events: await runtime.repository.listEvents(activeWorkspaceId, 500),
       snapshots: await runtime.repository.listSnapshots(activeWorkspaceId),
       ...(runtime.recoveryNotice === 'CORRUPT_CACHE_RECOVERED' ||
@@ -512,6 +487,7 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     if (!runtime) return false;
     const state = await runtime.repository.load(workspaceId);
     if (!state) return false;
+    writeLastWorkspaceId(workspaceId);
     set({
       activeWorkspaceId: workspaceId,
       state,
@@ -531,7 +507,13 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   async archiveActiveWorkspace() {
     const { state, workspaces } = get();
     if (!state) return false;
-    const next = workspaces.find((workspace) => workspace.id !== state.workspace.id);
+    if (state.workspace.isSample) {
+      set({ status: { tone: 'warning', message: t('workspace.archiveSampleBlocked') } });
+      return false;
+    }
+    const next = workspaces.find(
+      (workspace) => workspace.id !== state.workspace.id && !workspace.isSample,
+    );
     if (!next) {
       set({ status: { tone: 'warning', message: t('workspace.archiveNeedsAnother') } });
       return false;
@@ -542,16 +524,8 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     if (!archived) return false;
     const { runtime } = get();
     if (runtime) {
-      set({
-        archivedWorkspaces: (
-          await runtime.repository.listWorkspaces({ includeArchived: true })
-        ).filter(
-          (
-            workspace,
-          ): workspace is { id: EntityId; name: string; updatedAt: string; archivedAt: string } =>
-            workspace.archivedAt !== undefined,
-        ),
-      });
+      const lists = await loadWorkspaceLists(runtime.repository);
+      set({ archivedWorkspaces: lists.archivedWorkspaces, workspaces: lists.workspaces });
     }
     return get().switchWorkspace(next.id);
   },
@@ -1297,24 +1271,21 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   },
 
   async loadSample(scale) {
-    const { runtime, profileName, activeWorkspaceId } = get();
-    if (!runtime || !activeWorkspaceId) return;
+    const { runtime, profileName } = get();
+    if (!runtime) return;
 
+    const workspaceId =
+      get().workspaces.find((workspace) => workspace.isSample)?.id ?? SAMPLE_WORKSPACE_ID;
     const report = await seedSampleWorkspace({
       ...(scale !== undefined ? { scale } : {}),
       repository: runtime.repository,
-      workspaceId: activeWorkspaceId,
+      workspaceId,
       actorId: `local:${PROFILE_ID}`,
       now: runtime.now(),
       newId: runtime.newId,
     });
 
-    // A sample replaces everything, so the history that produced the old state
-    // no longer applies.
-    set({ undoStack: [], redoStack: [], selectedFootprintId: null });
-    set({ state: await runtime.repository.load(activeWorkspaceId) });
-    await refreshPending(get, set);
-
+    await get().switchWorkspace(workspaceId);
     set({
       status: {
         tone: 'info',
@@ -1329,8 +1300,12 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   },
 
   async clearLocalData() {
-    const { runtime, activeWorkspaceId } = get();
+    const { runtime, activeWorkspaceId, state } = get();
     if (!runtime || !activeWorkspaceId) return;
+    if (state?.workspace.isSample) {
+      await get().loadSample();
+      return;
+    }
     await runtime.repository.clearLocalData(activeWorkspaceId);
     set({ state: null, undoStack: [], redoStack: [], selectedFootprintId: null, pendingCount: 0 });
     await get().init(runtime, get().profileName);
@@ -1852,6 +1827,85 @@ function activeTeamOrder(state: WorkspaceState | null): EntityId[] {
     .map((team) => team.id);
 }
 
+function listingIsSample(workspace: WorkspaceListing): boolean {
+  return workspace.isSample || workspace.id === SAMPLE_WORKSPACE_ID;
+}
+
+async function loadWorkspaceLists(repository: WorkspaceRepository): Promise<{
+  workspaces: WorkspaceListing[];
+  archivedWorkspaces: Array<WorkspaceListing & { archivedAt: string }>;
+}> {
+  const workspaces = await repository.listWorkspaces();
+  const archivedWorkspaces = (await repository.listWorkspaces({ includeArchived: true })).filter(
+    (workspace): workspace is WorkspaceListing & { archivedAt: string } =>
+      workspace.archivedAt !== undefined,
+  );
+  return { workspaces, archivedWorkspaces };
+}
+
+async function ensureSampleWorkspace(runtime: Runtime): Promise<string> {
+  const listed = await runtime.repository.listWorkspaces();
+  const existing = listed.find(listingIsSample);
+  if (existing) {
+    const state = await runtime.repository.load(existing.id);
+    if (state) return existing.id;
+  }
+  await seedSampleWorkspace({
+    repository: runtime.repository,
+    workspaceId: SAMPLE_WORKSPACE_ID,
+    actorId: `local:${PROFILE_ID}`,
+    now: runtime.now(),
+    newId: runtime.newId,
+  });
+  return SAMPLE_WORKSPACE_ID;
+}
+
+async function ensurePersonalWorkspace(runtime: Runtime): Promise<string> {
+  const listed = await runtime.repository.listWorkspaces();
+  const personal = listed.find((workspace) => !listingIsSample(workspace));
+  if (personal) return personal.id;
+
+  const taken = listed.some((workspace) => workspace.id === WORKSPACE_ID);
+  const workspaceId = taken ? runtime.newId() : WORKSPACE_ID;
+  const cmd = makeCommand(runtime, 'CreateWorkspace', workspaceId);
+  const result = createWorkspace(
+    {
+      name: 'My portfolio',
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      currentQuarterId: currentQuarter(runtime.now()),
+    },
+    cmd,
+    makeContext(runtime, 1, null),
+  );
+  if (result.ok) {
+    await runtime.repository.apply({
+      workspaceId,
+      changes: result.effects.changes,
+      events: result.effects.events,
+      command: cmd,
+    });
+  }
+  return workspaceId;
+}
+
+function readLastWorkspaceId(): string | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage.getItem(LAST_WORKSPACE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeLastWorkspaceId(workspaceId: string): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(LAST_WORKSPACE_KEY, workspaceId);
+  } catch {
+    // Private mode or tests without storage.
+  }
+}
+
 function makeCommand(runtime: Runtime, name: string, workspaceId = WORKSPACE_ID): Command {
   return {
     id: runtime.newId(),
@@ -1884,4 +1938,4 @@ function currentQuarter(nowIso: string): `${number}-Q${1 | 2 | 3 | 4}` {
   return `${year}-Q${quarter}`;
 }
 
-export { WORKSPACE_ID };
+export { SAMPLE_WORKSPACE_ID, WORKSPACE_ID };

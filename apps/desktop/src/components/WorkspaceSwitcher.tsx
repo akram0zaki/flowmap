@@ -1,13 +1,15 @@
 /** Workspace navigation stays explicit: switching never mutates the current portfolio. */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { t } from '../i18n/t.js';
+import { HEADER_MENU_NAME, useDismissibleDetails } from '../state/use-dismissible-details.js';
 
 export type WorkspaceOption = {
   readonly id: string;
   readonly name: string;
   readonly updatedAt: string;
+  readonly isSample?: boolean;
 };
 
 export type WorkspaceLocation = 'LOCAL' | 'FILE';
@@ -35,27 +37,44 @@ export function WorkspaceSwitcher({
 }: WorkspaceSwitcherProps) {
   const [name, setName] = useState('');
   const [location, setLocation] = useState<WorkspaceLocation>('LOCAL');
-  const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
+  const menu = useRef<HTMLDetailsElement>(null);
+  useDismissibleDetails(menu);
+  const ordered = [...workspaces].sort((left, right) => {
+    if (Boolean(left.isSample) !== Boolean(right.isSample)) return left.isSample ? 1 : -1;
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
+  const active = ordered.find((workspace) => workspace.id === activeWorkspaceId);
+  const personalCount = workspaces.filter((workspace) => !workspace.isSample).length;
+  const canArchive = active !== undefined && !active.isSample && personalCount >= 2;
 
   return (
-    <details className="fm-workspace-switcher">
-      <summary>{active?.name ?? t('workspace.switch')}</summary>
+    <details
+      ref={menu}
+      className="fm-header-menu fm-header-menu--context fm-workspace-switcher"
+      name={HEADER_MENU_NAME}
+    >
+      <summary aria-label={t('workspace.current', { name: labelFor(active) })}>
+        {labelFor(active)}
+      </summary>
       <section aria-label={t('workspace.switch')}>
         <h2>{t('workspace.switch')}</h2>
         <div role="list" className="fm-workspace-switcher__list">
-          {workspaces.map((workspace) => (
+          {ordered.map((workspace) => (
             <div key={workspace.id} role="listitem">
               <button
                 type="button"
                 aria-pressed={workspace.id === activeWorkspaceId}
-                onClick={() => onSwitch(workspace.id)}
+                onClick={() => {
+                  onSwitch(workspace.id);
+                  if (menu.current) menu.current.open = false;
+                }}
               >
-                {workspace.name}
+                {labelFor(workspace)}
               </button>
             </div>
           ))}
         </div>
-        <button type="button" onClick={onArchive} disabled={workspaces.length < 2}>
+        <button type="button" onClick={onArchive} disabled={!canArchive}>
           {t('workspace.archive')}
         </button>
         {archivedWorkspaces.length > 0 && (
@@ -86,7 +105,7 @@ export function WorkspaceSwitcher({
               placeholder={t('workspace.nameHint')}
             />
           </label>
-          <fieldset>
+          <fieldset className="fm-workspace-switcher__location">
             <legend>{t('workspace.location')}</legend>
             <label>
               <input
@@ -116,4 +135,9 @@ export function WorkspaceSwitcher({
       </section>
     </details>
   );
+}
+
+function labelFor(workspace: WorkspaceOption | undefined): string {
+  if (!workspace) return t('workspace.switch');
+  return workspace.isSample ? t('workspace.sampleMark', { name: workspace.name }) : workspace.name;
 }

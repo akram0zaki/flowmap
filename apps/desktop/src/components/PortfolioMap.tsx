@@ -27,9 +27,11 @@ import {
   allBlocks,
   isBlockFocused,
   isCellFocused,
+  locateReveal,
   matchesFilter,
   previewDrop,
   type BoardModel,
+  type BoardReveal,
   type CellModel,
   type DragPayload,
   type FilterState,
@@ -97,6 +99,8 @@ export type PortfolioMapProps = {
   readonly onMoveRow?: (teamId: string, direction: -1 | 1) => void;
   /** Names for the Ideas a refinement reserve supports, by id. */
   readonly ideaNames?: ReadonlyMap<string, string>;
+  /** Radar/list Open: scroll this cell into view on both axes. */
+  readonly reveal?: BoardReveal | null;
 };
 
 export function PortfolioMap({
@@ -126,6 +130,7 @@ export function PortfolioMap({
   onDropHere,
   onMoveRow,
   ideaNames,
+  reveal = null,
 }: PortfolioMapProps) {
   // Roving focus: the grid is one tab stop, arrows move within it.
   const [cursor, setCursor] = useState<{ row: number; col: number }>({ row: 0, col: 0 });
@@ -277,6 +282,30 @@ export function PortfolioMap({
     const column = node.querySelector<HTMLElement>(`[data-column="${board.currentQuarterIndex}"]`);
     column?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
   }, [board.currentQuarterIndex, board.quarters.length]);
+
+  // Open must land on the cell, not just its quarter. The column header is
+  // only X; the team row is Y. Wait a frame so a just-closed Radar has
+  // given the board its width back.
+  useEffect(() => {
+    if (!reveal) return;
+    const at = locateReveal(board, reveal);
+    if (!at) return;
+    setCursor(at);
+    const scroller = gridRef.current;
+    if (!scroller) return;
+    const motion =
+      document.documentElement.getAttribute('data-motion') === 'reduced' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth';
+    const frame = requestAnimationFrame(() => {
+      const cell = scroller.querySelector<HTMLElement>(
+        `[data-drop-team="${CSS.escape(board.rows[at.row]?.teamId ?? '')}"][data-drop-quarter="${CSS.escape(board.rows[at.row]?.cells[at.col]?.quarterId ?? '')}"]`,
+      );
+      cell?.scrollIntoView({ inline: 'center', block: 'center', behavior: motion });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [board, reveal]);
 
   return (
     <div className="fm-map" data-level={level}>

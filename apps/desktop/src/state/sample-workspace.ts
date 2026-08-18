@@ -2,8 +2,8 @@
  * The sample workspace.
  *
  * First launch offers "Explore sample workspace" or "Create new workspace"
- * (spec 06 §13), and until the first exists there is nothing to look at — an
- * empty grid cannot tell you whether the visual model works.
+ * (spec 06 §13). The sample is its own workspace — always listed in the
+ * switcher, resettable, never written over the user's empty portfolio.
  *
  * Seeds the canonical validation fixture: 5 teams across 6 quarters, 25 gated
  * commitments plus 10 Ideas, two engineered overloads, and carry-over. The same
@@ -16,6 +16,9 @@
  * panel had nothing to show and the "dependency-caused bottleneck" the
  * validation script describes was nowhere on screen.
  */
+
+/** Stable id used when no sample workspace exists yet. */
+export const SAMPLE_WORKSPACE_ID = 'flowmap-sample-workspace';
 
 import { scaleFixture, validationFixture, type ValidationFixture } from '@flowmap/fixtures';
 import type { Command, EntityChange } from '@flowmap/domain';

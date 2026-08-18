@@ -12,11 +12,13 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+import { openSampleWorkspace } from './helpers.js';
+
 async function board(page: Page) {
   await page.goto('/');
   await page.evaluate(() => globalThis.localStorage.clear());
   await page.reload();
-  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await openSampleWorkspace(page);
   await expect(page.getByRole('grid').first().getByRole('rowheader')).toHaveCount(5);
 }
 

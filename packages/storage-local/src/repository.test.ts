@@ -256,6 +256,9 @@ describe('persistence round trip', () => {
     expect(state.workspace.settings.noteMaxLength).toBe(2000);
     expect(state.workspace.isSample).toBe(false);
     expect(state.workspace.archivedAt).toBeUndefined();
+    expect(await repo.listWorkspaces()).toEqual([
+      expect.objectContaining({ id: WS, name: 'W', isSample: false }),
+    ]);
   });
 
   it('returns null for an unknown workspace', async () => {
