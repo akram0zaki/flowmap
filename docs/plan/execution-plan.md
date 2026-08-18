@@ -18,7 +18,7 @@ experienced full-stack engineer.
  M5  Lenses, history, quarter close ┐
  M6  Portability & workspaces        │  ► Pilot MVP
  M7  Desktop packaging            ──┘
- M8  Shared provider & sync       ──►  Shared Collaboration Beta
+ M8  Shared provider & sync  ✅   ──►  Shared Collaboration Beta (Gate I: real share)
  M9  Enterprise readiness         ──►  Shared Production Release
 ```
 
@@ -295,13 +295,23 @@ multi-client deterministic sync and fault-injection harness.
 
 **Gate I — exit criteria**
 
-- [ ] Two clients edit independently and converge after the folder syncs
-- [ ] Conflicting edits are never silently overwritten
-- [ ] A conflict copy created by the sync client is detected, explained, and recoverable
-- [ ] An interrupted or repeated write is idempotent; a half-written document is impossible
-- [ ] A read-only or temporarily unreachable share preserves all local work and produces actionable
+- [x] Two clients edit independently and converge after the folder syncs
+      — proven by the in-process harness; not yet observed on a real share
+- [x] Conflicting edits are never silently overwritten
+      — field-level merge is property-tested; overlap becomes a conflict row
+- [x] A conflict copy created by the sync client is detected, explained, and recoverable
+      — `* (1).flowmap` and `*-<machine>.flowmap` are detected in the File provider
+- [x] An interrupted or repeated write is idempotent; a half-written document is impossible
+      — `operationId` returns `DUPLICATE`; a failed temp write does not replace the document
+- [x] A read-only or temporarily unreachable share preserves all local work and produces actionable
       status
-- [ ] Killing the process mid-write leaves both the local database and the shared document intact
+- [x] Killing the process mid-write leaves both the local database and the shared document intact
+      — local `apply` is transactional; File writes are atomic replace after fsync
+
+> The six boxes are the protocol. They are not a substitute for two leads editing
+> the same document in a real synced folder. That observation, plus a native
+> disk adapter so Shared file writes a picked path, is what remains before
+> Shared Collaboration Beta. The shells still inject `MemoryFileSystem`.
 
 **► Shared Collaboration Beta**
 
