@@ -11,7 +11,7 @@ capability**, not by technical layer — each ticket should leave the product me
 > This file is kept current as work lands. A ticket is ✅ only when its acceptance criteria pass and
 > the [`AGENTS.md`](../../AGENTS.md) definition of done is met — not when the code merely exists.
 
-**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · **M3 13/14 done, 1 partial** · **M6 17/17 — complete** · **M7 5/8 done, 2 signing-gated, 1 blocked on devices** · **M8 14/14 — complete** · M9 not started
+**Progress:** M0 2/14 · **M1 22/22 — complete** · **M2 27/28 done, 1 partial** · **M3 13/14 done, 1 partial** · **M6 17/17 — complete** · **M7 5/8 done, 2 signing-gated, 1 blocked on devices** · **M8 14/14 code-complete; Gate I needs a real share** · M9 not started
 
 > **Closed out of M2.** The seven code-side gaps carried out of the first pass
 > are done, each with unit and Playwright coverage and verified in a browser:
@@ -310,10 +310,29 @@ checklist is in [`docs/ops/`](../ops/distribution.md).
 
 ## M8 — Shared provider and sync
 
+**Code-complete.** Fourteen tickets landed in [#11](https://github.com/akram0zaki/flowmap/pull/11).
 The File provider is the shared provider: a versioned `.flowmap` document with
 `sync.json`, atomic replace, field-level merge, and an explicit conflict UI.
 Roles are enforced in the domain and described as advisory in Settings. Private
 scenarios stay local; sharing them publishes them on the next push.
+
+> **Closed out of M8.** Protocol, merge, conflict UI, and the multi-client
+> harness are built and tested. Spec 07 §7 invariants 1–8 are covered in-process
+> (two caches, disjoint vs overlapping fields, idempotent replay, kill-mid-write,
+> read-only and vanished share).
+>
+> **Still open — needs a real folder, not more protocol code:**
+>
+> - **Gate I** — two clients on the actual OneDrive/SharePoint library. S-3 has
+>   not characterised delay, conflict-copy names, or placeholders on the tenant.
+> - **Native disk adapter** — both shells still inject `MemoryFileSystem`.
+>   Shared file does not yet write a `.flowmap` into a picked folder. That is a
+>   Tauri (or Node) `FileSystemAdapter`, not a second provider.
+>
+> **Two decisions worth review:** `SaveView` is Planner in the handlers and the
+> permission matrix; spec 03 §3.6 lists it as Viewer. Left as-is. And the 30-day
+> offline expiry in spec 07 §6 is not implemented — there is no authentication
+> to expire (spec 08 §4).
 
 | St  | ID       | Title                                                                                       | Size | Dep      |
 | --- | -------- | ------------------------------------------------------------------------------------------- | :--: | -------- |
