@@ -96,6 +96,7 @@ import {
   ThemesView,
   TimelineView,
 } from '../components/M5Views.jsx';
+import { TeamsView } from '../components/TeamsView.jsx';
 import { useSignals } from '../state/use-signals.js';
 import { notificationMessages } from '../state/notifications.js';
 import type { VesselBlock } from '../components/CapacityVessel.jsx';
@@ -1447,6 +1448,16 @@ export function App() {
       {!showDemandFlow && activeLens === 'THEMES' && (
         <ThemesView state={viewState ?? state!} onOpen={setFocusedCommitmentId} filter={filter} />
       )}
+      {!showDemandFlow && activeLens === 'TEAMS' && (
+        <TeamsView
+          state={viewState ?? state!}
+          filter={filter}
+          onOpenCell={(teamId, quarterId) => {
+            setReveal({ teamId, quarterId });
+            setActiveLens('PORTFOLIO');
+          }}
+        />
+      )}
       {!showDemandFlow && activeLens === 'HISTORY' && (
         <HistoryView
           state={state}
@@ -1461,7 +1472,9 @@ export function App() {
       )}
 
       {!showDemandFlow &&
-        !['TIMELINE', 'DEPENDENCIES', 'PRODUCTS', 'THEMES', 'HISTORY'].includes(activeLens) && (
+        !['TIMELINE', 'DEPENDENCIES', 'PRODUCTS', 'THEMES', 'HISTORY', 'TEAMS'].includes(
+          activeLens,
+        ) && (
           <div className="fm-workspace">
             <IdeasLane
               ideas={board.ideas}

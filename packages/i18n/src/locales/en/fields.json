@@ -130,5 +130,17 @@
   "portableMode.label": "Portable mode",
   "portableMode.def": "The instance stores its cache next to the executable, or in a folder you name with FLOWMAP_DATA_DIR.",
   "portableMode.not": "an installer, a roaming profile, or a way to carry credentials. The OS keychain is never copied into the portable folder.",
-  "portableMode.eg": "Unzip to a USB stick, create data next to Flowmap.exe, and delete the folder to remove the instance."
+  "portableMode.eg": "Unzip to a USB stick, create data next to Flowmap.exe, and delete the folder to remove the instance.",
+  "teamLoad.label": "Team load",
+  "teamLoad.def": "Counted committed units for this team across the selected horizon.",
+  "teamLoad.not": "a measure of how busy people are, or a utilisation target.",
+  "teamLoad.eg": "Sixty units in Q3 and forty in Q4 is a team load of 100.",
+  "teamCapacity.label": "Team capacity",
+  "teamCapacity.def": "Deliverable capacity for this team across the selected horizon, after reserves.",
+  "teamCapacity.not": "headcount, hours, or the team’s baseline before reserves.",
+  "teamCapacity.eg": "Two quarters at 80 deliverable units each is a team capacity of 160.",
+  "portfolioPressure.label": "Portfolio pressure",
+  "portfolioPressure.def": "Counted load as a share of deliverable capacity across every team in a quarter.",
+  "portfolioPressure.not": "a priority score, and not a signal that work should stop.",
+  "portfolioPressure.eg": "120% means the portfolio has committed more than the teams can hold that quarter."
 }

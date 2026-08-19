@@ -9,15 +9,19 @@
 
 import {
   addQuarters,
+  aggregateCapacity,
   compareQuarters,
   horizonWindow,
   isActive,
   quarterOfDate,
+  utilisationPercent,
   type EntityId,
   type HorizonPreset,
   type QuarterId,
   type WorkspaceState,
 } from '@flowmap/domain';
+
+import { buildBoard } from './layout.js';
 
 export type TimelineGroupBy = 'TEAM' | 'PRODUCT' | 'THEME';
 
@@ -346,4 +350,147 @@ export function searchWorkspace(state: WorkspaceState, query: string): SearchRes
 
 export function timelineHorizonEnd(current: QuarterId, preset: HorizonPreset): QuarterId {
   return horizonWindow(current, preset).at(-1) ?? addQuarters(current, 0);
+}
+
+// ── Teams lens ─────────────────────────────────────────────────────────────
+//
+// Spec 02 §3: the Teams lens uses the same aggregates as Portfolio Map L1 —
+// teamLoad, teamCapacity, quarterOverflowCount, portfolioPressure — computed
+// from the same counted predicate. buildBoard already owns that arithmetic;
+// this projection only rearranges it so the canvas can drop commitment blocks
+// without inventing a second source of capacity truth.
+
+export type TeamsCell = {
+  readonly teamId: EntityId;
+  readonly teamName: string;
+  readonly quarterId: QuarterId;
+  /** False when the team has no TeamQuarter in this column. */
+  readonly planned: boolean;
+  readonly load: number;
+  readonly capacity: number;
+  readonly headroom: number | null;
+  readonly overflow: number;
+  readonly utilisation: number | null;
+  readonly utilisationPercent: number | null;
+};
+
+export type TeamsRow = {
+  readonly teamId: EntityId;
+  readonly teamName: string;
+  readonly cells: readonly TeamsCell[];
+  /** teamLoad(team, horizon) */
+  readonly load: number;
+  /** teamCapacity(team, horizon) */
+  readonly capacity: number;
+  readonly overflowingCells: number;
+  readonly utilisation: number | null;
+  readonly utilisationPercent: number | null;
+};
+
+export type TeamsQuarter = {
+  readonly quarterId: QuarterId;
+  readonly isCurrent: boolean;
+  readonly load: number;
+  readonly capacity: number;
+  /** quarterOverflowCount(q) */
+  readonly overflowCount: number;
+  /** portfolioPressure(q) */
+  readonly pressure: number | null;
+  readonly pressurePercent: number | null;
+};
+
+export type TeamsModel = {
+  readonly preset: HorizonPreset;
+  readonly currentQuarterId: QuarterId;
+  readonly quarters: readonly QuarterId[];
+  readonly rows: readonly TeamsRow[];
+  readonly quartersSummary: readonly TeamsQuarter[];
+  readonly totals: {
+    readonly load: number;
+    readonly capacity: number;
+    readonly overflowingCells: number;
+    readonly pressure: number | null;
+    readonly pressurePercent: number | null;
+  };
+};
+
+function ratioPercent(load: number, capacity: number): number | null {
+  return capacity === 0 ? null : Math.round((load / capacity) * 100);
+}
+
+/**
+ * Team × horizon capacity pressure. Same numbers as L1; different emphasis.
+ *
+ * Lenses change emphasis, never data (spec 06 §3.5).
+ */
+export function buildTeamsLens(state: WorkspaceState, preset: HorizonPreset): TeamsModel {
+  const board = buildBoard({
+    workspace: state.workspace,
+    teams: state.teams,
+    teamQuarters: state.teamQuarters,
+    commitments: state.commitments,
+    footprints: state.footprints,
+    horizon: preset,
+  });
+
+  const rows = board.rows.map((row): TeamsRow => {
+    const cells = row.cells.map((cell): TeamsCell => {
+      const summary = cell.summary;
+      return {
+        teamId: cell.teamId,
+        teamName: cell.teamName,
+        quarterId: cell.quarterId,
+        planned: summary !== null,
+        load: summary?.committedLoad ?? 0,
+        capacity: summary?.deliverableCapacity ?? 0,
+        headroom: summary?.headroom ?? null,
+        overflow: summary?.overflow ?? 0,
+        utilisation: summary?.utilisation ?? null,
+        utilisationPercent: summary === null ? null : utilisationPercent(summary),
+      };
+    });
+
+    return {
+      teamId: row.teamId,
+      teamName: row.teamName,
+      cells,
+      load: row.load,
+      capacity: row.capacity,
+      overflowingCells: row.overflowingCells,
+      utilisation: row.capacity === 0 ? null : row.load / row.capacity,
+      utilisationPercent: ratioPercent(row.load, row.capacity),
+    };
+  });
+
+  const quartersSummary = board.quarters.map((quarterId): TeamsQuarter => {
+    const summaries = board.rows
+      .flatMap((row) => row.cells)
+      .filter((cell) => cell.quarterId === quarterId && cell.summary !== null)
+      .map((cell) => cell.summary!);
+    const aggregate = aggregateCapacity(summaries);
+    return {
+      quarterId,
+      isCurrent: quarterId === board.currentQuarterId,
+      load: aggregate.load,
+      capacity: aggregate.capacity,
+      overflowCount: aggregate.overflowingCells,
+      pressure: aggregate.pressure,
+      pressurePercent: ratioPercent(aggregate.load, aggregate.capacity),
+    };
+  });
+
+  return {
+    preset,
+    currentQuarterId: board.currentQuarterId,
+    quarters: board.quarters,
+    rows,
+    quartersSummary,
+    totals: {
+      load: board.totals.load,
+      capacity: board.totals.capacity,
+      overflowingCells: board.totals.overflowingCells,
+      pressure: board.totals.capacity === 0 ? null : board.totals.load / board.totals.capacity,
+      pressurePercent: ratioPercent(board.totals.load, board.totals.capacity),
+    },
+  };
 }

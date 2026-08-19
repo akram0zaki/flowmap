@@ -3162,6 +3162,213 @@ label {
   color: var(--warning-fg);
 }
 
+.fm-teams {
+  display: grid;
+  min-width: 48rem;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.fm-teams__row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 12rem) repeat(var(--fm-cols, 6), minmax(8rem, 1fr)) minmax(
+      8rem,
+      11rem
+    );
+  gap: var(--space-3);
+  align-items: stretch;
+}
+
+.fm-teams__row--head,
+.fm-teams__quarter,
+.fm-teams__horizon-head,
+.fm-teams__corner {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+.fm-teams__quarter,
+.fm-teams__horizon-head,
+.fm-teams__corner {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.fm-teams__quarter[data-current] {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.fm-teams__team {
+  display: grid;
+  align-content: center;
+  gap: var(--space-1);
+  min-height: var(--hit-target-primary);
+}
+
+.fm-teams__team span {
+  font-size: var(--text-2xs);
+  color: var(--critical-fg);
+}
+
+.fm-teams__cell-wrap {
+  min-width: 0;
+}
+
+.fm-teams__cell,
+.fm-teams__total,
+.fm-teams__pressure {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--hit-target-primary);
+  padding: var(--space-3);
+  color: var(--ink);
+  text-align: left;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.fm-teams__cell[data-current],
+.fm-teams__pressure[data-current] {
+  border-color: var(--border-strong);
+}
+
+.fm-teams__cell[data-over],
+.fm-teams__total[data-over],
+.fm-teams__pressure[data-over] {
+  border-style: dashed;
+}
+
+.fm-teams__cell[data-empty] {
+  color: var(--ink-muted);
+}
+
+.fm-teams__figure,
+.fm-teams__pressure,
+.fm-teams__total {
+  align-content: start;
+}
+
+.fm-teams__figure {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.fm-teams__figure strong,
+.fm-teams__total strong,
+.fm-teams__pressure strong {
+  font-family: var(--font-mono);
+  font-size: var(--figure-md);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.fm-teams__cell[data-over] strong,
+.fm-teams__total[data-over] strong,
+.fm-teams__pressure[data-over] strong {
+  color: var(--critical-fg);
+}
+
+.fm-teams__figure em {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-style: normal;
+  font-weight: var(--weight-medium);
+  color: var(--critical-fg);
+  white-space: nowrap;
+}
+
+.fm-teams__track {
+  position: relative;
+  display: block;
+  height: var(--space-3);
+  overflow: hidden;
+  background: var(--graphite-1);
+  border-bottom: 1px solid var(--rule);
+}
+
+.fm-teams__fill {
+  display: block;
+  width: var(--fm-fill, 0%);
+  height: 100%;
+  background: var(--graphite-3);
+}
+
+.fm-teams__track::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: calc(var(--fm-rule-at, 1) * 100%);
+  width: 1px;
+  margin-left: -1px;
+  background: var(--ink-muted);
+}
+
+.fm-teams__excess {
+  position: absolute;
+  inset-block: 0;
+  left: calc(var(--fm-rule-at, 1) * 100%);
+  right: 0;
+  background: repeating-linear-gradient(90deg, var(--critical-line) 0 1px, transparent 1px 4px);
+}
+
+.fm-teams__meta,
+.fm-teams__total span,
+.fm-teams__pressure span {
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
+.fm-teams__cell[data-dimmed] .fm-teams__track,
+.fm-teams__total[data-dimmed],
+.fm-teams__team[data-dimmed] {
+  opacity: 0.35;
+}
+
+.fm-teams__tip {
+  position: relative;
+  display: inline-flex;
+}
+
+.fm-teams__what {
+  display: inline-grid;
+  place-items: center;
+  width: var(--hit-target-min);
+  height: var(--hit-target-min);
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 1;
+  color: var(--ink-subtle);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+}
+
+.fm-teams__what[aria-expanded='true'] {
+  color: var(--accent-on);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.fm-teams__tip .fm-field__tip {
+  position: absolute;
+  z-index: 2;
+  top: 100%;
+  left: 0;
+  width: 22rem;
+  margin-top: var(--space-2);
+}
+
 .fm-products {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));

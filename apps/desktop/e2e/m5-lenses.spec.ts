@@ -46,6 +46,24 @@ test('dependency and product lenses are reachable from their fixed keyboard labe
   await axe(page, 'product lens');
 });
 
+test('teams lens shows horizon capacity instead of the commitment map', async ({ page }) => {
+  await sample(page);
+  await expect(page.getByRole('grid', { name: /portfolio map/i })).toBeVisible();
+  await page.getByRole('button', { name: /2 Teams/ }).click();
+  await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible();
+  await expect(page.getByText(/can we take this/i)).toBeVisible();
+  await expect(page.getByRole('grid', { name: 'Team capacity across the horizon' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Team-quarter capacity' })).toBeVisible();
+  await expect(page.getByRole('grid', { name: /portfolio map/i })).toHaveCount(0);
+  await axe(page, 'teams lens');
+
+  await page
+    .getByRole('button', { name: /Open on the Portfolio map/ })
+    .first()
+    .click();
+  await expect(page.getByRole('grid', { name: /portfolio map/i })).toBeVisible();
+});
+
 test('themes retain a precise table companion', async ({ page }) => {
   await sample(page);
   await page.getByRole('button', { name: /4 Themes/ }).click();
