@@ -46,6 +46,32 @@ test('dependency and product lenses are reachable from their fixed keyboard labe
   await axe(page, 'product lens');
 });
 
+test('QBR opens the QBR map with three surfaces in a dropdown', async ({ page }) => {
+  await sample(page);
+  await page.getByRole('button', { name: /7 QBR/ }).click();
+  await expect(page.getByRole('heading', { name: 'QBR' })).toBeVisible();
+  const surface = page.getByLabel('QBR view');
+  await expect(surface).toHaveValue('CAPACITY');
+  await expect(page.getByRole('grid', { name: /portfolio map/i })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: /2026-Q3/ })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: /2027-Q3/ })).toHaveCount(0);
+  await surface.selectOption('Demand');
+  await expect(page.getByRole('region', { name: 'Demand Flow' })).toBeVisible();
+  await expect(page.getByRole('grid', { name: /portfolio map/i })).toHaveCount(0);
+  await surface.selectOption('Review');
+  await expect(page.getByRole('heading', { name: 'History and quarter close' })).toBeVisible();
+  await axe(page, 'qbr review');
+});
+
+test('attention lens lists signals instead of the commitment map', async ({ page }) => {
+  await sample(page);
+  await page.getByRole('button', { name: /5 Attention/ }).click();
+  await expect(page.getByRole('heading', { name: 'Attention' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Attention signals' })).toBeVisible();
+  await expect(page.getByRole('grid', { name: /portfolio map/i })).toHaveCount(0);
+  await axe(page, 'attention lens');
+});
+
 test('teams lens shows horizon capacity instead of the commitment map', async ({ page }) => {
   await sample(page);
   await expect(page.getByRole('grid', { name: /portfolio map/i })).toBeVisible();

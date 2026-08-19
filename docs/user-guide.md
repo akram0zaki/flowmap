@@ -56,7 +56,7 @@ it just lives in a folder you unzip, with no installer.
 
 ```
 ┌─ Flowmap   [Workspace ▾]   [Import and export] [Saved views] [Snapshots]  [☀] [Settings] [Sync] ─┐
-├─ 1 Portfolio  2 Teams  3 Products  …  History          filters          [Open Demand Flow]     ┤
+├─ 1 Portfolio  2 Teams  3 Products  …  7 QBR  8 Timeline  History          filters             ┤
 ├─ Planning context: Baseline                                              [New scenario]        ┤
 ├─ Undo  Redo  List                                        [Radar 12] [Rules]                    ┤
 ├─ Add and place work ▾                                                                              ┤
@@ -71,21 +71,21 @@ it just lives in a folder you unzip, with no installer.
 └─ List: every footprint, with the same totals as the map ────────────────────────────────────────┘
 ```
 
-| Area | What it is |
-| --- | --- |
-| **Brand and workspace** | Top left. Switch, create, or archive a workspace. Independent menus, not a breadcrumb. |
-| **Workspace tools** | Import and export, saved views, snapshots. |
-| **Appearance, Settings, Sync** | Theme, data location, and whether a shared file is pending or in conflict. Your self-declared name sits here too. |
-| **Lenses** | Different ways to look at the same portfolio. Number keys `1`–`8` switch them. |
-| **Planning context** | Baseline is the agreed plan. A scenario is a private draft on top of it. |
-| **Undo, Redo, List** | Every change is undoable. List is the table twin of the map. |
-| **Radar and Rules** | Attention signals, and the thresholds behind them. Only one of these sheets is open at a time. |
-| **Add and place work** | Fold-out forms to add a team, capture an Idea, place it, or record work that is already real. |
-| **Ideas lane** | Uncommitted demand, pinned on the left. Ideas are not on the grid yet. |
-| **The grid** | Quarters run left to right. Teams are rows. Blocks sit inside a team-quarter. |
-| **Zoom dock** | Floats at the bottom of the window: Overview, Areas, Detail. It stays on the team you are looking at when the level changes. |
-| **Detail panel** | Opens when you select a commitment. Identity, planning, outcome, impact, attention, dependencies, milestones, links. |
-| **List** | A table of every capacity footprint. Its totals match the map exactly. |
+| Area                           | What it is                                                                                                                   |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| **Brand and workspace**        | Top left. Switch, create, or archive a workspace. Independent menus, not a breadcrumb.                                       |
+| **Workspace tools**            | Import and export, saved views, snapshots.                                                                                   |
+| **Appearance, Settings, Sync** | Theme, data location, and whether a shared file is pending or in conflict. Your self-declared name sits here too.            |
+| **Lenses**                     | Different ways to look at the same portfolio. Number keys `1`–`8` switch them.                                               |
+| **Planning context**           | Baseline is the agreed plan. A scenario is a private draft on top of it.                                                     |
+| **Undo, Redo, List**           | Every change is undoable. List is the table twin of the map.                                                                 |
+| **Radar and Rules**            | Attention signals, and the thresholds behind them. Only one of these sheets is open at a time.                               |
+| **Add and place work**         | Fold-out forms to add a team, capture an Idea, place it, or record work that is already real.                                |
+| **Ideas lane**                 | Uncommitted demand, pinned on the left. Ideas are not on the grid yet.                                                       |
+| **The grid**                   | Quarters run left to right. Teams are rows. Blocks sit inside a team-quarter.                                                |
+| **Zoom dock**                  | Floats at the bottom of the window: Overview, Areas, Detail. It stays on the team you are looking at when the level changes. |
+| **Detail panel**               | Opens when you select a commitment. Identity, planning, outcome, impact, attention, dependencies, milestones, links.         |
+| **List**                       | A table of every capacity footprint. Its totals match the map exactly.                                                       |
 
 ---
 
@@ -94,19 +94,19 @@ it just lives in a folder you unzip, with no installer.
 Flowmap uses these words on purpose. Treating them as synonyms of project-management terms is how
 portfolios drift.
 
-| You will see | It means | It is not |
-| --- | --- | --- |
-| **Commitment** | Work big enough to consume capacity or need a management decision | A story, task, or ticket |
-| **Idea** | Demand that is not yet accepted onto a team | A backlog item waiting to be estimated |
-| **Commit Gate** | The act of accepting an Idea into the plan | An approval workflow |
-| **Capacity footprint** | How much of one team, in one quarter, this work occupies | Hours, story points, or money |
-| **Unit** | A relative slice of a team-quarter. A normal quarter is **100 units** | A person-day |
-| **Reserve** | Capacity set aside before delivery work (support, refinement, and so on) | A hidden buffer you should fill |
-| **Headroom** | Deliverable capacity minus counted load. Negative means overflow | Slack you are expected to use up |
-| **Overflow** | More is committed than the team can hold. Allowed, and drawn in the open | A blocked save or a failed state |
-| **Radar** | Signals that need a human look now | A list of all work |
-| **Scenario** | A draft of “what if we did this” | A branch of the data. Baseline does not change until you apply |
-| **Lens** | A different emphasis on the same model | A second copy of the portfolio |
+| You will see           | It means                                                                 | It is not                                                      |
+| ---------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| **Commitment**         | Work big enough to consume capacity or need a management decision        | A story, task, or ticket                                       |
+| **Idea**               | Demand that is not yet accepted onto a team                              | A backlog item waiting to be estimated                         |
+| **Commit Gate**        | The act of accepting an Idea into the plan                               | An approval workflow                                           |
+| **Capacity footprint** | How much of one team, in one quarter, this work occupies                 | Hours, story points, or money                                  |
+| **Unit**               | A relative slice of a team-quarter. A normal quarter is **100 units**    | A person-day                                                   |
+| **Reserve**            | Capacity set aside before delivery work (support, refinement, and so on) | A hidden buffer you should fill                                |
+| **Headroom**           | Deliverable capacity minus counted load. Negative means overflow         | Slack you are expected to use up                               |
+| **Overflow**           | More is committed than the team can hold. Allowed, and drawn in the open | A blocked save or a failed state                               |
+| **Radar**              | Signals that need a human look now                                       | A list of all work                                             |
+| **Scenario**           | A draft of “what if we did this”                                         | A branch of the data. Baseline does not change until you apply |
+| **Lens**               | A different emphasis on the same model                                   | A second copy of the portfolio                                 |
 
 Every important field has a **?** next to the label. It always answers three things: what it is,
 what it is not, and an example.
@@ -122,18 +122,18 @@ Inside a cell, from the bottom up:
 1. A **hatched band** is reserved capacity (support, refinement, holds).
 2. **Blocks** are commitments. Taller means more units. Mandatory work stacks first.
 3. A **cross-hatched** block was carried over from an earlier quarter.
-4. Anything that **spills above the cell** is overflow. The label always shows units *and*
+4. Anything that **spills above the cell** is overflow. The label always shows units _and_
    percent, with an ▲. Colour is never the only cue.
 
 ### Zoom levels
 
 Use the dock at the bottom of the window, `+` / `−`, or Ctrl/Cmd + scroll.
 
-| Control | Shows | Hides |
-| --- | --- | --- |
+| Control      | Shows                                               | Hides             |
+| ------------ | --------------------------------------------------- | ----------------- |
 | **Overview** | One pressure bar per team-quarter, counts, overflow | Individual blocks |
-| **Areas** | Blocks, reserves, capacity numbers | Fine labels |
-| **Detail** | Names, milestones, dependencies, the full cell | Nothing |
+| **Areas**    | Blocks, reserves, capacity numbers                  | Fine labels       |
+| **Detail**   | Names, milestones, dependencies, the full cell      | Nothing           |
 
 Changing level keeps the team-quarter you are looking at on screen.
 
@@ -228,15 +228,17 @@ when you want it gone.
 Lenses change emphasis, not data. Selection and filters carry across where the view can show
 them.
 
-| Key | Lens | Use it to answer |
-| --- | --- | --- |
-| `1` | **Portfolio** | What is committed, where does it sit, what can we move? |
-| `2` | **Teams** | How loaded is each team across the horizon? Where is the pressure? |
-| `3` | **Products** | Where does the change land? (Change load, not team capacity.) |
-| `4` | **Themes** | Which commitments share a direction? |
-| `6` | **Dependencies** | What is waiting on what? Where are the hubs and cycles? |
-| `8` | **Timeline** | How do footprints line up across quarters? (Not a Gantt chart.) |
-| — | **History** | What changed, and close or reopen a quarter. |
+| Key | Lens             | Use it to answer                                                           |
+| --- | ---------------- | -------------------------------------------------------------------------- |
+| `1` | **Portfolio**    | What is committed, where does it sit, what can we move?                    |
+| `2` | **Teams**        | How loaded is each team across the horizon? Where is the pressure?         |
+| `3` | **Products**     | Where does the change land? (Change load, not team capacity.)              |
+| `4` | **Themes**       | Which commitments share a direction?                                       |
+| `5` | **Attention**    | What needs a human look now? Grouped by reason, not by name.               |
+| `6` | **Dependencies** | What is waiting on what? Where are the hubs and cycles?                    |
+| `7` | **QBR**          | The next three quarters. A dropdown switches Capacity, Demand, and Review. |
+| `8` | **Timeline**     | How do footprints line up across quarters? (Not a Gantt chart.)            |
+| —   | **History**      | What changed, and close or reopen a quarter.                               |
 
 **Teams** is a pressure grid, not another copy of the map. Each cell is load against
 deliverable capacity. The footer is portfolio pressure for that quarter. **Open on the
@@ -248,8 +250,11 @@ change load answers “where does the change land”.
 **Timeline** draws one fragment per footprint. Fragments of the same commitment are one piece
 of work, not duplicates. There is no percent-complete and no critical path.
 
-`5` Attention and `7` QBR are labelled. Today they still show the Portfolio map. For QBR-style
-intake use **Open Demand Flow** instead (see below).
+**QBR** opens on the Capacity map (current quarter plus two). The **QBR view** dropdown
+switches Capacity, Demand (Ideas → pipe → Commit Gate), and Review (quarter close).
+
+**Attention** is Radar’s list as a full view. **Open** jumps to the matching cell on the
+Portfolio map.
 
 ---
 
@@ -260,7 +265,7 @@ intake use **Open Demand Flow** instead (see below).
 1. Click **Radar**. The count on the button is the number of live signals.
 2. Signals are grouped (action now, this week, capacity, dependencies, ownership, and so on).
 3. Open a signal to read the rule, the facts it used, and the threshold.
-4. **Open** jumps to the matching cell on the map — the team *and* the quarter, not just the
+4. **Open** jumps to the matching cell on the map — the team _and_ the quarter, not just the
    column.
 5. Review it, or defer it until tomorrow / next week / next month. A deferred signal comes
    back sooner if the situation gets worse.
@@ -289,14 +294,14 @@ yours, take theirs, or edit the overlap. A scenario never writes the baseline by
 
 ### Demand Flow
 
-**Open Demand Flow** is the “can we take this?” pipe.
+On the QBR lens, switch **QBR view** to **Demand**. That is the “can we take this?” pipe.
 
 1. Create and select a scenario first.
 2. Choose an Idea, a team, a quarter, and units.
 3. Place a ghost footprint. The cell shows the consequence.
 4. The Idea stays an Idea until you apply the scenario (or pass Commit Gate on the baseline).
 
-**Return to Portfolio** closes the pipe.
+Switch the dropdown back to **Capacity** to see the QBR map again.
 
 ---
 
@@ -347,24 +352,24 @@ Press `?` any time for the in-app list.
 
 **Everywhere**
 
-| Keys | Does |
-| --- | --- |
-| `Ctrl/Cmd + K` | Command palette — search, `+ idea …`, `filter: quarter 2026-Q3` |
-| `Ctrl/Cmd + L` | Toggle the list |
-| `Ctrl/Cmd + Z` / `Shift + Z` | Undo / redo |
-| `Ctrl/Cmd + ,` | Settings |
-| `1` … `8` | Switch lens |
-| `?` | This shortcut list |
-| `Esc` | Clear focus, cancel a mode, leave presentation |
+| Keys                         | Does                                                            |
+| ---------------------------- | --------------------------------------------------------------- |
+| `Ctrl/Cmd + K`               | Command palette — search, `+ idea …`, `filter: quarter 2026-Q3` |
+| `Ctrl/Cmd + L`               | Toggle the list                                                 |
+| `Ctrl/Cmd + Z` / `Shift + Z` | Undo / redo                                                     |
+| `Ctrl/Cmd + ,`               | Settings                                                        |
+| `1` … `8`                    | Switch lens                                                     |
+| `?`                          | This shortcut list                                              |
+| `Esc`                        | Clear focus, cancel a mode, leave presentation                  |
 
 **On the map and in Demand Flow**
 
-| Keys | Does |
-| --- | --- |
-| Arrow keys | Move between cells |
-| `Enter` | Open the focused cell, or drop what you are carrying |
-| `Space` | Pick up the focused Idea or block |
-| `+` / `−` | Zoom |
+| Keys            | Does                                                      |
+| --------------- | --------------------------------------------------------- |
+| Arrow keys      | Move between cells                                        |
+| `Enter`         | Open the focused cell, or drop what you are carrying      |
+| `Space`         | Pick up the focused Idea or block                         |
+| `+` / `−`       | Zoom                                                      |
 | `m` then arrows | In Demand Flow, choose a team-quarter without the pointer |
 
 The palette does not interpret natural language. If there is no exact local match, it says so.
