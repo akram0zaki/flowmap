@@ -14,6 +14,7 @@ import {
   buildQbrLens,
   buildTeamsLens,
   buildTimeline,
+  placeDependencyNodes,
   searchWorkspace,
 } from './lenses.js';
 
@@ -320,6 +321,40 @@ describe('M5 lens projections', () => {
         .sort(),
     ).toEqual(['a', 'b']);
     expect(graph.edges.map((edge) => edge.id)).toEqual(['dep-a', 'dep-b']);
+    expect(graph.edges.every((edge) => edge.isHard === false)).toBe(true);
+  });
+
+  it('packs visible dependency hops into consecutive columns, waiting work first', () => {
+    const placed = placeDependencyNodes([
+      {
+        id: 'wait',
+        kind: 'COMMITMENT',
+        label: 'Waiting work',
+        unresolvedInDegree: 0,
+        layer: 0,
+        isHub: false,
+      },
+      {
+        id: 'mid',
+        kind: 'COMMITMENT',
+        label: 'Middle',
+        unresolvedInDegree: 1,
+        layer: 2,
+        isHub: false,
+      },
+      {
+        id: 'need',
+        kind: 'DECISION',
+        label: 'Prerequisite',
+        unresolvedInDegree: 4,
+        layer: 5,
+        isHub: true,
+      },
+    ]);
+    expect(placed.columns).toBe(3);
+    expect(placed.positions.get('wait')?.column).toBe(1);
+    expect(placed.positions.get('mid')?.column).toBe(2);
+    expect(placed.positions.get('need')?.column).toBe(3);
   });
 
   it('searches only local, explicit indexed fields', () => {

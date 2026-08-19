@@ -235,7 +235,7 @@ them.
 | `3` | **Products**     | Where does the change land? (Change load, not team capacity.)              |
 | `4` | **Themes**       | Which commitments share a direction?                                       |
 | `5` | **Attention**    | What needs a human look now? Grouped by reason, not by name.               |
-| `6` | **Dependencies** | What is waiting on what? Where are the hubs and cycles?                    |
+| `6` | **Dependencies** | What is waiting on what? Waiting work left, prerequisites further right.   |
 | `7` | **QBR**          | What happens if we accept this demand? Ideas → pipe → gate → containers.   |
 | `8` | **Timeline**     | How do footprints line up across quarters? (Not a Gantt chart.)            |
 | —   | **History**      | What changed, and close or reopen a quarter.                               |
@@ -249,6 +249,10 @@ change load answers “where does the change land”.
 
 **Timeline** draws one fragment per footprint. Fragments of the same commitment are one piece
 of work, not duplicates. There is no percent-complete and no critical path.
+
+**Dependencies** is a layered map, not a two-column list. Waiting work is on the left;
+prerequisites sit further right. Each column is one hop. Solid lines are hard dependencies;
+dashed lines are soft.
 
 **QBR** is Demand Flow, not another Portfolio map. Ideas stay in the lane, the pipe sizes
 and targets them, Commit Gate keeps them as scenario ghosts, and the containers show

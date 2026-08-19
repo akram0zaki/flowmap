@@ -180,6 +180,7 @@ export type DependencyEdge = {
   readonly targetId: EntityId;
   readonly type: string;
   readonly status: string;
+  readonly isHard: boolean;
 };
 export type DependencyGraph = {
   readonly nodes: readonly DependencyNode[];
@@ -231,6 +232,7 @@ export function buildDependencyGraph(state: WorkspaceState): DependencyGraph {
       targetId: dependency.target.id,
       type: dependency.type,
       status: dependency.status,
+      isHard: dependency.isHard,
     });
   }
   const inbound = new Map<EntityId, number>();
@@ -314,6 +316,32 @@ function layersFor(
     if (!changed) break;
   }
   return layer;
+}
+
+export type DependencyPlacement = {
+  readonly columns: number;
+  readonly positions: ReadonlyMap<EntityId, { readonly column: number; readonly row: number }>;
+};
+
+/**
+ * Pack visible nodes into consecutive columns. Hidden hops collapse so the
+ * default hub view is a chain, not a six-column wrapping gallery.
+ */
+export function placeDependencyNodes(nodes: readonly DependencyNode[]): DependencyPlacement {
+  const layers = [...new Set(nodes.map((node) => node.layer))].sort((a, b) => a - b);
+  const columnOf = new Map(layers.map((layer, index) => [layer, index + 1]));
+  const rowInColumn = new Map<number, number>();
+  const positions = new Map<EntityId, { column: number; row: number }>();
+  const sorted = [...nodes].sort(
+    (a, b) => a.layer - b.layer || a.label.localeCompare(b.label) || a.id.localeCompare(b.id),
+  );
+  for (const node of sorted) {
+    const column = columnOf.get(node.layer) ?? 1;
+    const row = (rowInColumn.get(column) ?? 0) + 1;
+    rowInColumn.set(column, row);
+    positions.set(node.id, { column, row });
+  }
+  return { columns: Math.max(1, layers.length), positions };
 }
 
 export type SearchResult = {

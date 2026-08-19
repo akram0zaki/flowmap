@@ -40,15 +40,16 @@ test('dependency and product lenses are reachable from their fixed keyboard labe
   await sample(page);
   await page.getByRole('button', { name: /6 Dependencies/ }).click();
   await expect(page.getByRole('heading', { name: 'Dependency map' })).toBeVisible();
+  await expect(page.getByText(/each column is one step along the chain/i)).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Waiting', exact: true })).toBeVisible();
+  await expect(page.locator('.fm-dependency-map__edges path')).not.toHaveCount(0);
   await expect(page.getByRole('table', { name: /Dependency table/ })).toBeVisible();
   await page.getByRole('button', { name: /3 Products/ }).click();
   await expect(page.getByRole('heading', { name: 'Products and services' })).toBeVisible();
   await axe(page, 'product lens');
 });
 
-test('QBR is Demand Flow with team-quarter containers, not the Portfolio map', async ({
-  page,
-}) => {
+test('QBR is Demand Flow with team-quarter containers, not the Portfolio map', async ({ page }) => {
   await sample(page);
   await page.getByRole('button', { name: /7 QBR/ }).click();
   await expect(page.getByRole('heading', { name: 'QBR' })).toBeVisible();
