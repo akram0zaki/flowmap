@@ -21,6 +21,8 @@ import type { RuleResult } from '@flowmap/rules';
 import {
   buildDependencyGraph,
   buildTimeline,
+  dependencyHubSeeds,
+  expandDependencyNeighbourhood,
   placeDependencyNodes,
   type TimelineGroupBy,
 } from '@flowmap/visual-model';
@@ -190,22 +192,23 @@ export function DependencyMapView({
   const graph = useMemo(() => buildDependencyGraph(state), [state]);
   const [expanded, setExpanded] = useState(false);
   const filteredNodes = useMemo(() => {
-    const shown = expanded
-      ? graph.nodes
-      : graph.nodes.filter(
-          (node) => node.isHub || node.unresolvedInDegree > 0 || node.cycleId !== undefined,
-        );
-    return shown.filter((node) =>
-      node.kind === 'COMMITMENT'
+    const visibleIds = expanded
+      ? new Set(graph.nodes.map((node) => node.id))
+      : expandDependencyNeighbourhood(graph, dependencyHubSeeds(graph), 1);
+    return graph.nodes.filter((node) => {
+      if (!visibleIds.has(node.id)) return false;
+      return node.kind === 'COMMITMENT'
         ? matchesCommitmentFilter(state, filter, node.id)
         : filter.text.trim().length === 0 ||
-          node.label.toLowerCase().includes(filter.text.trim().toLowerCase()),
-    );
-  }, [expanded, filter, graph.nodes, state]);
+            node.label.toLowerCase().includes(filter.text.trim().toLowerCase());
+    });
+  }, [expanded, filter, graph, state]);
   const layout = useMemo(() => placeDependencyNodes(filteredNodes), [filteredNodes]);
   const visibleEdges = useMemo(() => {
     const ids = new Set(filteredNodes.map((node) => node.id));
-    return graph.edges.filter((edge) => ids.has(edge.sourceId) && ids.has(edge.targetId));
+    return graph.edges.filter(
+      (edge) => ids.has(edge.sourceId) && ids.has(edge.targetId) && edge.status !== 'RESOLVED',
+    );
   }, [filteredNodes, graph.edges]);
   const label = new Map(graph.nodes.map((node) => [node.id, node.label]));
   const mapRef = useRef<HTMLDivElement>(null);
@@ -329,19 +332,16 @@ export function DependencyMapView({
               <path d="M 0 0 L 8 4 L 0 8 z" className="fm-deps__head" />
             </marker>
           </defs>
-          {lines.map((line) => {
-            const mid = Math.max(24, (line.x2 - line.x1) / 2);
-            return (
-              <path
-                key={line.id}
-                className="fm-deps__line"
-                data-hard={line.hard || undefined}
-                data-status={line.status}
-                d={`M ${line.x1} ${line.y1} C ${line.x1 + mid} ${line.y1}, ${line.x2 - mid} ${line.y2}, ${line.x2} ${line.y2}`}
-                markerEnd="url(#fm-dep-map-arrow)"
-              />
-            );
-          })}
+          {lines.map((line) => (
+            <path
+              key={line.id}
+              className="fm-deps__line"
+              data-hard={line.hard || undefined}
+              data-status={line.status}
+              d={dependencyCurve(line)}
+              markerEnd="url(#fm-dep-map-arrow)"
+            />
+          ))}
         </svg>
         {filteredNodes.map((node) => {
           const place = layout.positions.get(node.id);
@@ -401,6 +401,21 @@ function dependencyLayerLabel(index: number, columns: number): string {
   if (index === 0) return t('dependencyMap.layerWaiting');
   if (index === columns - 1) return t('dependencyMap.layerReady');
   return t('dependencyMap.layerHop', { step: index + 1 });
+}
+
+function dependencyCurve(line: {
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+}): string {
+  const dx = line.x2 - line.x1;
+  if (dx >= 16) {
+    const mid = Math.max(24, dx / 2);
+    return `M ${line.x1} ${line.y1} C ${line.x1 + mid} ${line.y1}, ${line.x2 - mid} ${line.y2}, ${line.x2} ${line.y2}`;
+  }
+  const lift = Math.min(56, Math.max(28, Math.abs(line.y2 - line.y1) / 2 + 24));
+  return `M ${line.x1} ${line.y1} C ${line.x1 + lift} ${line.y1 - lift}, ${line.x2 - lift} ${line.y2 - lift}, ${line.x2} ${line.y2}`;
 }
 
 export function ProductsView({

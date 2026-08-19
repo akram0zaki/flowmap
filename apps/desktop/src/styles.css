@@ -3269,11 +3269,12 @@ label {
 .fm-dependency-map {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(var(--fm-cols, 1), minmax(14rem, 1fr));
+  grid-template-columns: repeat(var(--fm-cols, 1), minmax(14rem, 16rem));
   grid-auto-rows: minmax(var(--hit-target-primary), auto);
   column-gap: var(--space-8);
   row-gap: var(--space-5);
-  min-width: 48rem;
+  width: 100%;
+  min-width: 0;
   padding: var(--space-7);
   overflow: auto;
   border: 1px solid var(--border);

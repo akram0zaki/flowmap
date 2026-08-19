@@ -324,6 +324,41 @@ export type DependencyPlacement = {
 };
 
 /**
+ * Spec 06 §6: default is hubs (and cycles), plus an N-hop neighbourhood so a
+ * card that says it has unresolved dependencies still has a line to them.
+ */
+export function expandDependencyNeighbourhood(
+  graph: DependencyGraph,
+  seeds: ReadonlySet<EntityId>,
+  hops: number,
+): ReadonlySet<EntityId> {
+  const include = new Set(seeds);
+  let frontier = [...seeds];
+  for (let hop = 0; hop < hops; hop += 1) {
+    const next: EntityId[] = [];
+    for (const id of frontier) {
+      for (const edge of graph.edges) {
+        const other =
+          edge.sourceId === id ? edge.targetId : edge.targetId === id ? edge.sourceId : null;
+        if (other === null || include.has(other)) continue;
+        include.add(other);
+        next.push(other);
+      }
+    }
+    frontier = next;
+  }
+  return include;
+}
+
+export function dependencyHubSeeds(graph: DependencyGraph): ReadonlySet<EntityId> {
+  const seeds = new Set(
+    graph.nodes.filter((node) => node.isHub || node.cycleId !== undefined).map((node) => node.id),
+  );
+  if (seeds.size > 0) return seeds;
+  return new Set(graph.nodes.filter((node) => node.unresolvedInDegree > 0).map((node) => node.id));
+}
+
+/**
  * Pack visible nodes into consecutive columns. Hidden hops collapse so the
  * default hub view is a chain, not a six-column wrapping gallery.
  */

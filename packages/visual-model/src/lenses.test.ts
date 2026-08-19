@@ -14,6 +14,8 @@ import {
   buildQbrLens,
   buildTeamsLens,
   buildTimeline,
+  dependencyHubSeeds,
+  expandDependencyNeighbourhood,
   placeDependencyNodes,
   searchWorkspace,
 } from './lenses.js';
@@ -355,6 +357,50 @@ describe('M5 lens projections', () => {
     expect(placed.positions.get('wait')?.column).toBe(1);
     expect(placed.positions.get('mid')?.column).toBe(2);
     expect(placed.positions.get('need')?.column).toBe(3);
+  });
+
+  it('includes one hop around hubs so unresolved counts have a visible line', () => {
+    const node = (
+      id: string,
+      layer: number,
+      extra: { isHub?: boolean; unresolvedInDegree?: number },
+    ) => ({
+      id,
+      kind: 'COMMITMENT' as const,
+      label: id,
+      layer,
+      isHub: extra.isHub ?? false,
+      unresolvedInDegree: extra.unresolvedInDegree ?? 0,
+    });
+    const edge = (id: string, sourceId: string, targetId: string) => ({
+      id,
+      sourceId,
+      targetId,
+      type: 'REQUIRES',
+      status: 'OPEN',
+      isHard: true,
+    });
+    const graph = {
+      nodes: [
+        node('hub', 1, { isHub: true, unresolvedInDegree: 3 }),
+        node('wait-a', 0, { unresolvedInDegree: 0 }),
+        node('wait-b', 0, { unresolvedInDegree: 0 }),
+        node('wait-c', 0, { unresolvedInDegree: 0 }),
+      ],
+      edges: [
+        edge('e1', 'wait-a', 'hub'),
+        edge('e2', 'wait-b', 'hub'),
+        edge('e3', 'wait-c', 'hub'),
+      ],
+      cycles: [],
+    };
+    const seeds = dependencyHubSeeds(graph);
+    expect([...seeds]).toEqual(['hub']);
+    const around = expandDependencyNeighbourhood(graph, seeds, 1);
+    expect([...around].sort()).toEqual(['hub', 'wait-a', 'wait-b', 'wait-c']);
+    expect(
+      graph.edges.filter((item) => around.has(item.sourceId) && around.has(item.targetId)),
+    ).toHaveLength(3);
   });
 
   it('searches only local, explicit indexed fields', () => {
