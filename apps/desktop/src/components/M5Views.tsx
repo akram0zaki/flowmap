@@ -1,6 +1,14 @@
 /** M5 lenses: each visual has its sortable table companion in the same view. */
 
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import {
   openQuarterReview,
   proposeCarryOver,
@@ -10,7 +18,15 @@ import {
 } from '@flowmap/domain';
 import { allChangeLoads } from '@flowmap/rules';
 import type { RuleResult } from '@flowmap/rules';
-import { buildDependencyGraph, buildTimeline, type TimelineGroupBy } from '@flowmap/visual-model';
+import {
+  buildDependencyGraph,
+  buildTimeline,
+  dependencyHubSeeds,
+  expandDependencyNeighbourhood,
+  placeDependencyNodes,
+  type TimelineGroupBy,
+} from '@flowmap/visual-model';
+import { observeResize } from '../state/observe-resize.js';
 import type { FilterState } from '@flowmap/visual-model';
 import type { HorizonPreset } from '@flowmap/domain';
 
@@ -175,69 +191,184 @@ export function DependencyMapView({
 }) {
   const graph = useMemo(() => buildDependencyGraph(state), [state]);
   const [expanded, setExpanded] = useState(false);
-  const [positions, setPositions] = useState<
-    ReadonlyMap<string, { readonly column: number; readonly row: number }>
-  >(() => new Map());
-  useEffect(() => {
-    const worker = new Worker(new URL('../state/dependency-layout.worker.ts', import.meta.url), {
-      type: 'module',
+  const filteredNodes = useMemo(() => {
+    const visibleIds = expanded
+      ? new Set(graph.nodes.map((node) => node.id))
+      : expandDependencyNeighbourhood(graph, dependencyHubSeeds(graph), 1);
+    return graph.nodes.filter((node) => {
+      if (!visibleIds.has(node.id)) return false;
+      return node.kind === 'COMMITMENT'
+        ? matchesCommitmentFilter(state, filter, node.id)
+        : filter.text.trim().length === 0 ||
+            node.label.toLowerCase().includes(filter.text.trim().toLowerCase());
     });
-    worker.onmessage = (
-      event: MessageEvent<
-        readonly { readonly id: string; readonly column: number; readonly row: number }[]
-      >,
-    ) => {
-      setPositions(new Map(event.data.map((item) => [item.id, item])));
-    };
-    worker.postMessage({ nodes: graph.nodes.map((node) => node.id), edges: graph.edges });
-    return () => worker.terminate();
-  }, [graph]);
-  const shown = expanded
-    ? graph.nodes
-    : graph.nodes.filter(
-        (node) => node.isHub || node.unresolvedInDegree > 0 || node.cycleId !== undefined,
-      );
-  const filteredNodes = shown.filter((node) =>
-    node.kind === 'COMMITMENT'
-      ? matchesCommitmentFilter(state, filter, node.id)
-      : filter.text.trim().length === 0 ||
-        node.label.toLowerCase().includes(filter.text.trim().toLowerCase()),
-  );
-  const filteredNodeIds = new Set(filteredNodes.map((node) => node.id));
+  }, [expanded, filter, graph, state]);
+  const layout = useMemo(() => placeDependencyNodes(filteredNodes), [filteredNodes]);
+  const visibleEdges = useMemo(() => {
+    const ids = new Set(filteredNodes.map((node) => node.id));
+    return graph.edges.filter(
+      (edge) => ids.has(edge.sourceId) && ids.has(edge.targetId) && edge.status !== 'RESOLVED',
+    );
+  }, [filteredNodes, graph.edges]);
   const label = new Map(graph.nodes.map((node) => [node.id, node.label]));
+  const mapRef = useRef<HTMLDivElement>(null);
+  const edgesRef = useRef<SVGSVGElement>(null);
+  const [lines, setLines] = useState<
+    readonly {
+      readonly id: string;
+      readonly hard: boolean;
+      readonly status: string;
+      readonly x1: number;
+      readonly y1: number;
+      readonly x2: number;
+      readonly y2: number;
+    }[]
+  >([]);
+
+  const measure = useCallback(() => {
+    const root = mapRef.current;
+    if (!root) return setLines([]);
+    if (edgesRef.current) {
+      edgesRef.current.setAttribute('width', String(root.scrollWidth));
+      edgesRef.current.setAttribute('height', String(root.scrollHeight));
+    }
+    const origin = root.getBoundingClientRect();
+    const next: Array<{
+      readonly id: string;
+      readonly hard: boolean;
+      readonly status: string;
+      readonly x1: number;
+      readonly y1: number;
+      readonly x2: number;
+      readonly y2: number;
+    }> = [];
+    const escapeId = (value: string) =>
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(value) : value;
+    for (const edge of visibleEdges) {
+      const from = root.querySelector<HTMLElement>(`[data-node="${escapeId(edge.sourceId)}"]`);
+      const to = root.querySelector<HTMLElement>(`[data-node="${escapeId(edge.targetId)}"]`);
+      if (!from || !to) continue;
+      const a = from.getBoundingClientRect();
+      const b = to.getBoundingClientRect();
+      next.push({
+        id: edge.id,
+        hard: edge.isHard,
+        status: edge.status,
+        x1: a.right - origin.left + root.scrollLeft,
+        y1: a.top - origin.top + root.scrollTop + a.height / 2,
+        x2: b.left - origin.left + root.scrollLeft,
+        y2: b.top - origin.top + root.scrollTop + b.height / 2,
+      });
+    }
+    setLines((current) =>
+      current.length === next.length &&
+      current.every(
+        (line, index) =>
+          line.id === next[index]?.id &&
+          line.x1 === next[index]?.x1 &&
+          line.y1 === next[index]?.y1 &&
+          line.x2 === next[index]?.x2 &&
+          line.y2 === next[index]?.y2,
+      )
+        ? current
+        : next,
+    );
+  }, [visibleEdges]);
+
+  useLayoutEffect(measure, [measure, layout]);
+  useEffect(() => {
+    const root = mapRef.current;
+    if (!root) return undefined;
+    const unobserve = observeResize(root, measure);
+    root.addEventListener('scroll', measure);
+    window.addEventListener('resize', measure);
+    return () => {
+      unobserve();
+      root.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
+    };
+  }, [measure]);
+
   return (
     <section className="fm-m5" aria-labelledby="dependency-map-title">
       <header className="fm-m5__header">
         <div>
           <h2 id="dependency-map-title">{t('dependencyMap.title')}</h2>
           <p>{t('dependencyMap.description')}</p>
+          <p>{t('dependencyMap.hubMeaning')}</p>
         </div>
         <button type="button" className="fm-quiet" onClick={() => setExpanded((value) => !value)}>
           {t(expanded ? 'dependencyMap.showHubs' : 'dependencyMap.showAll')}
         </button>
       </header>
-      <div className="fm-dependency-map" role="list" aria-label={t('dependencyMap.title')}>
-        {filteredNodes.map((node) => (
-          <button
-            key={node.id}
-            type="button"
-            role="listitem"
-            className="fm-dependency-node"
-            data-hub={node.isHub || undefined}
-            data-cycle={node.cycleId !== undefined || undefined}
-            style={{
-              gridColumn: positions.get(node.id)?.column ?? node.layer + 1,
-              gridRow: positions.get(node.id)?.row,
-            }}
-            onClick={() => onOpen(node.id)}
+      <div
+        ref={mapRef}
+        className="fm-dependency-map"
+        role="grid"
+        aria-label={t('dependencyMap.title')}
+        style={{ '--fm-cols': layout.columns } as CSSProperties}
+      >
+        {Array.from({ length: layout.columns }, (_, index) => (
+          <div
+            key={`layer-${index + 1}`}
+            className="fm-dependency-map__layer"
+            role="columnheader"
+            style={{ gridColumn: index + 1, gridRow: 1 }}
           >
-            <strong>{node.label}</strong>
-            <span>{t(`dependencyMap.node.${node.kind}`)}</span>
-            {node.isHub && <b>{t('dependencyMap.hub')}</b>}
-            <em>{t('dependencyMap.unresolved', { count: node.unresolvedInDegree })}</em>
-            {node.cycleId !== undefined && <i>{t('dependencyMap.showCycle')}</i>}
-          </button>
+            {dependencyLayerLabel(index, layout.columns)}
+          </div>
         ))}
+        <svg ref={edgesRef} className="fm-dependency-map__edges" aria-hidden="true">
+          <title>{t('dependencyMap.edges')}</title>
+          <defs>
+            <marker
+              id="fm-dep-map-arrow"
+              viewBox="0 0 8 8"
+              refX="7"
+              refY="4"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto"
+            >
+              <path d="M 0 0 L 8 4 L 0 8 z" className="fm-deps__head" />
+            </marker>
+          </defs>
+          {lines.map((line) => (
+            <path
+              key={line.id}
+              className="fm-deps__line"
+              data-hard={line.hard || undefined}
+              data-status={line.status}
+              d={dependencyCurve(line)}
+              markerEnd="url(#fm-dep-map-arrow)"
+            />
+          ))}
+        </svg>
+        {filteredNodes.map((node) => {
+          const place = layout.positions.get(node.id);
+          return (
+            <button
+              key={node.id}
+              type="button"
+              className="fm-dependency-node"
+              role="gridcell"
+              data-node={node.id}
+              data-hub={node.isHub || undefined}
+              data-cycle={node.cycleId !== undefined || undefined}
+              style={{
+                gridColumn: place?.column ?? 1,
+                gridRow: (place?.row ?? 1) + 1,
+              }}
+              onClick={() => onOpen(node.id)}
+            >
+              <strong>{node.label}</strong>
+              <span>{t(`dependencyMap.node.${node.kind}`)}</span>
+              {node.isHub && <b>{t('dependencyMap.hub')}</b>}
+              <em>{t('dependencyMap.unresolved', { count: node.unresolvedInDegree })}</em>
+              {node.cycleId !== undefined && <i>{t('dependencyMap.showCycle')}</i>}
+            </button>
+          );
+        })}
       </div>
       <div className="fm-m5__table">
         <table>
@@ -251,23 +382,41 @@ export function DependencyMapView({
             </tr>
           </thead>
           <tbody>
-            {graph.edges
-              .filter(
-                (edge) => filteredNodeIds.has(edge.sourceId) && filteredNodeIds.has(edge.targetId),
-              )
-              .map((edge) => (
-                <tr key={edge.id}>
-                  <td>{label.get(edge.sourceId) ?? edge.sourceId}</td>
-                  <td>{t(`dependency.${edge.type}`)}</td>
-                  <td>{label.get(edge.targetId) ?? edge.targetId}</td>
-                  <td>{t(`dependencyStatus.${edge.status}`)}</td>
-                </tr>
-              ))}
+            {visibleEdges.map((edge) => (
+              <tr key={edge.id}>
+                <td>{label.get(edge.sourceId) ?? edge.sourceId}</td>
+                <td>{t(`dependency.${edge.type}`)}</td>
+                <td>{label.get(edge.targetId) ?? edge.targetId}</td>
+                <td>{t(`dependencyStatus.${edge.status}`)}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
     </section>
   );
+}
+
+function dependencyLayerLabel(index: number, columns: number): string {
+  if (columns <= 1) return t('dependencyMap.layerWaiting');
+  if (index === 0) return t('dependencyMap.layerWaiting');
+  if (index === columns - 1) return t('dependencyMap.layerReady');
+  return t('dependencyMap.layerHop', { step: index + 1 });
+}
+
+function dependencyCurve(line: {
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+}): string {
+  const dx = line.x2 - line.x1;
+  if (dx >= 16) {
+    const mid = Math.max(24, dx / 2);
+    return `M ${line.x1} ${line.y1} C ${line.x1 + mid} ${line.y1}, ${line.x2 - mid} ${line.y2}, ${line.x2} ${line.y2}`;
+  }
+  const lift = Math.min(56, Math.max(28, Math.abs(line.y2 - line.y1) / 2 + 24));
+  return `M ${line.x1} ${line.y1} C ${line.x1 + lift} ${line.y1 - lift}, ${line.x2 - lift} ${line.y2 - lift}, ${line.x2} ${line.y2}`;
 }
 
 export function ProductsView({

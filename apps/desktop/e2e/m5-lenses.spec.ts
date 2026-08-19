@@ -40,10 +40,53 @@ test('dependency and product lenses are reachable from their fixed keyboard labe
   await sample(page);
   await page.getByRole('button', { name: /6 Dependencies/ }).click();
   await expect(page.getByRole('heading', { name: 'Dependency map' })).toBeVisible();
+  await expect(page.getByText(/each column is one step along the chain/i)).toBeVisible();
+  await expect(page.getByText(/a hub is a commitment, decision, or team/i)).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Waiting', exact: true })).toBeVisible();
+  await expect(page.locator('.fm-dependency-map__edges path')).not.toHaveCount(0);
   await expect(page.getByRole('table', { name: /Dependency table/ })).toBeVisible();
   await page.getByRole('button', { name: /3 Products/ }).click();
   await expect(page.getByRole('heading', { name: 'Products and services' })).toBeVisible();
   await axe(page, 'product lens');
+});
+
+test('QBR is Demand Flow with team-quarter containers, not the Portfolio map', async ({ page }) => {
+  await sample(page);
+  await page.getByRole('button', { name: /7 QBR/ }).click();
+  await expect(page.getByRole('heading', { name: 'QBR' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Demand Flow' })).toBeVisible();
+  await expect(page.getByRole('grid', { name: 'Team-quarter containers' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'QBR team-quarter capacity' })).toBeVisible();
+  await expect(page.getByRole('grid', { name: /portfolio map/i })).toHaveCount(0);
+  await expect(page.getByLabel('QBR view')).toHaveCount(0);
+  await axe(page, 'qbr lens');
+});
+
+test('attention lens lists signals instead of the commitment map', async ({ page }) => {
+  await sample(page);
+  await page.getByRole('button', { name: /5 Attention/ }).click();
+  await expect(page.getByRole('heading', { name: 'Attention' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Attention signals' })).toBeVisible();
+  await expect(page.getByRole('grid', { name: /portfolio map/i })).toHaveCount(0);
+  await axe(page, 'attention lens');
+});
+
+test('teams lens shows horizon capacity instead of the commitment map', async ({ page }) => {
+  await sample(page);
+  await expect(page.getByRole('grid', { name: /portfolio map/i })).toBeVisible();
+  await page.getByRole('button', { name: /2 Teams/ }).click();
+  await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible();
+  await expect(page.getByText(/can we take this/i)).toBeVisible();
+  await expect(page.getByRole('grid', { name: 'Team capacity across the horizon' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Team-quarter capacity' })).toBeVisible();
+  await expect(page.getByRole('grid', { name: /portfolio map/i })).toHaveCount(0);
+  await axe(page, 'teams lens');
+
+  await page
+    .getByRole('button', { name: /Open on the Portfolio map/ })
+    .first()
+    .click();
+  await expect(page.getByRole('grid', { name: /portfolio map/i })).toBeVisible();
 });
 
 test('themes retain a precise table companion', async ({ page }) => {

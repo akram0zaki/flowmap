@@ -74,7 +74,8 @@ import { CaptureBar } from '../components/CaptureBar.jsx';
 import { Radar } from '../components/Radar.jsx';
 import { RuleSettings } from '../components/RuleSettings.jsx';
 import { ScenarioDock } from '../components/ScenarioDock.jsx';
-import { DemandFlow } from '../components/DemandFlow.jsx';
+import { QbrView } from '../components/QbrView.jsx';
+import { AttentionView } from '../components/AttentionView.jsx';
 import { CommandPalette } from '../components/CommandPalette.jsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx';
 import { WorkspaceSwitcher } from '../components/WorkspaceSwitcher.jsx';
@@ -96,6 +97,7 @@ import {
   ThemesView,
   TimelineView,
 } from '../components/M5Views.jsx';
+import { TeamsView } from '../components/TeamsView.jsx';
 import { useSignals } from '../state/use-signals.js';
 import { notificationMessages } from '../state/notifications.js';
 import type { VesselBlock } from '../components/CapacityVessel.jsx';
@@ -196,7 +198,6 @@ export function App() {
    */
   const [ruleSettings, setRuleSettings] = useState<Settings>(NO_RULE_SETTINGS);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
-  const [showDemandFlow, setShowDemandFlow] = useState(false);
   const [activeLens, setActiveLens] = useState<ActiveLens>('PORTFOLIO');
   const [showPalette, setShowPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -346,7 +347,7 @@ export function App() {
             ...(selectedScenarioId !== null ? { scenario: true } : {}),
           })
         : null,
-    [viewState],
+    [viewState, selectedScenarioId],
   );
 
   const events = useWorkspace((s) => s.events);
@@ -1338,14 +1339,6 @@ export function App() {
           onToggleHide={() => setFilter((f) => ({ ...f, hideFiltered: !f.hideFiltered }))}
           onClearFocus={() => setFocusedCommitmentId(null)}
         />
-        <button
-          type="button"
-          className="fm-quiet"
-          aria-pressed={showDemandFlow}
-          onClick={() => setShowDemandFlow((visible) => !visible)}
-        >
-          {t(showDemandFlow ? 'qbr.close' : 'qbr.open')}
-        </button>
       </div>
 
       <ScenarioDock
@@ -1412,42 +1405,59 @@ export function App() {
         />
       )}
 
-      {showDemandFlow && board && (
-        <DemandFlow
-          ideas={board.ideas.map((idea) => ({ id: idea.commitmentId, name: idea.name }))}
-          teams={teams.map((team) => ({ id: team.id, name: team.name }))}
-          quarters={board.quarters}
-          currentQuarter={state.workspace.currentQuarterId}
+      {activeLens === 'QBR' && (
+        <QbrView
+          state={viewState ?? state!}
+          filter={filter}
           scenarioId={selectedScenarioId}
           defaultUnits={defaultDropUnits(state.workspace.settings.capacity.sizeMapping)}
-          headroomFor={(teamId, quarterId) =>
-            findCell(board!, teamId, quarterId as QuarterId)?.summary?.headroom ?? 0
-          }
           onPlace={(input) => {
             if (selectedScenarioId !== null) {
               void placeScenarioIdea({ scenarioId: selectedScenarioId, ...input });
             }
           }}
+          onOpen={setFocusedCommitmentId}
         />
       )}
 
-      {!showDemandFlow && activeLens === 'TIMELINE' && (
+      {activeLens === 'TIMELINE' && (
         <TimelineView state={viewState ?? state!} onOpen={setFocusedCommitmentId} filter={filter} />
       )}
-      {!showDemandFlow && activeLens === 'DEPENDENCIES' && (
+      {activeLens === 'DEPENDENCIES' && (
         <DependencyMapView
           state={viewState ?? state!}
           onOpen={setFocusedCommitmentId}
           filter={filter}
         />
       )}
-      {!showDemandFlow && activeLens === 'PRODUCTS' && (
+      {activeLens === 'PRODUCTS' && (
         <ProductsView state={viewState ?? state!} onOpen={setFocusedCommitmentId} filter={filter} />
       )}
-      {!showDemandFlow && activeLens === 'THEMES' && (
+      {activeLens === 'THEMES' && (
         <ThemesView state={viewState ?? state!} onOpen={setFocusedCommitmentId} filter={filter} />
       )}
-      {!showDemandFlow && activeLens === 'HISTORY' && (
+      {activeLens === 'TEAMS' && (
+        <TeamsView
+          state={viewState ?? state!}
+          filter={filter}
+          onOpenCell={(teamId, quarterId) => {
+            setReveal({ teamId, quarterId });
+            setActiveLens('PORTFOLIO');
+          }}
+        />
+      )}
+      {activeLens === 'ATTENTION' && (
+        <AttentionView
+          signals={signals.visible}
+          today={signals.today}
+          ownedRefs={signals.ownedRefs}
+          filter={filter}
+          onOpen={(signal) =>
+            actOnSignal(signal, { kind: 'OPEN', ref: signal.entityRef, labelKey: 'open' })
+          }
+        />
+      )}
+      {activeLens === 'HISTORY' && (
         <HistoryView
           state={state}
           events={events}
@@ -1460,239 +1470,234 @@ export function App() {
         />
       )}
 
-      {!showDemandFlow &&
-        !['TIMELINE', 'DEPENDENCIES', 'PRODUCTS', 'THEMES', 'HISTORY'].includes(activeLens) && (
-          <div className="fm-workspace">
-            <IdeasLane
-              ideas={board.ideas}
-              readiness={readiness}
-              refinementReserves={refinementReserves}
-              onLinkRefinement={(reserveId, commitmentId) =>
-                void linkIdeaToRefinement(reserveId, commitmentId)
+      {activeLens === 'PORTFOLIO' && (
+        <div className="fm-workspace">
+          <IdeasLane
+            ideas={board.ideas}
+            readiness={readiness}
+            refinementReserves={refinementReserves}
+            onLinkRefinement={(reserveId, commitmentId) =>
+              void linkIdeaToRefinement(reserveId, commitmentId)
+            }
+            onUnlinkRefinement={(reserveId, commitmentId) =>
+              void unlinkIdeaFromRefinement(reserveId, commitmentId)
+            }
+            selectedCommitmentId={focusedCommitmentId}
+            draggingCommitmentId={placement?.payload.commitmentId ?? null}
+            dropState={
+              placement?.target?.kind === 'RAIL'
+                ? previewRemoval(placement.payload).allowed
+                  ? 'ok'
+                  : 'no'
+                : null
+            }
+            dropNote={
+              placement?.target?.kind === 'RAIL'
+                ? describeDrag(placement.payload, placement.target)
+                : null
+            }
+            onSelect={(commitmentId) =>
+              setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId))
+            }
+            onPickUp={pickUpIdea}
+            collapsed={railCollapsed}
+            onToggleCollapsed={() => setRailCollapsed((was) => !was)}
+            revealCommitmentId={
+              reveal?.commitmentId !== undefined &&
+              state?.commitments.get(reveal.commitmentId)?.lifecycle === 'IDEA'
+                ? reveal.commitmentId
+                : null
+            }
+          />
+
+          <PortfolioMap
+            board={board}
+            level={level}
+            focus={focus}
+            filter={filter}
+            selectedFootprintId={selectedFootprintId}
+            vesselBlocksFor={vesselBlocksFor}
+            onSelectBlock={(footprintId, commitmentId) => {
+              select(footprintId);
+              setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId));
+            }}
+            // Selecting a cell used to toggle filters, which quietly stacked up
+            // until the board was unreadable. Until the detail panel exists
+            // (M2-COM-2), selecting a cell does nothing but move the cursor.
+            onSelectCell={() => undefined}
+            onFilterTeam={(teamId) => setFilter((f) => toggleFilterValue(f, 'teams', teamId))}
+            onFilterQuarter={(quarterId) =>
+              setFilter((f) => toggleFilterValue(f, 'quarters', quarterId))
+            }
+            onAnnounce={announce}
+            dragging={placement?.payload ?? null}
+            dragTarget={placement?.target ?? null}
+            onPickUpBlock={pickUpBlock}
+            onRemoveBlock={removeBlock}
+            onResizeBlock={(footprintId, teamId, quarterId, units) =>
+              commitResize(footprintId, teamId, quarterId, clampUnits(units))
+            }
+            onResizeStart={(input, event) => beginResize(input, event)}
+            resizing={
+              resizing ? { footprintId: resizing.footprintId, units: resizing.units } : null
+            }
+            onAimDrag={(teamId, quarterId) => aim({ kind: 'CELL', teamId, quarterId })}
+            onLinkFrom={linkFrom}
+            scale={scale}
+            onWheelZoom={onWheelZoom}
+            onDropHere={drop}
+            dependencyEdges={dependencyEdges}
+            onMoveRow={(teamId, direction) => void moveTeamRow(teamId, direction)}
+            ideaNames={ideaNames}
+            reveal={reveal}
+          />
+
+          {showRadar && (
+            <Radar
+              signals={signals.visible}
+              allSignals={signals.all}
+              dispositions={signals.dispositions}
+              ownedRefs={signals.ownedRefs}
+              today={signals.today}
+              mode={radarMode}
+              onModeChange={setRadarMode}
+              onAct={actOnSignal}
+              onReview={(signal) =>
+                void reviewSignal({
+                  signalKey: signal.signalKey,
+                  atFingerprint: signal.conditionFingerprint,
+                  atSeverity: signal.severity,
+                })
               }
-              onUnlinkRefinement={(reserveId, commitmentId) =>
-                void unlinkIdeaFromRefinement(reserveId, commitmentId)
+              onSnooze={(signal, until) =>
+                void snoozeSignal({
+                  signalKey: signal.signalKey,
+                  atFingerprint: signal.conditionFingerprint,
+                  atSeverity: signal.severity,
+                  snoozeUntil: until,
+                })
               }
-              selectedCommitmentId={focusedCommitmentId}
-              draggingCommitmentId={placement?.payload.commitmentId ?? null}
-              dropState={
-                placement?.target?.kind === 'RAIL'
-                  ? previewRemoval(placement.payload).allowed
-                    ? 'ok'
-                    : 'no'
-                  : null
-              }
-              dropNote={
-                placement?.target?.kind === 'RAIL'
-                  ? describeDrag(placement.payload, placement.target)
-                  : null
-              }
-              onSelect={(commitmentId) =>
-                setFocusedCommitmentId((current) =>
-                  current === commitmentId ? null : commitmentId,
-                )
-              }
-              onPickUp={pickUpIdea}
-              collapsed={railCollapsed}
-              onToggleCollapsed={() => setRailCollapsed((was) => !was)}
-              revealCommitmentId={
-                reveal?.commitmentId !== undefined &&
-                state?.commitments.get(reveal.commitmentId)?.lifecycle === 'IDEA'
-                  ? reveal.commitmentId
-                  : null
-              }
+              onClear={(signal) => void clearSignal(signal.signalKey)}
+              onClose={() => setShowRadar(false)}
             />
+          )}
 
-            <PortfolioMap
-              board={board}
-              level={level}
-              focus={focus}
-              filter={filter}
-              selectedFootprintId={selectedFootprintId}
-              vesselBlocksFor={vesselBlocksFor}
-              onSelectBlock={(footprintId, commitmentId) => {
-                select(footprintId);
-                setFocusedCommitmentId((current) =>
-                  current === commitmentId ? null : commitmentId,
-                );
-              }}
-              // Selecting a cell used to toggle filters, which quietly stacked up
-              // until the board was unreadable. Until the detail panel exists
-              // (M2-COM-2), selecting a cell does nothing but move the cursor.
-              onSelectCell={() => undefined}
-              onFilterTeam={(teamId) => setFilter((f) => toggleFilterValue(f, 'teams', teamId))}
-              onFilterQuarter={(quarterId) =>
-                setFilter((f) => toggleFilterValue(f, 'quarters', quarterId))
-              }
-              onAnnounce={announce}
-              dragging={placement?.payload ?? null}
-              dragTarget={placement?.target ?? null}
-              onPickUpBlock={pickUpBlock}
-              onRemoveBlock={removeBlock}
-              onResizeBlock={(footprintId, teamId, quarterId, units) =>
-                commitResize(footprintId, teamId, quarterId, clampUnits(units))
-              }
-              onResizeStart={(input, event) => beginResize(input, event)}
-              resizing={
-                resizing ? { footprintId: resizing.footprintId, units: resizing.units } : null
-              }
-              onAimDrag={(teamId, quarterId) => aim({ kind: 'CELL', teamId, quarterId })}
-              onLinkFrom={linkFrom}
-              scale={scale}
-              onWheelZoom={onWheelZoom}
-              onDropHere={drop}
-              dependencyEdges={dependencyEdges}
-              onMoveRow={(teamId, direction) => void moveTeamRow(teamId, direction)}
-              ideaNames={ideaNames}
-              reveal={reveal}
+          {showRuleSettings && (
+            <RuleSettings
+              settings={ruleSettings}
+              counts={countByRule(signals.all)}
+              onChange={setRuleSettings}
+              onClose={() => setShowRuleSettings(false)}
             />
+          )}
 
-            {showRadar && (
-              <Radar
-                signals={signals.visible}
-                allSignals={signals.all}
-                dispositions={signals.dispositions}
-                ownedRefs={signals.ownedRefs}
-                today={signals.today}
-                mode={radarMode}
-                onModeChange={setRadarMode}
-                onAct={actOnSignal}
-                onReview={(signal) =>
-                  void reviewSignal({
-                    signalKey: signal.signalKey,
-                    atFingerprint: signal.conditionFingerprint,
-                    atSeverity: signal.severity,
-                  })
-                }
-                onSnooze={(signal, until) =>
-                  void snoozeSignal({
-                    signalKey: signal.signalKey,
-                    atFingerprint: signal.conditionFingerprint,
-                    atSeverity: signal.severity,
-                    snoozeUntil: until,
-                  })
-                }
-                onClear={(signal) => void clearSignal(signal.signalKey)}
-                onClose={() => setShowRadar(false)}
-              />
-            )}
-
-            {showRuleSettings && (
-              <RuleSettings
-                settings={ruleSettings}
-                counts={countByRule(signals.all)}
-                onChange={setRuleSettings}
-                onClose={() => setShowRuleSettings(false)}
-              />
-            )}
-
-            {/* Inside the workspace row, not floating over it: the board narrows
+          {/* Inside the workspace row, not floating over it: the board narrows
             rather than being hidden. Editing a field and watching the figure
             move is the point, and a panel covering the board defeats it. */}
-            {panelCommitment && state && !presentationMode && (
-              <DetailPanel
-                commitment={panelCommitment}
-                health={signals.health.get(panelCommitment.id) ?? 'OK'}
-                healthSignals={signals.all.filter(
-                  (signal) =>
-                    signal.surfaces.includes('HEALTH') &&
-                    signal.entityRef.kind === 'COMMITMENT' &&
-                    signal.entityRef.id === panelCommitment.id,
-                )}
-                teams={teams}
-                products={[...(state.products?.values() ?? [])]}
-                people={[...(state.people?.values() ?? [])]}
-                footprints={panelFootprints}
-                quarters={board.quarters}
-                currentQuarterId={state.workspace.currentQuarterId}
-                impacts={panelRelations.impacts}
-                valueDrivers={state.workspace.settings.valueDrivers}
-                themes={panelThemes.all}
-                commitmentThemeIds={panelThemes.selected}
-                milestones={panelRelations.milestones}
-                links={panelRelations.links}
-                dependencies={panelRelations.dependencies}
-                nameOfTarget={nameOfTarget}
-                onChange={(patch) => void editCommitment(panelCommitment.id, patch)}
-                onSetImpact={(productServiceId, type) =>
-                  void relate('SetProductImpact', (rs, cmd, ctx) =>
-                    setProductImpact(
-                      rs,
-                      { commitmentId: panelCommitment.id, productServiceId, type },
-                      cmd,
-                      ctx,
-                    ),
-                  )
-                }
-                onRemoveImpact={(impactId) =>
-                  void relate('RemoveProductImpact', (rs, cmd, ctx) =>
-                    removeProductImpact(rs, { impactId }, cmd, ctx),
-                  )
-                }
-                onAddMilestone={(name) =>
-                  void relate('AddMilestone', (rs, cmd, ctx) =>
-                    addMilestone(rs, { commitmentId: panelCommitment.id, name }, cmd, ctx),
-                  )
-                }
-                onRemoveMilestone={(milestoneId) =>
-                  void relate('RemoveMilestone', (rs, cmd, ctx) =>
-                    removeMilestone(rs, { milestoneId }, cmd, ctx),
-                  )
-                }
-                onAddLink={(type, url, label) =>
-                  void relate('AddExternalLink', (rs, cmd, ctx) =>
-                    addExternalLink(
-                      rs,
-                      {
-                        commitmentId: panelCommitment.id,
-                        type,
-                        url,
-                        ...(label ? { label } : {}),
-                      },
-                      cmd,
-                      ctx,
-                    ),
-                  )
-                }
-                onRemoveLink={(linkId) =>
-                  void relate('RemoveExternalLink', (rs, cmd, ctx) =>
-                    removeExternalLink(rs, { linkId }, cmd, ctx),
-                  )
-                }
-                onSetDependencyType={(dependencyId, type) =>
-                  void relate('UpdateDependency', (rs, cmd, ctx) =>
-                    updateDependency(rs, { dependencyId, type }, cmd, ctx),
-                  )
-                }
-                onRemoveDependency={(dependencyId) =>
-                  void relate('RemoveDependency', (rs, cmd, ctx) =>
-                    removeDependency(rs, { dependencyId }, cmd, ctx),
-                  )
-                }
-                onSetThemes={(themeIds) => void setThemes(panelCommitment.id, themeIds)}
-                onCreateTheme={(name) =>
-                  void relate('CreateTheme', (rs, cmd, ctx) => createTheme(rs, { name }, cmd, ctx))
-                }
-                onSplit={(footprintId, toQuarterId, units) =>
-                  void splitFootprint(footprintId, toQuarterId, units)
-                }
-                onOpenLink={(url) => void openLink(url)}
-                onSetRecurrence={(recurrence) => void setRecurrence(panelCommitment.id, recurrence)}
-                onRenew={() => void renewCommitment(panelCommitment.id)}
-                gate={
-                  panelGate
-                    ? {
-                        ...panelGate,
-                        onCommit: () => void passGate(panelCommitment.id),
-                      }
-                    : null
-                }
-                onClose={() => setFocusedCommitmentId(null)}
-              />
-            )}
-            <ZoomDock level={level} scale={scale} onLevel={setLevelState} onZoomBy={nudgeZoom} />
-          </div>
-        )}
+          {panelCommitment && state && !presentationMode && (
+            <DetailPanel
+              commitment={panelCommitment}
+              health={signals.health.get(panelCommitment.id) ?? 'OK'}
+              healthSignals={signals.all.filter(
+                (signal) =>
+                  signal.surfaces.includes('HEALTH') &&
+                  signal.entityRef.kind === 'COMMITMENT' &&
+                  signal.entityRef.id === panelCommitment.id,
+              )}
+              teams={teams}
+              products={[...(state.products?.values() ?? [])]}
+              people={[...(state.people?.values() ?? [])]}
+              footprints={panelFootprints}
+              quarters={board.quarters}
+              currentQuarterId={state.workspace.currentQuarterId}
+              impacts={panelRelations.impacts}
+              valueDrivers={state.workspace.settings.valueDrivers}
+              themes={panelThemes.all}
+              commitmentThemeIds={panelThemes.selected}
+              milestones={panelRelations.milestones}
+              links={panelRelations.links}
+              dependencies={panelRelations.dependencies}
+              nameOfTarget={nameOfTarget}
+              onChange={(patch) => void editCommitment(panelCommitment.id, patch)}
+              onSetImpact={(productServiceId, type) =>
+                void relate('SetProductImpact', (rs, cmd, ctx) =>
+                  setProductImpact(
+                    rs,
+                    { commitmentId: panelCommitment.id, productServiceId, type },
+                    cmd,
+                    ctx,
+                  ),
+                )
+              }
+              onRemoveImpact={(impactId) =>
+                void relate('RemoveProductImpact', (rs, cmd, ctx) =>
+                  removeProductImpact(rs, { impactId }, cmd, ctx),
+                )
+              }
+              onAddMilestone={(name) =>
+                void relate('AddMilestone', (rs, cmd, ctx) =>
+                  addMilestone(rs, { commitmentId: panelCommitment.id, name }, cmd, ctx),
+                )
+              }
+              onRemoveMilestone={(milestoneId) =>
+                void relate('RemoveMilestone', (rs, cmd, ctx) =>
+                  removeMilestone(rs, { milestoneId }, cmd, ctx),
+                )
+              }
+              onAddLink={(type, url, label) =>
+                void relate('AddExternalLink', (rs, cmd, ctx) =>
+                  addExternalLink(
+                    rs,
+                    {
+                      commitmentId: panelCommitment.id,
+                      type,
+                      url,
+                      ...(label ? { label } : {}),
+                    },
+                    cmd,
+                    ctx,
+                  ),
+                )
+              }
+              onRemoveLink={(linkId) =>
+                void relate('RemoveExternalLink', (rs, cmd, ctx) =>
+                  removeExternalLink(rs, { linkId }, cmd, ctx),
+                )
+              }
+              onSetDependencyType={(dependencyId, type) =>
+                void relate('UpdateDependency', (rs, cmd, ctx) =>
+                  updateDependency(rs, { dependencyId, type }, cmd, ctx),
+                )
+              }
+              onRemoveDependency={(dependencyId) =>
+                void relate('RemoveDependency', (rs, cmd, ctx) =>
+                  removeDependency(rs, { dependencyId }, cmd, ctx),
+                )
+              }
+              onSetThemes={(themeIds) => void setThemes(panelCommitment.id, themeIds)}
+              onCreateTheme={(name) =>
+                void relate('CreateTheme', (rs, cmd, ctx) => createTheme(rs, { name }, cmd, ctx))
+              }
+              onSplit={(footprintId, toQuarterId, units) =>
+                void splitFootprint(footprintId, toQuarterId, units)
+              }
+              onOpenLink={(url) => void openLink(url)}
+              onSetRecurrence={(recurrence) => void setRecurrence(panelCommitment.id, recurrence)}
+              onRenew={() => void renewCommitment(panelCommitment.id)}
+              gate={
+                panelGate
+                  ? {
+                      ...panelGate,
+                      onCommit: () => void passGate(panelCommitment.id),
+                    }
+                  : null
+              }
+              onClose={() => setFocusedCommitmentId(null)}
+            />
+          )}
+          <ZoomDock level={level} scale={scale} onLevel={setLevelState} onZoomBy={nudgeZoom} />
+        </div>
+      )}
 
       {/* The piece that follows the cursor. Small and quiet — the answer is on
           the board, not under the pointer. Positioned by `usePlacement` writing

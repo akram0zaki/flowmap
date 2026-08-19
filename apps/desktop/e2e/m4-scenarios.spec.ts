@@ -34,7 +34,7 @@ test('a QBR placement stays a private scenario ghost until its explicit apply', 
   await newScenario.press('Enter');
   await expect(page.getByRole('region', { name: 'Scenario workspace' })).toContainText('Draft');
 
-  await page.getByRole('button', { name: 'Open Demand Flow' }).click();
+  await page.getByRole('button', { name: /7 QBR/ }).click();
   const ideas = page.getByRole('listbox', { name: 'Ideas and demand' });
   await ideas.focus();
   await ideas.press('m');
@@ -44,7 +44,7 @@ test('a QBR placement stays a private scenario ghost until its explicit apply', 
   await ideas.press('Enter');
 
   const dock = page.getByRole('region', { name: 'Scenario workspace' });
-  await expect(dock).toContainText('3 planning changes');
+  await expect(dock).toContainText('2 planning changes');
   await expect(dock.getByRole('region', { name: 'Scenario change list' })).not.toContainText(
     'No management-level changes yet',
   );

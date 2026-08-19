@@ -8,7 +8,17 @@ import {
   DEFAULT_VALUE_DRIVERS,
 } from '@flowmap/domain';
 
-import { buildDependencyGraph, buildTimeline, searchWorkspace } from './lenses.js';
+import { buildBoard } from './layout.js';
+import {
+  buildDependencyGraph,
+  buildQbrLens,
+  buildTeamsLens,
+  buildTimeline,
+  dependencyHubSeeds,
+  expandDependencyNeighbourhood,
+  placeDependencyNodes,
+  searchWorkspace,
+} from './lenses.js';
 
 const now = '2026-08-15T09:00:00Z';
 const env = (id: string) => ({
@@ -155,6 +165,143 @@ function state(): WorkspaceState {
   };
 }
 
+function teamsState(): WorkspaceState {
+  const base = state();
+  return {
+    ...base,
+    teams: new Map([
+      [
+        'payments',
+        {
+          ...env('payments'),
+          name: 'Payments',
+          defaultQuarterCapacity: 100,
+          displayOrder: 0,
+          active: true,
+        },
+      ],
+      [
+        'platform',
+        {
+          ...env('platform'),
+          name: 'Platform',
+          defaultQuarterCapacity: 100,
+          displayOrder: 1,
+          active: true,
+        },
+      ],
+    ]),
+    teamQuarters: new Map([
+      [
+        'tq-pay-q3',
+        {
+          ...env('tq-pay-q3'),
+          teamId: 'payments',
+          quarterId: '2026-Q3',
+          capacityBaseline: 80,
+          capacityAdjustment: 0,
+          reserves: [],
+        },
+      ],
+      [
+        'tq-pay-q4',
+        {
+          ...env('tq-pay-q4'),
+          teamId: 'payments',
+          quarterId: '2026-Q4',
+          capacityBaseline: 80,
+          capacityAdjustment: 0,
+          reserves: [],
+        },
+      ],
+      [
+        'tq-plat-q3',
+        {
+          ...env('tq-plat-q3'),
+          teamId: 'platform',
+          quarterId: '2026-Q3',
+          capacityBaseline: 80,
+          capacityAdjustment: 0,
+          reserves: [],
+        },
+      ],
+    ]),
+    commitments: new Map([
+      [
+        'a',
+        {
+          ...env('a'),
+          name: 'Payment migration',
+          lifecycle: 'COMMITTED',
+          class: 'STRATEGIC',
+          importance: 'HIGH',
+          valueDrivers: [],
+        },
+      ],
+      [
+        'b',
+        {
+          ...env('b'),
+          name: 'Security review',
+          lifecycle: 'IN_DELIVERY',
+          class: 'MANDATORY',
+          importance: 'HIGH',
+          valueDrivers: [],
+        },
+      ],
+      [
+        'c',
+        {
+          ...env('c'),
+          name: 'Platform upgrade',
+          lifecycle: 'COMMITTED',
+          class: 'OPERATIONAL',
+          importance: 'MEDIUM',
+          valueDrivers: [],
+        },
+      ],
+    ]),
+    footprints: new Map([
+      [
+        'fp-a',
+        {
+          ...env('fp-a'),
+          commitmentId: 'a',
+          teamId: 'payments',
+          quarterId: '2026-Q3',
+          units: 60,
+          unitsSource: 'EXPLICIT',
+          isPrimary: true,
+        },
+      ],
+      [
+        'fp-b',
+        {
+          ...env('fp-b'),
+          commitmentId: 'b',
+          teamId: 'payments',
+          quarterId: '2026-Q4',
+          units: 96,
+          unitsSource: 'EXPLICIT',
+          isPrimary: true,
+        },
+      ],
+      [
+        'fp-c',
+        {
+          ...env('fp-c'),
+          commitmentId: 'c',
+          teamId: 'platform',
+          quarterId: '2026-Q3',
+          units: 40,
+          unitsSource: 'EXPLICIT',
+          isPrimary: true,
+        },
+      ],
+    ]),
+  };
+}
+
 describe('M5 lens projections', () => {
   it('renders one timeline fragment per footprint, preserving carry-over and milestone meaning', () => {
     const model = buildTimeline(state(), 'QBR', 'TEAM');
@@ -176,10 +323,211 @@ describe('M5 lens projections', () => {
         .sort(),
     ).toEqual(['a', 'b']);
     expect(graph.edges.map((edge) => edge.id)).toEqual(['dep-a', 'dep-b']);
+    expect(graph.edges.every((edge) => edge.isHard === false)).toBe(true);
+  });
+
+  it('packs visible dependency hops into consecutive columns, waiting work first', () => {
+    const placed = placeDependencyNodes([
+      {
+        id: 'wait',
+        kind: 'COMMITMENT',
+        label: 'Waiting work',
+        unresolvedInDegree: 0,
+        layer: 0,
+        isHub: false,
+      },
+      {
+        id: 'mid',
+        kind: 'COMMITMENT',
+        label: 'Middle',
+        unresolvedInDegree: 1,
+        layer: 2,
+        isHub: false,
+      },
+      {
+        id: 'need',
+        kind: 'DECISION',
+        label: 'Prerequisite',
+        unresolvedInDegree: 4,
+        layer: 5,
+        isHub: true,
+      },
+    ]);
+    expect(placed.columns).toBe(3);
+    expect(placed.positions.get('wait')?.column).toBe(1);
+    expect(placed.positions.get('mid')?.column).toBe(2);
+    expect(placed.positions.get('need')?.column).toBe(3);
+  });
+
+  it('includes one hop around hubs so unresolved counts have a visible line', () => {
+    const node = (
+      id: string,
+      layer: number,
+      extra: { isHub?: boolean; unresolvedInDegree?: number },
+    ) => ({
+      id,
+      kind: 'COMMITMENT' as const,
+      label: id,
+      layer,
+      isHub: extra.isHub ?? false,
+      unresolvedInDegree: extra.unresolvedInDegree ?? 0,
+    });
+    const edge = (id: string, sourceId: string, targetId: string) => ({
+      id,
+      sourceId,
+      targetId,
+      type: 'REQUIRES',
+      status: 'OPEN',
+      isHard: true,
+    });
+    const graph = {
+      nodes: [
+        node('hub', 1, { isHub: true, unresolvedInDegree: 3 }),
+        node('wait-a', 0, { unresolvedInDegree: 0 }),
+        node('wait-b', 0, { unresolvedInDegree: 0 }),
+        node('wait-c', 0, { unresolvedInDegree: 0 }),
+      ],
+      edges: [
+        edge('e1', 'wait-a', 'hub'),
+        edge('e2', 'wait-b', 'hub'),
+        edge('e3', 'wait-c', 'hub'),
+      ],
+      cycles: [],
+    };
+    const seeds = dependencyHubSeeds(graph);
+    expect([...seeds]).toEqual(['hub']);
+    const around = expandDependencyNeighbourhood(graph, seeds, 1);
+    expect([...around].sort()).toEqual(['hub', 'wait-a', 'wait-b', 'wait-c']);
+    expect(
+      graph.edges.filter((item) => around.has(item.sourceId) && around.has(item.targetId)),
+    ).toHaveLength(3);
   });
 
   it('searches only local, explicit indexed fields', () => {
     expect(searchWorkspace(state(), 'payment').map((item) => item.id)).toEqual(['a', 'team']);
     expect(searchWorkspace(state(), 'not a request')).toEqual([]);
+  });
+});
+
+describe('Teams lens', () => {
+  it('uses the spec 02 §3 aggregates from the same cell summaries as the board', () => {
+    const fixture = teamsState();
+    const model = buildTeamsLens(fixture, 'QBR');
+    const board = buildBoard({
+      workspace: fixture.workspace,
+      teams: fixture.teams,
+      teamQuarters: fixture.teamQuarters,
+      commitments: fixture.commitments,
+      footprints: fixture.footprints,
+      horizon: 'QBR',
+    });
+
+    expect(model.quarters).toEqual(['2026-Q3', '2026-Q4', '2027-Q1']);
+    expect(model.rows.map((row) => row.teamName)).toEqual(['Payments', 'Platform']);
+
+    const payments = model.rows[0]!;
+    expect(payments.load).toBe(156);
+    expect(payments.capacity).toBe(160);
+    expect(payments.overflowingCells).toBe(1);
+    expect(payments.utilisationPercent).toBe(98);
+
+    const q3 = model.quartersSummary[0]!;
+    expect(q3.overflowCount).toBe(0);
+    expect(q3.pressurePercent).toBe(63);
+    const q4 = model.quartersSummary[1]!;
+    expect(q4.overflowCount).toBe(1);
+    expect(q4.pressurePercent).toBe(120);
+
+    expect(model.totals.load).toBe(board.totals.load);
+    expect(model.totals.capacity).toBe(board.totals.capacity);
+    expect(model.totals.overflowingCells).toBe(board.totals.overflowingCells);
+    expect(payments.load).toBe(board.rows[0]!.load);
+    expect(payments.capacity).toBe(board.rows[0]!.capacity);
+  });
+
+  it('treats a missing team-quarter as unplanned, not as zero-capacity overflow', () => {
+    const model = buildTeamsLens(teamsState(), 'QBR');
+    const empty = model.rows[1]!.cells.find((cell) => cell.quarterId === '2026-Q4');
+    expect(empty).toMatchObject({
+      planned: false,
+      load: 0,
+      capacity: 0,
+      overflow: 0,
+      utilisationPercent: null,
+      headroom: null,
+    });
+  });
+
+  it('keeps team-horizon load equal to the sum of its cells', () => {
+    for (const preset of ['NOW', 'QBR', 'HORIZON'] as const) {
+      const model = buildTeamsLens(teamsState(), preset);
+      for (const row of model.rows) {
+        expect(row.load).toBe(row.cells.reduce((sum, cell) => sum + cell.load, 0));
+        expect(row.capacity).toBe(row.cells.reduce((sum, cell) => sum + cell.capacity, 0));
+        expect(row.overflowingCells).toBe(row.cells.filter((cell) => cell.overflow > 0).length);
+      }
+      expect(model.totals.load).toBe(model.rows.reduce((sum, row) => sum + row.load, 0));
+    }
+  });
+});
+
+describe('QBR lens', () => {
+  it('keeps carry-over and scenario ghosts in separate groups', () => {
+    const base = teamsState();
+    const fixture: WorkspaceState = {
+      ...base,
+      commitments: new Map([
+        ...base.commitments,
+        [
+          'idea',
+          {
+            ...env('idea'),
+            name: 'New intake',
+            lifecycle: 'IDEA',
+            class: 'DISCRETIONARY',
+            importance: 'MEDIUM',
+            valueDrivers: [],
+          },
+        ],
+      ]),
+      footprints: new Map([
+        ...base.footprints,
+        [
+          'fp-carry',
+          {
+            ...env('fp-carry'),
+            commitmentId: 'a',
+            teamId: 'payments',
+            quarterId: '2026-Q3',
+            units: 8,
+            unitsSource: 'CARRY_OVER',
+            isPrimary: false,
+            carryOverFromQuarterId: '2026-Q2',
+            carryOverFromFootprintId: 'fp-prev',
+          },
+        ],
+        [
+          'fp-ghost',
+          {
+            ...env('fp-ghost'),
+            commitmentId: 'idea',
+            teamId: 'payments',
+            quarterId: '2026-Q3',
+            units: 12,
+            unitsSource: 'EXPLICIT',
+            isPrimary: true,
+          },
+        ],
+      ]),
+    };
+
+    const model = buildQbrLens(fixture, true);
+    expect(model.quarters).toEqual(['2026-Q3', '2026-Q4', '2027-Q1']);
+    const cell = model.rows[0]!.cells[0]!;
+    expect(cell.carryOver).toBe(8);
+    expect(cell.ghost).toBe(12);
+    expect(cell.committed).toBe(60);
+    expect(model.summary.carryOver).toBe(8);
+    expect(model.summary.ghost).toBe(12);
   });
 });

@@ -128,6 +128,10 @@ pnpm test:e2e      # browser-based workflow and accessibility checks
 
 ## How to use it
 
+The [user guide](docs/user-guide.md) walks through the screen, the words on it, and the everyday
+tasks: capture an Idea, place it on a team-quarter, read capacity, use Radar, and try a scenario
+without touching the baseline.
+
 The product is designed around a simple planning loop:
 
 1. Import or model portfolio commitments and dependencies.
