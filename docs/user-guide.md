@@ -228,17 +228,17 @@ when you want it gone.
 Lenses change emphasis, not data. Selection and filters carry across where the view can show
 them.
 
-| Key | Lens             | Use it to answer                                                           |
-| --- | ---------------- | -------------------------------------------------------------------------- |
-| `1` | **Portfolio**    | What is committed, where does it sit, what can we move?                    |
-| `2` | **Teams**        | How loaded is each team across the horizon? Where is the pressure?         |
-| `3` | **Products**     | Where does the change land? (Change load, not team capacity.)              |
-| `4` | **Themes**       | Which commitments share a direction?                                       |
-| `5` | **Attention**    | What needs a human look now? Grouped by reason, not by name.               |
-| `6` | **Dependencies** | What is waiting on what? Waiting work left, prerequisites further right.   |
-| `7` | **QBR**          | What happens if we accept this demand? Ideas → pipe → gate → containers.   |
-| `8` | **Timeline**     | How do footprints line up across quarters? (Not a Gantt chart.)            |
-| —   | **History**      | What changed, and close or reopen a quarter.                               |
+| Key | Lens             | Use it to answer                                                         |
+| --- | ---------------- | ------------------------------------------------------------------------ |
+| `1` | **Portfolio**    | What is committed, where does it sit, what can we move?                  |
+| `2` | **Teams**        | How loaded is each team across the horizon? Where is the pressure?       |
+| `3` | **Products**     | Where does the change land? (Change load, not team capacity.)            |
+| `4` | **Themes**       | Which commitments share a direction?                                     |
+| `5` | **Attention**    | What needs a human look now? Grouped by reason, not by name.             |
+| `6` | **Dependencies** | What is waiting on what? Waiting work left, prerequisites further right. |
+| `7` | **QBR**          | What happens if we accept this demand? Ideas → pipe → gate → containers. |
+| `8` | **Timeline**     | How do footprints line up across quarters? (Not a Gantt chart.)          |
+| —   | **History**      | What changed, and close or reopen a quarter.                             |
 
 **Teams** is a pressure grid, not another copy of the map. Each cell is load against
 deliverable capacity. The footer is portfolio pressure for that quarter. **Open on the
