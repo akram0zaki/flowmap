@@ -262,6 +262,7 @@
   "timeline.unassigned": "Unassigned",
   "dependencyMap.title": "Dependency map",
   "dependencyMap.description": "Waiting work is on the left. Prerequisites sit further right. Each column is one step along the chain. Solid lines are hard dependencies; dashed lines are soft.",
+  "dependencyMap.hubMeaning": "A hub is a commitment, decision, or team that three or more items are waiting on. It is not a priority ranking. Example: a security review required by six commitments.",
   "dependencyMap.layerWaiting": "Waiting",
   "dependencyMap.layerHop": "Step {step}",
   "dependencyMap.layerReady": "Prerequisites",

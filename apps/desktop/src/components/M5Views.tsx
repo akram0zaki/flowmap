@@ -295,6 +295,7 @@ export function DependencyMapView({
         <div>
           <h2 id="dependency-map-title">{t('dependencyMap.title')}</h2>
           <p>{t('dependencyMap.description')}</p>
+          <p>{t('dependencyMap.hubMeaning')}</p>
         </div>
         <button type="button" className="fm-quiet" onClick={() => setExpanded((value) => !value)}>
           {t(expanded ? 'dependencyMap.showHubs' : 'dependencyMap.showAll')}

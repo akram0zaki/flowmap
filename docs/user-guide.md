@@ -252,7 +252,8 @@ of work, not duplicates. There is no percent-complete and no critical path.
 
 **Dependencies** is a layered map, not a two-column list. Waiting work is on the left;
 prerequisites sit further right. Each column is one hop. Solid lines are hard dependencies;
-dashed lines are soft.
+dashed lines are soft. A **hub** is something three or more items wait on — not a priority
+ranking. The default view shows hubs and one hop around them.
 
 **QBR** is Demand Flow, not another Portfolio map. Ideas stay in the lane, the pipe sizes
 and targets them, Commit Gate keeps them as scenario ghosts, and the containers show

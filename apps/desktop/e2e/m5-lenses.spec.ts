@@ -41,6 +41,7 @@ test('dependency and product lenses are reachable from their fixed keyboard labe
   await page.getByRole('button', { name: /6 Dependencies/ }).click();
   await expect(page.getByRole('heading', { name: 'Dependency map' })).toBeVisible();
   await expect(page.getByText(/each column is one step along the chain/i)).toBeVisible();
+  await expect(page.getByText(/a hub is a commitment, decision, or team/i)).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'Waiting', exact: true })).toBeVisible();
   await expect(page.locator('.fm-dependency-map__edges path')).not.toHaveCount(0);
   await expect(page.getByRole('table', { name: /Dependency table/ })).toBeVisible();

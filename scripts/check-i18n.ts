@@ -167,6 +167,7 @@ const TOOLTIP_REQUIRED: readonly string[] = [
   'dependencyType',
   'dependencyStatus',
   'isHard',
+  'hub',
   'attentionDate',
   'latestSafeStart',
   'capacityBaseline',
