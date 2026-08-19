@@ -165,6 +165,30 @@ test('headers filter, chips show what is filtered, and clearing works', async ({
   await expect(page.getByText('No filters')).toBeVisible();
 });
 
+test('changing zoom level keeps the team row that was on screen', async ({ page }) => {
+  await freshApp(page);
+  await openSampleWorkspace(page);
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+  const security = page.getByRole('rowheader', { name: /Security/ });
+  await security.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await expect(security).toBeInViewport();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await expect(security).toBeInViewport();
+});
+
+test('zoom level stays over the map so a lower row can change it', async ({ page }) => {
+  await freshApp(page);
+  await openSampleWorkspace(page);
+  const dock = page.locator('.fm-zoom-dock');
+  await expect(dock.getByRole('button', { name: 'Detail', exact: true })).toBeVisible();
+  const box = await dock.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).toBeTruthy();
+  expect(viewport).toBeTruthy();
+  expect(box!.y).toBeGreaterThan(viewport!.height / 2);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
+});
+
 test('the map is accessible at every zoom level', async ({ page }) => {
   await freshApp(page);
   await seed(page);

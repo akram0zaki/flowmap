@@ -18,6 +18,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -135,6 +136,14 @@ export function PortfolioMap({
   // Roving focus: the grid is one tab stop, arrows move within it.
   const [cursor, setCursor] = useState<{ row: number; col: number }>({ row: 0, col: 0 });
   const gridRef = useRef<HTMLDivElement>(null);
+  const lastScale = useRef(scale);
+  const visualAnchor = useRef<{ teamId: string; quarterId: string } | null>(null);
+
+  const rememberVisibleCell = useCallback(() => {
+    const root = gridRef.current;
+    if (!root) return;
+    visualAnchor.current = visibleCellAnchor(root);
+  }, []);
 
   const move = useCallback(
     (dRow: number, dCol: number) => {
@@ -274,6 +283,34 @@ export function PortfolioMap({
     const width = column?.getBoundingClientRect().width ?? node.clientWidth / 3;
     node.scrollBy({ left: direction * width, behavior: 'smooth' });
   }, []);
+
+  useEffect(() => {
+    rememberVisibleCell();
+    const node = gridRef.current;
+    if (!node) return undefined;
+    const onScroll = () => rememberVisibleCell();
+    node.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      node.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [rememberVisibleCell, board.rows.length]);
+
+  // After a level change the board's height jumps. Keep the cell that was in
+  // the middle of the window there — a scroll-ratio on the map scroller
+  // cannot, because the page itself is what moved.
+  useLayoutEffect(() => {
+    if (lastScale.current === scale) return;
+    lastScale.current = scale;
+    const anchor = visualAnchor.current;
+    if (!anchor) return;
+    const cell = gridRef.current?.querySelector<HTMLElement>(
+      `[data-drop-team="${CSS.escape(anchor.teamId)}"][data-drop-quarter="${CSS.escape(anchor.quarterId)}"]`,
+    );
+    cell?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' });
+    requestAnimationFrame(rememberVisibleCell);
+  }, [scale, rememberVisibleCell]);
 
   // Centre the current quarter on first render, as the spec requires.
   useEffect(() => {
@@ -662,6 +699,33 @@ function describeCell(cell: CellModel): string {
   ];
   if (cell.closed) parts.push(t('map.cellClosed'));
   return parts.join('. ');
+}
+
+/** The team-quarter closest to the viewport centre among cells on screen. */
+export function visibleCellAnchor(
+  root: ParentNode,
+  viewport: { readonly width: number; readonly height: number } = {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  },
+): { readonly teamId: string; readonly quarterId: string } | null {
+  const midX = viewport.width / 2;
+  const midY = viewport.height / 2;
+  let best: { teamId: string; quarterId: string; dist: number } | null = null;
+  for (const node of root.querySelectorAll<HTMLElement>(
+    '.fm-grid__cell[data-drop-team][data-drop-quarter]',
+  )) {
+    const box = node.getBoundingClientRect();
+    if (box.bottom <= 0 || box.top >= viewport.height) continue;
+    const teamId = node.dataset['dropTeam'];
+    const quarterId = node.dataset['dropQuarter'];
+    if (!teamId || !quarterId) continue;
+    const dx = box.left + box.width / 2 - midX;
+    const dy = box.top + box.height / 2 - midY;
+    const dist = dx * dx + dy * dy;
+    if (!best || dist < best.dist) best = { teamId, quarterId, dist };
+  }
+  return best ? { teamId: best.teamId, quarterId: best.quarterId } : null;
 }
 
 export { describeCell, allBlocks };

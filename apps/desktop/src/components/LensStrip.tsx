@@ -1,41 +1,28 @@
 /**
- * The lens strip: zoom level, filter chips, and focus state.
+ * Filter chips and focus state.
  *
- * Two rules from the spec show up here directly:
- *   · zoom is reachable without a precise pointer, so the explicit Level
- *     control sits next to the scroll-wheel zoom (§3.3);
- *   · what is filtered is always visible as chips, and the default response to
- *     a filter is to fade rather than remove (§10).
+ * Zoom lives in `ZoomDock`, over the map, so changing level does not send you
+ * back to the top of the board. What is filtered stays visible here as chips;
+ * the default response to a filter is to fade rather than remove (§10).
  */
 
-import type { FilterState, ZoomLevel } from '@flowmap/visual-model';
+import type { FilterState } from '@flowmap/visual-model';
 import { filterChips, isFilterActive } from '@flowmap/visual-model';
 
 import { t } from '../i18n/t.js';
 
 export type LensStripProps = {
-  readonly level: ZoomLevel;
-  /** Continuous scale, so the figure can be shown and stepped. */
-  readonly scale: number;
-  readonly onZoomBy: (factor: number) => void;
   readonly filter: FilterState;
   readonly focusedName: string | null;
-  readonly onLevel: (level: ZoomLevel) => void;
   readonly onRemoveChip: (key: string) => void;
   readonly onClearFilters: () => void;
   readonly onToggleHide: () => void;
   readonly onClearFocus: () => void;
 };
 
-const LEVELS: readonly ZoomLevel[] = [1, 2, 3];
-
 export function LensStrip({
-  level,
-  scale,
-  onZoomBy,
   filter,
   focusedName,
-  onLevel,
   onRemoveChip,
   onClearFilters,
   onToggleHide,
@@ -45,33 +32,6 @@ export function LensStrip({
 
   return (
     <div className="fm-lens">
-      <div className="fm-levels" role="group" aria-label={t('map.level')}>
-        {LEVELS.map((candidate) => (
-          <button
-            key={candidate}
-            type="button"
-            aria-pressed={level === candidate}
-            onClick={() => onLevel(candidate)}
-          >
-            {t(`map.level.${candidate}`)}
-          </button>
-        ))}
-      </div>
-
-      {/* The spec asks for `+`/`−` as well as the Level control, so zoom is
-          reachable without a wheel, a trackpad, or a precise pointer at all. */}
-      <div className="fm-zoom" role="group" aria-label={t('map.zoom')}>
-        <button type="button" aria-label={t('map.zoomOut')} onClick={() => onZoomBy(1 / 1.25)}>
-          −
-        </button>
-        <span className="fm-zoom__figure" aria-live="polite">
-          {t('map.zoomLevel', { percent: Math.round(scale * 100) })}
-        </span>
-        <button type="button" aria-label={t('map.zoomIn')} onClick={() => onZoomBy(1.25)}>
-          +
-        </button>
-      </div>
-
       {chips.length > 0 ? (
         <>
           {chips.map((chip) => (
@@ -107,10 +67,6 @@ export function LensStrip({
           {focusedName} ✕ {t('map.clearFocus')}
         </button>
       )}
-
-      <span className="fm-lens__hint" aria-live="polite">
-        {t('map.level.hint', { level })}
-      </span>
     </div>
   );
 }
