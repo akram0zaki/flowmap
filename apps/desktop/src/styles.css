@@ -675,6 +675,33 @@ body {
   padding-block: var(--space-6);
 }
 
+/* Zoom stays over the map so a lower team row can change level without
+   leaving the cell. */
+.fm-zoom-dock {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: var(--space-5);
+  z-index: var(--z-sticky);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.fm-zoom-dock__bar {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  color: var(--ink);
+  background: var(--surface-raised);
+  border: var(--border-width) solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-overlay);
+}
+
 /* Segmented control: one outline, dividers inside, no gaps. */
 .fm-levels {
   display: inline-flex;
@@ -855,6 +882,7 @@ label {
 /* ── Workspace ─────────────────────────────────────────────────────────── */
 
 .fm-workspace {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -993,7 +1021,8 @@ label {
      A permanent, quiet gutter is the cheapest honest fix. */
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
-  padding: var(--space-6) var(--space-7) var(--space-7) var(--space-6);
+  padding: var(--space-6) var(--space-7) calc(var(--space-7) + var(--row-comfortable))
+    var(--space-6);
   /* A quarter is an atom. Left free, the scroll parks a column half under the
      pinned team column, and the masked half of "2026-Q2 / 13%" reads as
      "26-Q2 / 3%" — not as a scroll position but as broken text. Snapping to
@@ -2487,7 +2516,8 @@ label {
 }
 
 .fm-steps button {
-  min-height: 26px;
+  min-height: var(--hit-target-min);
+  min-inline-size: var(--hit-target-min);
   padding: var(--space-1) var(--space-4);
   font-family: var(--font-mono);
   border: none;

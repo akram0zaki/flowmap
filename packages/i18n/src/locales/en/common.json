@@ -381,6 +381,7 @@
   "map.ideasLane": "Ideas and demand",
   "map.label": "Portfolio map. {teams} teams across {quarters} quarters. Arrow keys to move.",
   "map.level": "Detail",
+  "map.level.group": "Zoom level",
   "map.level.1": "Overview",
   "map.level.2": "Areas",
   "map.level.3": "Detail",

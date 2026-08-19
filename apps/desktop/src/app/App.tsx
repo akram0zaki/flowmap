@@ -65,6 +65,7 @@ import { useResize, type ResizeState } from '../state/use-resize.js';
 import type { Milestone, QuarterId } from '@flowmap/domain';
 import { PortfolioMap } from '../components/PortfolioMap.jsx';
 import { LensStrip } from '../components/LensStrip.jsx';
+import { ZoomDock } from '../components/ZoomDock.jsx';
 import { IdeasLane } from '../components/IdeasLane.jsx';
 import { ListCompanion } from '../components/ListCompanion.jsx';
 import { DetailPanel, type PanelFootprint } from '../components/DetailPanel.jsx';
@@ -1330,12 +1331,8 @@ export function App() {
           </button>
         </nav>
         <LensStrip
-          level={level}
           filter={filter}
           focusedName={focusedName}
-          scale={scale}
-          onZoomBy={nudgeZoom}
-          onLevel={setLevelState}
           onRemoveChip={(key) => setFilter((f) => removeChip(f, key))}
           onClearFilters={() => setFilter(NO_FILTER)}
           onToggleHide={() => setFilter((f) => ({ ...f, hideFiltered: !f.hideFiltered }))}
@@ -1693,6 +1690,7 @@ export function App() {
                 onClose={() => setFocusedCommitmentId(null)}
               />
             )}
+            <ZoomDock level={level} scale={scale} onLevel={setLevelState} onZoomBy={nudgeZoom} />
           </div>
         )}
 
