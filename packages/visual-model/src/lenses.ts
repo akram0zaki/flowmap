@@ -494,3 +494,92 @@ export function buildTeamsLens(state: WorkspaceState, preset: HorizonPreset): Te
     },
   };
 }
+
+// ── QBR / Demand Flow ──────────────────────────────────────────────────────
+//
+// Spec 05 §6: Ideas → pipe → Commit Gate → team-quarter containers.
+// Carry-over and new demand (scenario ghosts) stay separate groups.
+
+export type QbrCell = {
+  readonly teamId: EntityId;
+  readonly teamName: string;
+  readonly quarterId: QuarterId;
+  readonly planned: boolean;
+  readonly capacity: number;
+  readonly committed: number;
+  readonly carryOver: number;
+  readonly ghost: number;
+  readonly overflow: number;
+};
+
+export type QbrRow = {
+  readonly teamId: EntityId;
+  readonly teamName: string;
+  readonly cells: readonly QbrCell[];
+};
+
+export type QbrModel = {
+  readonly quarters: readonly QuarterId[];
+  readonly currentQuarterId: QuarterId;
+  readonly rows: readonly QbrRow[];
+  readonly summary: {
+    readonly committed: number;
+    readonly carryOver: number;
+    readonly ghost: number;
+    readonly overflowingCells: number;
+  };
+};
+
+/**
+ * QBR window only. Ghosts are Idea footprints on a scenario projection.
+ */
+export function buildQbrLens(state: WorkspaceState, scenario = false): QbrModel {
+  const board = buildBoard({
+    workspace: state.workspace,
+    teams: state.teams,
+    teamQuarters: state.teamQuarters,
+    commitments: state.commitments,
+    footprints: state.footprints,
+    horizon: 'QBR',
+    scenario,
+  });
+
+  const rows = board.rows.map((row): QbrRow => ({
+    teamId: row.teamId,
+    teamName: row.teamName,
+    cells: row.cells.map((cell): QbrCell => {
+      let committed = 0;
+      let carryOver = 0;
+      let ghost = 0;
+      for (const block of cell.blocks) {
+        if (block.scenarioGhost) ghost += block.units;
+        else if (block.carriedFromQuarterId !== undefined) carryOver += block.units;
+        else if (block.counted) committed += block.units;
+      }
+      return {
+        teamId: cell.teamId,
+        teamName: cell.teamName,
+        quarterId: cell.quarterId,
+        planned: cell.summary !== null,
+        capacity: cell.summary?.deliverableCapacity ?? 0,
+        committed,
+        carryOver,
+        ghost,
+        overflow: cell.summary?.overflow ?? 0,
+      };
+    }),
+  }));
+
+  const cells = rows.flatMap((row) => row.cells);
+  return {
+    quarters: board.quarters,
+    currentQuarterId: board.currentQuarterId,
+    rows,
+    summary: {
+      committed: cells.reduce((sum, cell) => sum + cell.committed, 0),
+      carryOver: cells.reduce((sum, cell) => sum + cell.carryOver, 0),
+      ghost: cells.reduce((sum, cell) => sum + cell.ghost, 0),
+      overflowingCells: cells.filter((cell) => cell.overflow > 0).length,
+    },
+  };
+}

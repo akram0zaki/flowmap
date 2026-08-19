@@ -9,7 +9,13 @@ import {
 } from '@flowmap/domain';
 
 import { buildBoard } from './layout.js';
-import { buildDependencyGraph, buildTeamsLens, buildTimeline, searchWorkspace } from './lenses.js';
+import {
+  buildDependencyGraph,
+  buildQbrLens,
+  buildTeamsLens,
+  buildTimeline,
+  searchWorkspace,
+} from './lenses.js';
 
 const now = '2026-08-15T09:00:00Z';
 const env = (id: string) => ({
@@ -381,5 +387,66 @@ describe('Teams lens', () => {
       }
       expect(model.totals.load).toBe(model.rows.reduce((sum, row) => sum + row.load, 0));
     }
+  });
+});
+
+describe('QBR lens', () => {
+  it('keeps carry-over and scenario ghosts in separate groups', () => {
+    const base = teamsState();
+    const fixture: WorkspaceState = {
+      ...base,
+      commitments: new Map([
+        ...base.commitments,
+        [
+          'idea',
+          {
+            ...env('idea'),
+            name: 'New intake',
+            lifecycle: 'IDEA',
+            class: 'DISCRETIONARY',
+            importance: 'MEDIUM',
+            valueDrivers: [],
+          },
+        ],
+      ]),
+      footprints: new Map([
+        ...base.footprints,
+        [
+          'fp-carry',
+          {
+            ...env('fp-carry'),
+            commitmentId: 'a',
+            teamId: 'payments',
+            quarterId: '2026-Q3',
+            units: 8,
+            unitsSource: 'CARRY_OVER',
+            isPrimary: false,
+            carryOverFromQuarterId: '2026-Q2',
+            carryOverFromFootprintId: 'fp-prev',
+          },
+        ],
+        [
+          'fp-ghost',
+          {
+            ...env('fp-ghost'),
+            commitmentId: 'idea',
+            teamId: 'payments',
+            quarterId: '2026-Q3',
+            units: 12,
+            unitsSource: 'EXPLICIT',
+            isPrimary: true,
+          },
+        ],
+      ]),
+    };
+
+    const model = buildQbrLens(fixture, true);
+    expect(model.quarters).toEqual(['2026-Q3', '2026-Q4', '2027-Q1']);
+    const cell = model.rows[0]!.cells[0]!;
+    expect(cell.carryOver).toBe(8);
+    expect(cell.ghost).toBe(12);
+    expect(cell.committed).toBe(60);
+    expect(model.summary.carryOver).toBe(8);
+    expect(model.summary.ghost).toBe(12);
   });
 });

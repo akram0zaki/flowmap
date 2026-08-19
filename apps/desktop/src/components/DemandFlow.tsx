@@ -4,7 +4,7 @@
  * accidental baseline commitment.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { t } from '../i18n/t.js';
 
@@ -25,6 +25,10 @@ export type DemandFlowProps = {
     quarterId: string;
     units: number;
   }) => void;
+  readonly targetTeamId?: string | null;
+  readonly targetQuarterId?: string | null;
+  readonly onTargetChange?: (teamId: string, quarterId: string) => void;
+  readonly onOpen?: (commitmentId: string) => void;
 };
 
 export function DemandFlow({
@@ -36,12 +40,32 @@ export function DemandFlow({
   defaultUnits,
   headroomFor,
   onPlace,
+  targetTeamId,
+  targetQuarterId,
+  onTargetChange,
+  onOpen,
 }: DemandFlowProps) {
   const [ideaId, setIdeaId] = useState<string | null>(ideas[0]?.id ?? null);
-  const [teamId, setTeamId] = useState<string | null>(teams[0]?.id ?? null);
+  const [teamId, setTeamId] = useState<string | null>(targetTeamId ?? teams[0]?.id ?? null);
   const [quarterId, setQuarterId] = useState<string | null>(
-    quarters.includes(currentQuarter) ? currentQuarter : (quarters[0] ?? null),
+    targetQuarterId ?? (quarters.includes(currentQuarter) ? currentQuarter : (quarters[0] ?? null)),
   );
+
+  useEffect(() => {
+    if (targetTeamId !== undefined) setTeamId(targetTeamId);
+  }, [targetTeamId]);
+  useEffect(() => {
+    if (targetQuarterId !== undefined) setQuarterId(targetQuarterId);
+  }, [targetQuarterId]);
+
+  const selectTeam = (id: string | null) => {
+    setTeamId(id);
+    if (id && (targetQuarterId ?? quarterId)) onTargetChange?.(id, (targetQuarterId ?? quarterId)!);
+  };
+  const selectQuarter = (id: string | null) => {
+    setQuarterId(id);
+    if ((targetTeamId ?? teamId) && id) onTargetChange?.((targetTeamId ?? teamId)!, id);
+  };
   const [units, setUnits] = useState(defaultUnits);
   const [moveMode, setMoveMode] = useState(false);
   const selected = useMemo(() => ideas.find((idea) => idea.id === ideaId) ?? null, [ideas, ideaId]);
@@ -65,8 +89,8 @@ export function DemandFlow({
     const value = axis === 'team' ? teamId : quarterId;
     const current = Math.max(0, choices.indexOf(value ?? ''));
     const next = choices[Math.max(0, Math.min(choices.length - 1, current + delta))] ?? null;
-    if (axis === 'team') setTeamId(next);
-    else setQuarterId(next);
+    if (axis === 'team') selectTeam(next);
+    else selectQuarter(next);
   };
 
   return (
@@ -89,6 +113,11 @@ export function DemandFlow({
                 Math.min(ideas.length - 1, current + (event.key === 'ArrowUp' ? -1 : 1)),
               );
               setIdeaId(ideas[next]?.id ?? null);
+              return;
+            }
+            if (!moveMode && event.key === 'Enter') {
+              event.preventDefault();
+              if (selected) onOpen?.(selected.id);
               return;
             }
             if (event.key === 'm') {
@@ -164,7 +193,7 @@ export function DemandFlow({
                 key={quarter}
                 type="button"
                 aria-pressed={quarter === quarterId}
-                onClick={() => setQuarterId(quarter)}
+                onClick={() => selectQuarter(quarter)}
               >
                 {quarter}
               </button>
@@ -179,7 +208,7 @@ export function DemandFlow({
                 key={team.id}
                 type="button"
                 aria-pressed={team.id === teamId}
-                onClick={() => setTeamId(team.id)}
+                onClick={() => selectTeam(team.id)}
               >
                 {team.name}
               </button>

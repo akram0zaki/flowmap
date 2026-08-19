@@ -236,7 +236,7 @@ them.
 | `4` | **Themes**       | Which commitments share a direction?                                       |
 | `5` | **Attention**    | What needs a human look now? Grouped by reason, not by name.               |
 | `6` | **Dependencies** | What is waiting on what? Where are the hubs and cycles?                    |
-| `7` | **QBR**          | The next three quarters. A dropdown switches Capacity, Demand, and Review. |
+| `7` | **QBR**          | What happens if we accept this demand? Ideas → pipe → gate → containers.   |
 | `8` | **Timeline**     | How do footprints line up across quarters? (Not a Gantt chart.)            |
 | —   | **History**      | What changed, and close or reopen a quarter.                               |
 
@@ -250,8 +250,9 @@ change load answers “where does the change land”.
 **Timeline** draws one fragment per footprint. Fragments of the same commitment are one piece
 of work, not duplicates. There is no percent-complete and no critical path.
 
-**QBR** opens on the Capacity map (current quarter plus two). The **QBR view** dropdown
-switches Capacity, Demand (Ideas → pipe → Commit Gate), and Review (quarter close).
+**QBR** is Demand Flow, not another Portfolio map. Ideas stay in the lane, the pipe sizes
+and targets them, Commit Gate keeps them as scenario ghosts, and the containers show
+committed work, carry-over, and new demand as separate groups.
 
 **Attention** is Radar’s list as a full view. **Open** jumps to the matching cell on the
 Portfolio map.
@@ -294,14 +295,12 @@ yours, take theirs, or edit the overlap. A scenario never writes the baseline by
 
 ### Demand Flow
 
-On the QBR lens, switch **QBR view** to **Demand**. That is the “can we take this?” pipe.
+Open the **QBR** lens. That is the “can we take this?” pipe.
 
 1. Create and select a scenario first.
-2. Choose an Idea, a team, a quarter, and units.
-3. Place a ghost footprint. The cell shows the consequence.
-4. The Idea stays an Idea until you apply the scenario (or pass Commit Gate on the baseline).
-
-Switch the dropdown back to **Capacity** to see the QBR map again.
+2. Choose an Idea, a team, a quarter, and units — or click a container to aim the pipe.
+3. Place a ghost footprint. Carry-over and new demand stay in separate groups.
+4. The Idea stays an Idea until you apply the scenario.
 
 ---
 

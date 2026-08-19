@@ -62,7 +62,7 @@ import {
 import { useWorkspace } from '../state/workspace-store.js';
 import { usePlacement, type DropTarget } from '../state/use-placement.js';
 import { useResize, type ResizeState } from '../state/use-resize.js';
-import type { HorizonPreset, Milestone, QuarterId } from '@flowmap/domain';
+import type { Milestone, QuarterId } from '@flowmap/domain';
 import { PortfolioMap } from '../components/PortfolioMap.jsx';
 import { LensStrip } from '../components/LensStrip.jsx';
 import { ZoomDock } from '../components/ZoomDock.jsx';
@@ -74,8 +74,7 @@ import { CaptureBar } from '../components/CaptureBar.jsx';
 import { Radar } from '../components/Radar.jsx';
 import { RuleSettings } from '../components/RuleSettings.jsx';
 import { ScenarioDock } from '../components/ScenarioDock.jsx';
-import { DemandFlow } from '../components/DemandFlow.jsx';
-import { QbrToolbar, type QbrSurface } from '../components/QbrView.jsx';
+import { QbrView } from '../components/QbrView.jsx';
 import { AttentionView } from '../components/AttentionView.jsx';
 import { CommandPalette } from '../components/CommandPalette.jsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx';
@@ -200,7 +199,6 @@ export function App() {
   const [ruleSettings, setRuleSettings] = useState<Settings>(NO_RULE_SETTINGS);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
   const [activeLens, setActiveLens] = useState<ActiveLens>('PORTFOLIO');
-  const [qbrSurface, setQbrSurface] = useState<QbrSurface>('CAPACITY');
   const [showPalette, setShowPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showConflicts, setShowConflicts] = useState(false);
@@ -315,10 +313,7 @@ export function App() {
       }
       if (!mod && /^[1-8]$/.test(e.key) && e.target === document.body) {
         const lens = LENSES[Number(e.key) - 1];
-        if (lens) {
-          setActiveLens(lens);
-          if (lens === 'QBR') setQbrSurface('CAPACITY');
-        }
+        if (lens) setActiveLens(lens);
       }
     }
     window.addEventListener('keydown', onKey);
@@ -340,7 +335,6 @@ export function App() {
     setScale((current) => clampScale(current * factor));
   }, []);
 
-  const mapHorizon: HorizonPreset = activeLens === 'QBR' ? 'QBR' : 'HORIZON';
   const board = useMemo(
     () =>
       viewState
@@ -350,11 +344,10 @@ export function App() {
             teamQuarters: viewState.teamQuarters,
             commitments: viewState.commitments,
             footprints: viewState.footprints,
-            horizon: mapHorizon,
             ...(selectedScenarioId !== null ? { scenario: true } : {}),
           })
         : null,
-    [viewState, mapHorizon, selectedScenarioId],
+    [viewState, selectedScenarioId],
   );
 
   const events = useWorkspace((s) => s.events);
@@ -1325,10 +1318,7 @@ export function App() {
               key={lens}
               type="button"
               aria-pressed={activeLens === lens}
-              onClick={() => {
-                setActiveLens(lens);
-                if (lens === 'QBR') setQbrSurface('CAPACITY');
-              }}
+              onClick={() => setActiveLens(lens)}
             >
               <kbd>{index + 1}</kbd> {t(`lens.${lens}`)}
             </button>
@@ -1350,8 +1340,6 @@ export function App() {
           onClearFocus={() => setFocusedCommitmentId(null)}
         />
       </div>
-
-      {activeLens === 'QBR' && <QbrToolbar surface={qbrSurface} onSurface={setQbrSurface} />}
 
       <ScenarioDock
         scenarios={scenarios}
@@ -1417,22 +1405,18 @@ export function App() {
         />
       )}
 
-      {activeLens === 'QBR' && qbrSurface === 'DEMAND' && board && (
-        <DemandFlow
-          ideas={board.ideas.map((idea) => ({ id: idea.commitmentId, name: idea.name }))}
-          teams={teams.map((team) => ({ id: team.id, name: team.name }))}
-          quarters={board.quarters}
-          currentQuarter={state.workspace.currentQuarterId}
+      {activeLens === 'QBR' && (
+        <QbrView
+          state={viewState ?? state!}
+          filter={filter}
           scenarioId={selectedScenarioId}
           defaultUnits={defaultDropUnits(state.workspace.settings.capacity.sizeMapping)}
-          headroomFor={(teamId, quarterId) =>
-            findCell(board!, teamId, quarterId as QuarterId)?.summary?.headroom ?? 0
-          }
           onPlace={(input) => {
             if (selectedScenarioId !== null) {
               void placeScenarioIdea({ scenarioId: selectedScenarioId, ...input });
             }
           }}
+          onOpen={setFocusedCommitmentId}
         />
       )}
 
@@ -1473,7 +1457,7 @@ export function App() {
           }
         />
       )}
-      {(activeLens === 'HISTORY' || (activeLens === 'QBR' && qbrSurface === 'REVIEW')) && (
+      {activeLens === 'HISTORY' && (
         <HistoryView
           state={state}
           events={events}
@@ -1486,7 +1470,7 @@ export function App() {
         />
       )}
 
-      {(activeLens === 'PORTFOLIO' || (activeLens === 'QBR' && qbrSurface === 'CAPACITY')) && (
+      {activeLens === 'PORTFOLIO' && (
         <div className="fm-workspace">
           <IdeasLane
             ideas={board.ideas}
