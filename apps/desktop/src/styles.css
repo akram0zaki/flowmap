@@ -4006,3 +4006,37 @@ label {
 .fm-capacity__deliverable[data-over] {
   color: var(--critical-fg);
 }
+
+/* ── Running work across quarters ──────────────────────────────────────── */
+
+/* The sides are the reach, the top edge is the size. Same grip treatment as
+   the top, turned ninety degrees. */
+.fm-block__sidegrip {
+  fill: transparent;
+  cursor: ew-resize;
+}
+
+.fm-block:hover .fm-block__sidegrip,
+.fm-block__sidegrip:hover {
+  fill: var(--border-strong);
+  fill-opacity: 0.35;
+}
+
+/* A tick on the edge that continues, not a joined shape: the same work sits at
+   a different height in each quarter whenever the neighbours differ, so joining
+   them would draw a stepped ribbon and call it a bar. */
+.fm-block__continues {
+  fill: var(--ink-subtle);
+}
+
+/* The reach is drawn on the cells it reaches. The consequence is theirs. */
+.fm-grid__cell[data-span='add'] {
+  outline: var(--border-width) dashed var(--accent);
+  outline-offset: calc(var(--space-1) * -1);
+}
+
+.fm-grid__cell[data-span='remove'] {
+  outline: var(--border-width) dashed var(--critical-line);
+  outline-offset: calc(var(--space-1) * -1);
+  opacity: 0.6;
+}

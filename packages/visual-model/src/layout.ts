@@ -27,7 +27,14 @@ import {
   type TeamQuarter,
   type Workspace,
 } from '@flowmap/domain';
-import { compareQuarters, horizonWindow, isActive, type HorizonPreset } from '@flowmap/domain';
+import {
+  compareQuarters,
+  horizonWindow,
+  isActive,
+  nextQuarter,
+  previousQuarter,
+  type HorizonPreset,
+} from '@flowmap/domain';
 
 export type BlockModel = {
   readonly footprintId: EntityId;
@@ -47,6 +54,16 @@ export type BlockModel = {
   readonly topUnits: number;
   /** Sits above the deliverable-capacity rule. */
   readonly overflowing: boolean;
+  /**
+   * The same work also sits on this team in the quarter before / after.
+   *
+   * Drawn as a mark on that edge rather than by joining the shapes: a block's
+   * height depends on what else is stacked in its own cell, so the same work
+   * sits at a different height in each quarter whenever the neighbours differ.
+   * A joined bar would be a stepped ribbon far more often than a rectangle.
+   */
+  readonly continuesBefore: boolean;
+  readonly continuesAfter: boolean;
 };
 
 /**
@@ -167,6 +184,22 @@ export function buildBoard(input: BoardInput): BoardModel {
     if (isActive(tq)) containerByKey.set(`${tq.teamId}:${tq.quarterId}`, tq);
   }
 
+  /*
+   * Which commitments each team-quarter carries, indexed once.
+   *
+   * Blocks need to know whether the same work continues either side, and asking
+   * that per cell by scanning every footprint is quadratic — at 500
+   * commitments it took the board past its own budget, which is what the scale
+   * test is for. One pass here, three lookups per cell there.
+   */
+  const carriedByKey = new Map<string, Set<EntityId>>();
+  for (const footprint of liveFootprints) {
+    const key = `${footprint.teamId}:${footprint.quarterId}`;
+    const carried = carriedByKey.get(key) ?? new Set<EntityId>();
+    carried.add(footprint.commitmentId);
+    carriedByKey.set(key, carried);
+  }
+
   const rows = orderedTeams.map((team): RowModel => {
     const cells = quarters.map((quarterId): CellModel => {
       const teamQuarter = containerByKey.get(`${team.id}:${quarterId}`) ?? null;
@@ -189,6 +222,7 @@ export function buildBoard(input: BoardInput): BoardModel {
             workspace,
             summary!,
             input.scenario ?? false,
+            carriedByKey,
           )
         : [];
 
@@ -246,6 +280,7 @@ function layOutBlocks(
   workspace: Workspace,
   summary: CapacitySummary,
   scenario: boolean,
+  carriedByKey: ReadonlyMap<string, ReadonlySet<EntityId>>,
 ): BlockModel[] {
   const own = footprints
     .filter((f) => f.teamId === teamId && f.quarterId === quarterId)
@@ -264,6 +299,13 @@ function layOutBlocks(
 
   const ceiling = summary.reservedTotal + summary.deliverableCapacity;
   let cursor = summary.reservedTotal;
+
+  // Which commitments this team also carries either side. A span is nothing
+  // more than footprints in consecutive quarters; the model has always allowed
+  // it, and this is what lets the board say so.
+  const EMPTY: ReadonlySet<EntityId> = new Set();
+  const before = carriedByKey.get(`${teamId}:${previousQuarter(quarterId)}`) ?? EMPTY;
+  const after = carriedByKey.get(`${teamId}:${nextQuarter(quarterId)}`) ?? EMPTY;
 
   return own.map(({ footprint, commitment }) => {
     const counted = isCounted(footprint, commitment, workspace.currentQuarterId);
@@ -286,6 +328,8 @@ function layOutBlocks(
       bottomUnits,
       topUnits,
       overflowing: counted && topUnits > ceiling,
+      continuesBefore: before.has(commitment.id),
+      continuesAfter: after.has(commitment.id),
       ...(footprint.carryOverFromQuarterId !== undefined
         ? { carriedFromQuarterId: footprint.carryOverFromQuarterId }
         : {}),

@@ -50,6 +50,9 @@ export type VesselBlock = {
   readonly footprint: CapacityFootprint;
   readonly commitment: Commitment;
   readonly counted: boolean;
+  /** The same team carries this work in the quarter before / after. */
+  readonly continuesBefore?: boolean;
+  readonly continuesAfter?: boolean;
   readonly scenarioGhost?: boolean;
   /**
    * Is this in trouble? Orthogonal to attention, and never merged with it into
@@ -102,6 +105,14 @@ export type CapacityVesselProps = {
   readonly onLink?: (commitmentId: string, event?: ReactPointerEvent) => void;
   /** Units per pixel, so the caller can turn pointer movement into units. */
   readonly onResizeStart?: (footprintId: string, event: ReactPointerEvent, unitPx: number) => void;
+  /** Dragging a side runs the work across more quarters, or fewer. */
+  readonly onSpanStart?: (
+    footprintId: string,
+    edge: 'START' | 'END',
+    event: ReactPointerEvent,
+  ) => void;
+  /** The same reach, one quarter at a time, from the keyboard. */
+  readonly onSpanStep?: (footprintId: string, edge: 'START' | 'END', direction: 1 | -1) => void;
   /** While a resize is in flight, draw this block at that size instead. */
   readonly resizing?: { readonly footprintId: string; readonly units: number };
   /**
@@ -149,6 +160,8 @@ export function CapacityVessel({
   onRemove,
   onResize,
   onResizeStart,
+  onSpanStart,
+  onSpanStep,
   onLink,
   resizing,
   ideaNames,
@@ -458,6 +471,29 @@ export function CapacityVessel({
                     } else if (e.key === ' ') {
                       e.preventDefault();
                       onPickUp?.(block.footprint.id);
+                    } else if (
+                      e.shiftKey &&
+                      (e.key === 'ArrowRight' || e.key === 'ArrowLeft') &&
+                      onSpanStep
+                    ) {
+                      /*
+                       * The keyboard half of dragging a side, acting on the
+                       * same edges the pointer can grab: the start edge on the
+                       * first block of a run, the end edge on the last, and on
+                       * a run of one — which has both — whichever the arrow
+                       * points at.
+                       */
+                      e.preventDefault();
+                      const forward = e.key === 'ArrowRight';
+                      const edge =
+                        block.continuesBefore === block.continuesAfter
+                          ? forward
+                            ? 'END'
+                            : 'START'
+                          : block.continuesBefore
+                            ? 'END'
+                            : 'START';
+                      onSpanStep(block.footprint.id, edge, forward ? 1 : -1);
                     } else if (e.key === 'Delete' || e.key === 'Backspace') {
                       // The keyboard equivalent of dragging it back to the lane.
                       e.preventDefault();
@@ -523,6 +559,52 @@ export function CapacityVessel({
                       className="fm-block__over"
                     />
                   )}
+                  {/* The sides are the reach. The top edge says how much of a
+                      quarter this work takes; the sides say how many quarters
+                      it takes it for, and the same rule holds — the change is
+                      made where its consequence is already drawn.
+
+                      A tick rather than a joined shape on an edge that
+                      continues: a block's height depends on what else is
+                      stacked in its own cell, so the same work sits at a
+                      different height either side whenever the neighbours
+                      differ, and a joined bar would be a stepped ribbon far
+                      more often than a rectangle. */}
+                  {!compact &&
+                    (['START', 'END'] as const).map((edge) => {
+                      const continues =
+                        edge === 'START' ? block.continuesBefore : block.continuesAfter;
+                      const left = edge === 'START';
+                      return (
+                        <g key={edge}>
+                          {continues && (
+                            <rect
+                              x={left ? 6 : BODY_WIDTH - 8}
+                              y={y(block.top) + 0.5}
+                              width={2}
+                              height={Math.max(2, blockHeight - 1)}
+                              className="fm-block__continues"
+                            />
+                          )}
+                          {/* Only where the edge is a real end of the run. A
+                              middle block's sides are interior, and a grip
+                              there would ask which of two answers it meant. */}
+                          {onSpanStart && !continues && (
+                            <rect
+                              x={left ? 2 : BODY_WIDTH - 10}
+                              y={y(block.top) + 0.5}
+                              width={8}
+                              height={Math.max(2, blockHeight - 1)}
+                              className="fm-block__sidegrip"
+                              onPointerDown={(e) => onSpanStart(block.footprint.id, edge, e)}
+                            >
+                              <title>{t('span.grip', { name: block.commitment.name })}</title>
+                            </rect>
+                          )}
+                        </g>
+                      );
+                    })}
+
                   {/* The top edge is the size. Grabbing it is how you change
                       how much of the quarter this work takes, in the one place
                       where the consequence is already drawn. */}

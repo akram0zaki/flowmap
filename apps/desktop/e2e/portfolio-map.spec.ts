@@ -1668,3 +1668,99 @@ test('the demand lane can be searched down to the Idea you meant', async ({ page
   await field.press('Escape');
   await expect(names).toHaveCount(total);
 });
+
+/**
+ * Running work across quarters by dragging a block's side.
+ *
+ * The top edge of a block says how much of a quarter the work takes; the sides
+ * say how many quarters it takes it for. A footprint is what a team spends on
+ * this work in *this* quarter, so reaching further copies the amount rather
+ * than dividing it.
+ */
+
+/** The quarters one commitment occupies, in board order. */
+async function quartersOf(page: Page, name: string): Promise<string[]> {
+  return page.evaluate(
+    (commitment) =>
+      [...document.querySelectorAll('[data-commitment]')]
+        .filter((block) => (block.textContent ?? '').includes(commitment))
+        .map(
+          (block) =>
+            (block.closest('[data-drop-quarter]') as HTMLElement | null)?.dataset['dropQuarter'] ??
+            '?',
+        ),
+    name,
+  );
+}
+
+test('dragging a block’s side runs the work across more quarters, and back', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await openSampleWorkspace(page);
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  // Single-placement work, so the run starts at one quarter and every change
+  // to it is this gesture's doing.
+  const work = 'Legacy gateway decommission';
+  await expect.poll(async () => (await quartersOf(page, work)).length).toBe(1);
+  const [start] = await quartersOf(page, work);
+
+  // Grab the end grip and pull it one column right.
+  const reach = await page.evaluate((commitment) => {
+    const block = [...document.querySelectorAll('[data-commitment]')].find((candidate) =>
+      (candidate.textContent ?? '').includes(commitment),
+    )!;
+    const cell = block.closest('[data-drop-team][data-drop-quarter]') as HTMLElement;
+    const grips = block.querySelectorAll('.fm-block__sidegrip');
+    const end = grips[grips.length - 1]!.getBoundingClientRect();
+
+    const row = [
+      ...document.querySelectorAll<HTMLElement>('[data-drop-team][data-drop-quarter]'),
+    ].filter((candidate) => candidate.dataset['dropTeam'] === cell.dataset['dropTeam']);
+    const next = row[row.indexOf(cell) + 1]!;
+    const to = next.getBoundingClientRect();
+    return {
+      from: { x: end.left + end.width / 2, y: end.top + end.height / 2 },
+      to: { x: to.left + to.width / 2, y: end.top + end.height / 2 },
+      nextQuarter: next.dataset['dropQuarter']!,
+    };
+  }, work);
+
+  await page.mouse.move(reach.from.x, reach.from.y);
+  await page.mouse.down();
+  await page.mouse.move(reach.to.x, reach.to.y, { steps: 8 });
+
+  // The consequence is drawn on the container that would carry it, while the
+  // pointer is still down.
+  await expect(
+    page.locator(`[data-drop-quarter="${reach.nextQuarter}"][data-span="add"]`),
+  ).toHaveCount(1);
+  await page.mouse.up();
+
+  await expect.poll(async () => await quartersOf(page, work)).toEqual([start, reach.nextQuarter]);
+
+  // One gesture, one undo, however many quarters the edge crossed.
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect.poll(async () => (await quartersOf(page, work)).length).toBe(1);
+});
+
+// A visual affordance without its keyboard path does not ship (spec 06 §11).
+test('Shift and the arrows reach across quarters from the keyboard', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await openSampleWorkspace(page);
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const work = 'Legacy gateway decommission';
+  await expect.poll(async () => (await quartersOf(page, work)).length).toBe(1);
+
+  const block = page.locator('[data-commitment]').filter({ hasText: work }).first();
+  await block.focus();
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect.poll(async () => (await quartersOf(page, work)).length).toBe(2);
+
+  // The last block of the run now carries the end edge.
+  await page.locator('[data-commitment]').filter({ hasText: work }).last().focus();
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect.poll(async () => (await quartersOf(page, work)).length).toBe(1);
+});

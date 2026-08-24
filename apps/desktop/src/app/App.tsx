@@ -44,6 +44,10 @@ import {
   findCell,
   previewDrop,
   previewRemoval,
+  previewSpan,
+  spanOf,
+  type SpanDrag,
+  type SpanEdge,
   previewResize,
   readinessForIdeas,
   clampScale,
@@ -62,6 +66,7 @@ import {
 import { useWorkspace } from '../state/workspace-store.js';
 import { usePlacement, type DropTarget } from '../state/use-placement.js';
 import { useResize, type ResizeState } from '../state/use-resize.js';
+import { useSpan, type SpanState } from '../state/use-span.js';
 import type { Milestone, QuarterId } from '@flowmap/domain';
 import { PortfolioMap } from '../components/PortfolioMap.jsx';
 import { LensStrip } from '../components/LensStrip.jsx';
@@ -144,6 +149,7 @@ export function App() {
     setCapacityDefaults,
     setTeamDefaults,
     setTeamQuarterReserves,
+    stretchFootprint,
     unplaceFootprint,
     resizeFootprint,
     editCommitment,
@@ -595,7 +601,7 @@ export function App() {
           footprintId: payload.footprintId,
           commitmentId: payload.commitmentId,
           returnToRail: removal.returnsToRail,
-        }).then((ok) => {
+        }).then((ok: boolean) => {
           if (!ok) return;
           announce(
             removal.returnsToRail
@@ -651,7 +657,7 @@ export function App() {
             teamId: target.teamId,
             quarterId: target.quarterId,
             units: payload.addUnits,
-          }).then((ok) => {
+          }).then((ok: boolean) => {
             if (!ok) return;
             announce(
               t('drop.alsoTaken', {
@@ -848,7 +854,7 @@ export function App() {
         footprintId,
         commitmentId: block.commitmentId,
         returnToRail: removal.returnsToRail,
-      }).then((ok) => {
+      }).then((ok: boolean) => {
         if (!ok) return;
         announce(
           removal.returnsToRail
@@ -915,6 +921,177 @@ export function App() {
     onCommit: (state) =>
       commitResize(state.footprintId, state.teamId, state.quarterId, state.units),
   });
+
+  // ── Running work across quarters ───────────────────────────────────────
+  //
+  // The top edge of a block says how much of a quarter the work takes; the
+  // sides say how many quarters it takes it for. A footprint is what this team
+  // spends on this work in *this* quarter, so reaching further copies the
+  // amount rather than dividing it — three quarters of work costs three
+  // quarters, and every cell it reaches redraws while the pointer is down.
+
+  /** The gesture's state, as the pure model wants it. */
+  const toSpanDrag = (spanState: SpanState): SpanDrag => ({
+    footprintId: spanState.footprintId,
+    commitmentId: spanState.commitmentId,
+    name: spanState.name,
+    teamId: spanState.teamId,
+    quarterId: spanState.quarterId as QuarterId,
+    units: spanState.units,
+    edge: spanState.edge,
+  });
+
+  const describeSpan = useCallback(
+    (spanState: SpanState): string => {
+      if (!board) return '';
+      const preview = previewSpan(board, toSpanDrag(spanState), spanState.toQuarterId as QuarterId);
+      if (preview.refusal) return t(`span.no.${preview.refusal}`);
+      if (!preview.allowed) return t('span.unchanged', { name: spanState.name });
+      return preview.added.length > 0
+        ? t('span.wouldReach', {
+            name: spanState.name,
+            count: preview.covered.length,
+            // Inflected by its own key: one string cannot carry two
+            // independent plurals, and "1 units" is a defect a reader sees.
+            units: t('capacity.units', { units: preview.unitsDelta }),
+          })
+        : t('span.wouldRetract', {
+            name: spanState.name,
+            count: preview.covered.length,
+            units: t('capacity.units', { units: -preview.unitsDelta }),
+          });
+    },
+    [board],
+  );
+
+  const { spanning, begin: beginSpan } = useSpan({
+    announce,
+    describe: describeSpan,
+    onCancel: (spanState) => announce(t('drop.cancelled', { name: spanState.name })),
+    onCommit: (spanState) => {
+      if (!board || !state) return;
+      const preview = previewSpan(board, toSpanDrag(spanState), spanState.toQuarterId as QuarterId);
+      if (!preview.allowed) return;
+
+      void stretchFootprint({
+        commitmentId: spanState.commitmentId,
+        teamId: spanState.teamId,
+        units: spanState.units,
+        add: preview.added,
+        // The footprints the retracted quarters hold, resolved here while the
+        // board still describes them.
+        remove: preview.removed.flatMap((quarterId) => {
+          const cell = findCell(board, spanState.teamId, quarterId as QuarterId);
+          const block = cell?.blocks.find((b) => b.commitmentId === spanState.commitmentId);
+          return block ? [block.footprintId] : [];
+        }),
+      }).then((ok: boolean) => {
+        if (!ok) return;
+        announce(t('span.reached', { name: spanState.name, count: preview.covered.length }));
+      });
+    },
+  });
+
+  /** What the board row being stretched would gain and lose, for the preview. */
+  const spanPreview = useMemo(() => {
+    if (!spanning || !board) return null;
+    const preview = previewSpan(board, toSpanDrag(spanning), spanning.toQuarterId as QuarterId);
+    return {
+      teamId: spanning.teamId,
+      added: preview.added as readonly string[],
+      removed: preview.removed as readonly string[],
+    };
+  }, [spanning, board]);
+
+  /**
+   * The keyboard half: one quarter at a time, on the same edges the pointer can
+   * grab. It runs the same `previewSpan` and the same command, so the two paths
+   * cannot come to different answers about what a reach means.
+   */
+  const onSpanStep = useCallback(
+    (footprintId: string, teamId: string, quarterId: string, edge: SpanEdge, direction: 1 | -1) => {
+      if (!board) return;
+      const block = findCell(board, teamId, quarterId as QuarterId)?.blocks.find(
+        (candidate) => candidate.footprintId === footprintId,
+      );
+      if (!block) return;
+
+      const run = spanOf(board, teamId, block.commitmentId, quarterId as QuarterId);
+      const at = board.quarters.indexOf(
+        (edge === 'START' ? run[0] : run[run.length - 1]) as QuarterId,
+      );
+      const to = board.quarters[at + direction];
+      if (!to) {
+        announce(t('span.no.OUTSIDE_HORIZON'));
+        return;
+      }
+
+      const drag: SpanDrag = {
+        footprintId,
+        commitmentId: block.commitmentId,
+        name: block.name,
+        teamId,
+        quarterId: quarterId as QuarterId,
+        units: block.units,
+        edge,
+      };
+      const preview = previewSpan(board, drag, to);
+      if (!preview.allowed) {
+        announce(
+          preview.refusal
+            ? t(`span.no.${preview.refusal}`)
+            : t('span.unchanged', { name: block.name }),
+        );
+        return;
+      }
+
+      void stretchFootprint({
+        commitmentId: block.commitmentId,
+        teamId,
+        units: block.units,
+        add: preview.added,
+        remove: preview.removed.flatMap((removedQuarter) => {
+          const cell = findCell(board, teamId, removedQuarter as QuarterId);
+          const held = cell?.blocks.find((b) => b.commitmentId === block.commitmentId);
+          return held ? [held.footprintId] : [];
+        }),
+      }).then((ok: boolean) => {
+        if (ok) {
+          announce(t('span.reached', { name: block.name, count: preview.covered.length }));
+        }
+      });
+    },
+    [board, stretchFootprint, announce],
+  );
+
+  const onSpanStart = useCallback(
+    (
+      footprintId: string,
+      teamId: string,
+      quarterId: string,
+      edge: SpanEdge,
+      event: React.PointerEvent,
+    ) => {
+      const block = board?.rows
+        .flatMap((row) => row.cells)
+        .flatMap((cell) => cell.blocks)
+        .find((candidate) => candidate.footprintId === footprintId);
+      if (!block) return;
+      beginSpan(
+        {
+          footprintId,
+          commitmentId: block.commitmentId,
+          name: block.name,
+          teamId,
+          quarterId,
+          units: block.units,
+          edge,
+        },
+        event,
+      );
+    },
+    [board, beginSpan],
+  );
 
   /**
    * What the panel shows. Driven by the focused commitment rather than a
@@ -1230,6 +1407,9 @@ export function App() {
             footprint,
             commitment,
             counted: isCounted(footprint, commitment, viewState.workspace.currentQuarterId),
+            // Computed by the board model, which can see the whole row.
+            continuesBefore: block.continuesBefore,
+            continuesAfter: block.continuesAfter,
             ...(selectedScenarioId !== null && commitment.lifecycle === 'IDEA'
               ? { scenarioGhost: true }
               : {}),
@@ -1642,6 +1822,9 @@ export function App() {
                 commitResize(footprintId, teamId, quarterId, clampUnits(units))
               }
               onResizeStart={(input, event) => beginResize(input, event)}
+              onSpanStart={onSpanStart}
+              onSpanStep={onSpanStep}
+              spanning={spanPreview}
               resizing={
                 resizing ? { footprintId: resizing.footprintId, units: resizing.units } : null
               }

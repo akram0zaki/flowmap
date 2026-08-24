@@ -64,6 +64,8 @@ function block(over: Partial<BlockModel> = {}): BlockModel {
     bottomUnits: 0,
     topUnits: 60,
     overflowing: false,
+    continuesBefore: false,
+    continuesAfter: false,
     ...over,
   };
 }
