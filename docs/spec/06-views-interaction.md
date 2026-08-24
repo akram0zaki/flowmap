@@ -167,6 +167,13 @@ full emphasis. `Esc` clears focus. Focus state is announced: _"Focused: SEPA ins
 Lenses change emphasis, never data. Switching lenses preserves selection and horizon where the
 lens can express them. Lens is part of a saved view.
 
+The **Teams** lens is the exception that proves it: its rows carry **Settings** and **Archive**,
+because a team's row is where you are standing when you notice its BAU is wrong. Settings opens that
+team's default allocations ([02 §5](02-capacity-model.md#5-reserves)) — the same editor as
+Settings ▸ Capacity, scoped to the team, with no picker to choose it again. The two buttons share a
+row and wrap only when the column cannot hold both: stacked, they cost a row of height on every team
+and push the grid off the screen.
+
 ## 4. Radar view
 
 Two-pane: grouped signal list (left, primary) + explanation panel (right). Mode toggle

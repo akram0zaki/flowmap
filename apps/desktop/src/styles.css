@@ -3520,6 +3520,19 @@ label {
   color: var(--critical-fg);
 }
 
+/* Side by side, wrapping only when the column cannot hold both. Stacked, two
+   buttons cost a row of height on every team and push the grid off screen. */
+.fm-teams__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.fm-teams__actions button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .fm-teams__cell-wrap {
   min-width: 0;
 }
@@ -4005,4 +4018,16 @@ label {
 
 .fm-capacity__deliverable[data-over] {
   color: var(--critical-fg);
+}
+
+/* The team's own capacity editor. Narrower than the settings dialog: it holds
+   one team's figures, not the workspace's. */
+.fm-team-capacity .fm-capacity {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.fm-team-capacity .fm-capacity__group:first-of-type {
+  margin-top: var(--space-3);
 }
