@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CapacitySummary, TeamQuarter } from '@flowmap/domain';
 
 import {
+  arrivingUnits,
   clampUnits,
   defaultDropUnits,
   previewDrop,
@@ -108,7 +109,12 @@ const carried: DragPayload = {
   lifecycle: 'COMMITTED',
   footprintCount: 1,
   fromClosed: false,
+  intent: 'MOVE',
+  addUnits: 10,
 };
+
+/** The same placement held for a second team to pick up, rather than moved. */
+const alsoTaken: DragPayload = { ...carried, intent: 'ADD' };
 
 describe('previewDrop', () => {
   it('states what the container would become', () => {
@@ -217,6 +223,41 @@ describe('previewDrop', () => {
 
       expect(home.committedLoad).toBe(60);
       expect(home.percentDelta).toBe(0);
+      expect(home).toMatchObject({ allowed: false, refusal: 'ALREADY_HERE' });
+    });
+  });
+
+  /**
+   * A second team picking the work up is the ordinary case, so it is the plain
+   * drag. What arrives is the addition's own size, not the size the team it was
+   * dragged from happens to carry — how much of the work this team takes is a
+   * new question.
+   */
+  describe('a second team taking the work as well', () => {
+    it('brings its own units, not the ones the first team carries', () => {
+      const preview = previewDrop(cell(), alsoTaken);
+      expect(preview.committedLoad).toBe(70);
+      expect(preview.percent).toBe(70);
+      expect(preview.allowed).toBe(true);
+    });
+
+    // The lead team is an ownership decision, made by dropping an Idea on a
+    // row. A second team helping out is not that decision.
+    it('leaves the lead team where it is', () => {
+      expect(previewDrop(cell(), alsoTaken).reassignsOwner).toBe(false);
+    });
+
+    it('still refuses a container this work already occupies', () => {
+      const occupied = previewDrop(cell({ blocks: [block({ commitmentId: 'c-9' })] }), alsoTaken);
+      expect(occupied).toMatchObject({ allowed: false, refusal: 'DUPLICATE_FOOTPRINT' });
+    });
+
+    it('is refused on the container it was picked up from', () => {
+      const home = previewDrop(cell(), {
+        ...alsoTaken,
+        fromTeamId: 't-1',
+        fromQuarterId: '2026-Q3',
+      });
       expect(home).toMatchObject({ allowed: false, refusal: 'ALREADY_HERE' });
     });
   });
@@ -338,5 +379,21 @@ describe('defaultDropUnits', () => {
   it('falls back rather than dropping a zero-unit block', () => {
     expect(defaultDropUnits({ M: 20 })).toBe(20);
     expect(defaultDropUnits({})).toBe(10);
+  });
+});
+
+describe('arrivingUnits', () => {
+  it('is the block itself when the placement moves', () => {
+    expect(arrivingUnits(carried)).toBe(20);
+  });
+
+  // The ghost the board draws and the figure under it read this same function,
+  // so an addition cannot draw one size while the percentage counts another.
+  it('is the addition’s own size when a second team takes the work on', () => {
+    expect(arrivingUnits(alsoTaken)).toBe(10);
+  });
+
+  it('is nothing at all for a dependency', () => {
+    expect(arrivingUnits({ kind: 'LINK', commitmentId: 'c-1', name: 'x', units: 20 })).toBe(0);
   });
 });

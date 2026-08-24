@@ -79,6 +79,31 @@ competing permanent layout.
 - The current quarter is visually centred on load and marked with a persistent "now" rule.
 - The Ideas/Demand lane is pinned left, outside the capacity grid. Ideas appear on the grid only as
   thin connector markers from a refinement reserve ([02 §5.1](02-capacity-model.md#51-refinement-reserve-links)).
+- **The lane scrolls independently of the grid, and the grid scrolls in both axes inside its own
+  region.** The page itself does not scroll on this lens. A shared scroll couples the two — reaching
+  an Idea near the bottom of the lane carries the team row you meant to drop it on off the screen —
+  and a pointer drag cannot scroll a page under itself, which puts every row past the fold out of
+  reach. A drag held near an edge of the grid scrolls it towards that edge, horizontally and
+  vertically.
+
+#### 3.1.1 A commitment across several teams
+
+One commitment routinely consumes capacity on more than one team: an epic worked by three squads is
+the ordinary case, not the exception. Footprint uniqueness is `(commitmentId, teamId, quarterId)`
+([01 §6](01-domain-model.md)), so this has always been legal; what the board owes it is a gesture.
+
+- **Dragging a block onto another team's row adds a placement there.** The row it came from keeps
+  what it had, and the new footprint is `isPrimary: false` — this is `AssignCapacityFootprint`, not
+  a move, and no gate is passed and no lifecycle changes.
+- **Holding `Alt` during the drag moves the placement instead** (`MoveCapacityFootprint`), which is
+  the reschedule and the correction.
+- The modifier is read live: pressing or releasing `Alt` mid-drag re-states what the drop would do,
+  without the pointer moving.
+- **Ownership never changes either way.** The lead team is `commitment.primaryTeamId` and is set by
+  dropping an _Idea_ on a row. A second team taking work on is not that decision — accountability
+  stays where it was put, which is the whole distinction between leading work and doing some of it.
+- An addition arrives at the same default size an Idea lands at, because how much of the work the
+  second team takes is a new question and not one the first team's number answers.
 
 ### 3.2 Container anatomy
 
@@ -225,18 +250,19 @@ Global:
 
 Canvas (roving tabindex — the canvas is a single tab stop, arrows move within it):
 
-| Key                 | Action                                                                                                     |
-| ------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `← → ↑ ↓`           | Move selection between cells / blocks                                                                      |
-| `Tab` / `Shift+Tab` | Move between regions (lane, grid, panel)                                                                   |
-| `Enter`             | Open focused object                                                                                        |
-| `Space`             | Toggle focus mode on the object                                                                            |
-| `m`                 | **Move mode** — arrows choose target team-quarter, live headroom announced, `Enter` commits, `Esc` cancels |
-| `r`                 | Resize mode — `←/→` step through sizes or ±1 unit with `Shift`                                             |
-| `d`                 | Draw dependency — arrows choose a target, `Enter` creates a `REQUIRES` dependency                          |
-| `f`                 | Expand dependency neighbourhood by one hop                                                                 |
-| `+` / `−`           | Zoom level                                                                                                 |
-| `g`                 | Commit Gate for the focused Idea                                                                           |
+| Key                 | Action                                                                                                                |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `← → ↑ ↓`           | Move selection between cells / blocks                                                                                 |
+| `Tab` / `Shift+Tab` | Move between regions (lane, grid, panel)                                                                              |
+| `Enter`             | Open focused object                                                                                                   |
+| `Space`             | Toggle focus mode on the object                                                                                       |
+| `m`                 | **Move mode** — arrows choose target team-quarter, live headroom announced, `Enter` commits, `Esc` cancels            |
+| `Alt + Enter`       | Commit the carried placement as a **move** rather than an addition ([§3.1.1](#311-a-commitment-across-several-teams)) |
+| `r`                 | Resize mode — `←/→` step through sizes or ±1 unit with `Shift`                                                        |
+| `d`                 | Draw dependency — arrows choose a target, `Enter` creates a `REQUIRES` dependency                                     |
+| `f`                 | Expand dependency neighbourhood by one hop                                                                            |
+| `+` / `−`           | Zoom level                                                                                                            |
+| `g`                 | Commit Gate for the focused Idea                                                                                      |
 
 **Every drag/drop interaction has a keyboard equivalent, and every keyboard equivalent produces the
 same command.** A visual affordance without its keyboard path does not ship.

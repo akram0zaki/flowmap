@@ -10,7 +10,8 @@
  * Pure on purpose. The same functions answer the pointer path, the keyboard
  * path, and the tests, so those three cannot drift apart. No DOM, no store.
  *
- * See docs/spec/06-views-interaction.md §5 and 04-capacity-model.md §7.
+ * See docs/spec/06-views-interaction.md §5 and §3.1.1 (one commitment across
+ * several teams), and 04-capacity-model.md §7.
  */
 
 import type {
@@ -62,6 +63,28 @@ export type DragPayload =
       readonly footprintCount: number;
       /** A settled quarter cannot be edited, so it cannot be unplaced from. */
       readonly fromClosed: boolean;
+      /**
+       * What a drop on another container does with the placement in hand.
+       *
+       * Most demand is picked up by more than one team — an epic worked by
+       * three squads is the ordinary case, not the exception — and a board that
+       * can only move a placement forces that shape to be a lie. So the plain
+       * drag **adds**: the team you drop on also picks the work up, and the one
+       * you dragged from keeps what it had. Alt moves it instead, for the
+       * reschedule and the correction.
+       *
+       * Ownership is untouched either way. The lead team is
+       * `commitment.primaryTeamId` and the added footprint is never primary —
+       * accountability stays where it was put.
+       */
+      readonly intent: 'ADD' | 'MOVE';
+      /**
+       * Units a second placement would take. A move carries `units` with it;
+       * an addition starts at the same default an Idea lands at, because how
+       * much of the work the second team takes is a new question and not one
+       * the first team's number answers.
+       */
+      readonly addUnits: CapacityUnits;
     };
 
 /**
@@ -106,6 +129,19 @@ export type DropPreview = {
 };
 
 /**
+ * How many units a drop would actually put into a container.
+ *
+ * Exported because the board draws a ghost of the arriving block and must use
+ * the same number the figure was computed from. It did not, once: an addition
+ * drew the source block's size while the percentage underneath counted the
+ * addition's, and the two disagreed on screen.
+ */
+export function arrivingUnits(payload: DragPayload): CapacityUnits {
+  if (payload.kind === 'LINK') return 0;
+  return payload.kind === 'BLOCK' && payload.intent === 'ADD' ? payload.addUnits : payload.units;
+}
+
+/**
  * The state of the drop, for one candidate container.
  *
  * Called for every visible cell on every pointer move, so it stays arithmetic —
@@ -138,7 +174,7 @@ export function previewDrop(cell: CellModel, payload: DragPayload): DropPreview 
 
   // A dependency changes nothing about capacity — it is a statement, not a
   // placement — so the figures must not move while one is being drawn.
-  const arriving = movingWithin || payload.kind === 'LINK' ? 0 : payload.units;
+  const arriving = movingWithin ? 0 : arrivingUnits(payload);
   const projected = withCommittedLoad(summary, summary.committedLoad + arriving);
 
   const percentBefore = utilisationPercent(summary);

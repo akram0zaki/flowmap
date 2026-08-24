@@ -68,11 +68,34 @@ export type UsePlacementOptions = {
   /** Announced on every meaningful change, for the live region. */
   readonly announce: (message: string) => void;
   readonly describe: (payload: DragPayload, target: DropTarget | null) => string;
+  /**
+   * Rewrites what is in the hand when Alt goes down or comes back up.
+   *
+   * The modifier does not change where the drop lands, it changes what the drop
+   * *means* — a plain drag has another team pick the work up as well, Alt moves
+   * the placement instead. The hook owns the key state because the preview has
+   * to flip mid-drag, without the pointer moving; what the two readings of the
+   * payload are is the caller's business, not the gesture's.
+   */
+  readonly resolve?: (payload: DragPayload, alt: boolean) => DragPayload;
 };
 
-export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacementOptions) {
+export function usePlacement({
+  onDrop,
+  onCancel,
+  announce,
+  describe,
+  resolve,
+}: UsePlacementOptions) {
   // The authority. Written synchronously by every handler.
   const drag = useRef<PlacementState | null>(null);
+  /**
+   * The payload as it was picked up, before `resolve` read the modifier off it.
+   * Kept so that flipping Alt twice returns the original rather than resolving
+   * an already-resolved payload.
+   */
+  const held = useRef<DragPayload | null>(null);
+  const altHeld = useRef(false);
   // The mirror. Exists only so the preview renders — and it deliberately does
   // NOT carry the pointer position. Putting the cursor in React state re-rendered
   // all thirty capacity vessels on every pointermove, which locked the main
@@ -120,6 +143,7 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
 
   const cancel = useCallback(() => {
     armed.current = null;
+    held.current = null;
     const current = drag.current;
     set(null);
     if (current) onCancel?.(current.payload);
@@ -127,19 +151,24 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
 
   const beginPointer = useCallback((payload: DragPayload, event: React.PointerEvent) => {
     // Left button only, and never on a modified click — those are the browser's.
+    // Alt is ours: it is the difference between another team taking the work on
+    // as well and the placement moving, and it is read again on every move.
     if (event.button !== 0 || event.ctrlKey || event.metaKey) return;
     // Stops the browser from starting a text selection or a native image drag
     // out of the element being picked up, both of which cancel the gesture.
     event.preventDefault();
+    altHeld.current = event.altKey;
     armed.current = { payload, x: event.clientX, y: event.clientY };
   }, []);
 
   const beginKeyboard = useCallback(
     (payload: DragPayload) => {
-      set({ payload, via: 'keyboard', target: null });
-      announce(describe(payload, null));
+      held.current = payload;
+      const resolved = resolve ? resolve(payload, altHeld.current) : payload;
+      set({ payload: resolved, via: 'keyboard', target: null });
+      announce(describe(resolved, null));
     },
-    [set, announce, describe],
+    [set, announce, describe, resolve],
   );
 
   const aim = useCallback(
@@ -158,6 +187,7 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
   // second attempt failed on the duplicate the first had just created.
   const finish = useCallback(() => {
     const current = drag.current;
+    held.current = null;
     set(null);
     if (current?.target) onDrop(current.payload, current.target);
   }, [set, onDrop]);
@@ -166,8 +196,8 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
   // pointer move would be wasteful, and gating the effect on a ref silently did
   // not work at all — a ref does not re-run an effect, so the listeners were
   // never attached by the press that needed them.
-  const latest = useRef({ targetAt, onDrop, cancel, announce, describe, set });
-  latest.current = { targetAt, onDrop, cancel, announce, describe, set };
+  const latest = useRef({ targetAt, onDrop, cancel, announce, describe, set, resolve });
+  latest.current = { targetAt, onDrop, cancel, announce, describe, set, resolve };
 
   // On the window rather than the element: a drag that leaves the block it
   // started on must keep tracking, and a release outside the board must still
@@ -223,6 +253,22 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
       }, 16);
     };
 
+    /**
+     * Alt went down or came back up. The pointer has not moved and the target
+     * has not changed — what changed is what the drop would do, so the payload
+     * is resolved again and the preview and the announcement follow it.
+     */
+    const reread = (alt: boolean) => {
+      altHeld.current = alt;
+      const current = drag.current;
+      const original = held.current;
+      if (!current || !original || !latest.current.resolve) return;
+
+      const payload = latest.current.resolve(original, alt);
+      latest.current.set({ ...current, payload });
+      latest.current.announce(latest.current.describe(payload, current.target));
+    };
+
     const onMove = (event: PointerEvent) => {
       const start = armed.current;
       if (start) {
@@ -231,9 +277,13 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
           Math.abs(event.clientY - start.y) > DRAG_THRESHOLD_PX;
         if (!far) return;
         armed.current = null;
+        held.current = start.payload;
+        altHeld.current = event.altKey;
         moveCarry(event.clientX, event.clientY);
         latest.current.set({
-          payload: start.payload,
+          payload: latest.current.resolve
+            ? latest.current.resolve(start.payload, event.altKey)
+            : start.payload,
           via: 'pointer',
           target: latest.current.targetAt(event.clientX, event.clientY),
         });
@@ -242,6 +292,10 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
 
       const current = drag.current;
       if (!current || current.via !== 'pointer') return;
+
+      // A move carries the modifier with it, so a drag that starts plain and
+      // has Alt pressed halfway through re-reads without waiting for a keydown.
+      if (event.altKey !== altHeld.current) reread(event.altKey);
 
       // Always cheap: a style write on one absolutely-positioned element.
       moveCarry(event.clientX, event.clientY);
@@ -261,6 +315,7 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
       }
       stopEdgeScroll();
       const current = drag.current;
+      held.current = null;
       if (!current || current.via !== 'pointer') return;
 
       // The release is also a position. A drag fast enough to produce a single
@@ -274,6 +329,7 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
     const onCancelEvent = () => {
       stopEdgeScroll();
       armed.current = null;
+      held.current = null;
       if (drag.current?.via === 'pointer') latest.current.cancel();
     };
 
@@ -282,19 +338,29 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
       if (event.key === 'Escape' && drag.current) {
         stopEdgeScroll();
         latest.current.cancel();
+        return;
       }
+      // Held rather than pressed: the keyboard drag has no pointer to carry the
+      // modifier, so the key's own down and up are what the preview reads.
+      if (event.key === 'Alt' && drag.current && !altHeld.current) reread(true);
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Alt' && drag.current && altHeld.current) reread(false);
     };
 
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancelEvent);
     window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
     return () => {
       stopEdgeScroll();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancelEvent);
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
     };
   }, []);
 

@@ -134,6 +134,10 @@ export function IdeasLane({
         <>
           {ready > 0 && <p className="fm-ideas__ready">{t('idea.readyCount', { count: ready })}</p>}
           <p className="fm-ideas__hint">{t('drop.railHint')}</p>
+          {/* The board's own gesture, stated where the board's other gestures
+              are. A plain drag between rows adds rather than moves, which is
+              worth saying once rather than leaving to be discovered. */}
+          <p className="fm-ideas__hint">{t('drop.blockHint')}</p>
           <p className="fm-ideas__hint">{t('remove.hint')}</p>
 
           <ul>
