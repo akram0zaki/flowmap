@@ -47,6 +47,14 @@ export type CapacitySettingsProps = {
     applyToOpenQuarters: boolean;
   }) => void;
   readonly onSaveQuarter: (teamQuarterId: EntityId, reserves: readonly ReserveInput[]) => void;
+  /**
+   * Which levels to show. `TEAM` is the same editor opened from a team's own
+   * row — the workspace defaults are not that team's business at that moment,
+   * and reaching this from the board should not mean reading past them.
+   */
+  readonly scope?: 'ALL' | 'TEAM';
+  /** The team to start on. Defaults to the first. */
+  readonly teamId?: EntityId;
 };
 
 /** A row being edited. Amounts are strings so a half-typed number is not zero. */
@@ -70,6 +78,8 @@ export function CapacitySettings({
   onSaveDefaults,
   onSaveTeam,
   onSaveQuarter,
+  scope = 'ALL',
+  teamId: initialTeamId,
 }: CapacitySettingsProps) {
   const teams = useMemo(
     () =>
@@ -83,7 +93,7 @@ export function CapacitySettings({
   const [wsCapacity, setWsCapacity] = useState(String(defaults.defaultTeamQuarterCapacity));
   const [wsRows, setWsRows] = useState<Row[]>(() => toRows(defaults.defaultReserves));
 
-  const [teamId, setTeamId] = useState<EntityId | ''>(teams[0]?.id ?? '');
+  const [teamId, setTeamId] = useState<EntityId | ''>(initialTeamId ?? teams[0]?.id ?? '');
   const team = teams.find((candidate) => candidate.id === teamId);
   const [overrides, setOverrides] = useState(team?.defaultReserves !== undefined);
   const [teamCapacity, setTeamCapacity] = useState(String(team?.defaultQuarterCapacity ?? ''));
@@ -117,38 +127,46 @@ export function CapacitySettings({
   );
 
   return (
-    <div className="fm-capacity">
-      <h3>{t('capacitySettings.title')}</h3>
-      <p>{t('capacitySettings.description')}</p>
+    <div className="fm-capacity" data-scope={scope === 'TEAM' ? 'team' : undefined}>
+      {scope === 'ALL' && (
+        <>
+          <h3>{t('capacitySettings.title')}</h3>
+          <p>{t('capacitySettings.description')}</p>
 
-      <ReserveForm
-        legend={t('capacitySettings.workspace')}
-        note={t('capacitySettings.workspaceNote')}
-        capacity={wsCapacity}
-        onCapacity={setWsCapacity}
-        rows={wsRows}
-        onRows={setWsRows}
-        onSave={() =>
-          onSaveDefaults({
-            defaultTeamQuarterCapacity: Number(wsCapacity),
-            reserves: toInput(wsRows),
-          })
-        }
-      />
+          <ReserveForm
+            legend={t('capacitySettings.workspace')}
+            note={t('capacitySettings.workspaceNote')}
+            capacity={wsCapacity}
+            onCapacity={setWsCapacity}
+            rows={wsRows}
+            onRows={setWsRows}
+            onSave={() =>
+              onSaveDefaults({
+                defaultTeamQuarterCapacity: Number(wsCapacity),
+                reserves: toInput(wsRows),
+              })
+            }
+          />
+        </>
+      )}
 
       {team && (
         <fieldset className="fm-capacity__group">
-          <legend>{t('capacitySettings.team')}</legend>
-          <label className="fm-capacity__pick">
-            {t('list.team')}
-            <select value={teamId} onChange={(event) => chooseTeam(event.target.value)}>
-              {teams.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <legend>{scope === 'TEAM' ? team.name : t('capacitySettings.team')}</legend>
+          {/* No picker when the editor was opened from one team's own row: the
+              team is the reason you are here, not a choice to make again. */}
+          {scope === 'ALL' && (
+            <label className="fm-capacity__pick">
+              {t('list.team')}
+              <select value={teamId} onChange={(event) => chooseTeam(event.target.value)}>
+                {teams.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           {/* Absent, not empty. "This team reserves nothing" is a different
               statement from "this team follows the workspace", and only one of
