@@ -19,6 +19,7 @@ import {
   summariseCapacity,
   type CapacityFootprint,
   type CapacitySummary,
+  type CapacityUnits,
   type Commitment,
   type EntityId,
   type QuarterId,
@@ -66,6 +67,17 @@ export type CellSignals = {
   readonly mandatoryShare: number;
 };
 
+/**
+ * What `EnsureTeamQuarter` would seed this cell with. Present only when no
+ * container exists yet. Board totals ignore it — a TeamQuarter is never
+ * implicit in calculations (spec 01 §4).
+ */
+export type CellSeedCapacity = {
+  readonly effectiveCapacity: CapacityUnits;
+  readonly reservedTotal: CapacityUnits;
+  readonly deliverableCapacity: CapacityUnits;
+};
+
 export type CellModel = {
   readonly key: string;
   readonly teamId: EntityId;
@@ -73,6 +85,11 @@ export type CellModel = {
   readonly quarterId: QuarterId;
   readonly teamQuarter: TeamQuarter | null;
   readonly summary: CapacitySummary | null;
+  /**
+   * Seeded defaults for a cell that has not been materialised. Drop preview
+   * uses this; row and board aggregates do not.
+   */
+  readonly seed?: CellSeedCapacity;
   readonly blocks: readonly BlockModel[];
   readonly signals: CellSignals;
   readonly closed: boolean;
@@ -182,6 +199,7 @@ export function buildBoard(input: BoardInput): BoardModel {
         quarterId,
         teamQuarter,
         summary,
+        ...(teamQuarter ? {} : { seed: seedCapacity(team, workspace) }),
         blocks,
         signals: summariseSignals(blocks, summary),
         closed: teamQuarter?.closedAt !== undefined,
@@ -296,6 +314,20 @@ function summariseSignals(
     uncountedUnits,
     commitmentCount: blocks.length,
     mandatoryShare: load === 0 ? 0 : mandatoryUnits / load,
+  };
+}
+
+/** Matches `EnsureTeamQuarter`: baseline from the team, reserves from workspace settings. */
+function seedCapacity(team: Team, workspace: Workspace): CellSeedCapacity {
+  const reservedTotal = workspace.settings.capacity.defaultReserves.reduce(
+    (sum, reserve) => sum + reserve.amount,
+    0,
+  );
+  const effectiveCapacity = Math.max(0, team.defaultQuarterCapacity);
+  return {
+    effectiveCapacity,
+    reservedTotal,
+    deliverableCapacity: Math.max(0, effectiveCapacity - reservedTotal),
   };
 }
 

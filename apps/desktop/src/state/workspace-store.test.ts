@@ -84,3 +84,81 @@ describe('sample workspace is a separate switchable portfolio', () => {
     expect(samples[0]?.id).toBe(firstId);
   });
 });
+
+describe('commitIdeaInto materialises an empty team-quarter', () => {
+  it('creates the container at the seeded default and commits the idea', async () => {
+    const r = runtime();
+    await useWorkspace.getState().init(r, 'You');
+    expect(await useWorkspace.getState().addTeam('Payments')).toBe(true);
+    expect(await useWorkspace.getState().captureIdea('SEPA')).toBe(true);
+
+    const before = useWorkspace.getState().state!;
+    const teamId = [...before.teams.values()][0]!.id;
+    const ideaId = [...before.commitments.values()][0]!.id;
+    expect(before.teamQuarters.size).toBe(0);
+
+    expect(
+      await useWorkspace.getState().commitIdeaInto({
+        commitmentId: ideaId,
+        teamId,
+        quarterId: '2026-Q4',
+        units: 10,
+      }),
+    ).toBe(true);
+
+    const after = useWorkspace.getState().state!;
+    expect(after.teamQuarters.size).toBe(1);
+    const teamQuarter = [...after.teamQuarters.values()][0]!;
+    expect(teamQuarter.quarterId).toBe('2026-Q4');
+    expect(teamQuarter.teamId).toBe(teamId);
+    expect(teamQuarter.capacityBaseline).toBe(100);
+    expect(after.commitments.get(ideaId)?.lifecycle).toBe('COMMITTED');
+  });
+});
+
+describe('archiveTeam and dropCommitment', () => {
+  it('archives an empty team and undo restores it', async () => {
+    const r = runtime();
+    await useWorkspace.getState().init(r, 'You');
+    expect(await useWorkspace.getState().addTeam('Payments')).toBe(true);
+
+    const teamId = [...useWorkspace.getState().state!.teams.values()][0]!.id;
+    expect(await useWorkspace.getState().archiveTeam(teamId)).toBe(true);
+    expect([...useWorkspace.getState().state!.teams.values()][0]!.archivedAt).toBeDefined();
+
+    await useWorkspace.getState().undo();
+    expect([...useWorkspace.getState().state!.teams.values()][0]!.archivedAt).toBeUndefined();
+  });
+
+  it('refuses to archive a team that still holds work', async () => {
+    const r = runtime();
+    await useWorkspace.getState().init(r, 'You');
+    expect(await useWorkspace.getState().addTeam('Payments')).toBe(true);
+    expect(await useWorkspace.getState().captureIdea('SEPA')).toBe(true);
+
+    const before = useWorkspace.getState().state!;
+    const teamId = [...before.teams.values()][0]!.id;
+    const ideaId = [...before.commitments.values()][0]!.id;
+    expect(
+      await useWorkspace.getState().commitIdeaInto({
+        commitmentId: ideaId,
+        teamId,
+        quarterId: '2026-Q3',
+        units: 10,
+      }),
+    ).toBe(true);
+
+    expect(await useWorkspace.getState().archiveTeam(teamId)).toBe(false);
+    expect([...useWorkspace.getState().state!.teams.values()][0]!.archivedAt).toBeUndefined();
+  });
+
+  it('drops an Idea out of the demand lane', async () => {
+    const r = runtime();
+    await useWorkspace.getState().init(r, 'You');
+    expect(await useWorkspace.getState().captureIdea('Throwaway')).toBe(true);
+
+    const ideaId = [...useWorkspace.getState().state!.commitments.values()][0]!.id;
+    expect(await useWorkspace.getState().dropCommitment(ideaId)).toBe(true);
+    expect(useWorkspace.getState().state!.commitments.get(ideaId)?.lifecycle).toBe('DROPPED');
+  });
+});

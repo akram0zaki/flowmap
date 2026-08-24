@@ -26,6 +26,8 @@ export type IdeasLaneProps = {
   readonly onSelect: (commitmentId: string) => void;
   /** Pick this Idea up to place it — pointer press, or Space. */
   readonly onPickUp: (commitmentId: string, event?: ReactPointerEvent) => void;
+  /** Drop is a decision not to take the work. Delete/Backspace on the Idea is the keyboard path. */
+  readonly onDrop: (commitmentId: string) => void;
   readonly draggingCommitmentId: string | null;
   /** Work is being held over the lane: 'ok' to take it off the board, or 'no'. */
   readonly dropState: 'ok' | 'no' | null;
@@ -61,6 +63,7 @@ export function IdeasLane({
   selectedCommitmentId,
   onSelect,
   onPickUp,
+  onDrop,
   draggingCommitmentId,
   dropState,
   dropNote,
@@ -158,6 +161,9 @@ export function IdeasLane({
                       if (event.key === ' ') {
                         event.preventDefault();
                         onPickUp(idea.commitmentId);
+                      } else if (event.key === 'Delete' || event.key === 'Backspace') {
+                        event.preventDefault();
+                        onDrop(idea.commitmentId);
                       }
                     }}
                   >
@@ -187,6 +193,17 @@ export function IdeasLane({
                       {idea.refinementLinks.length > 0 && ` · ${t('map.refinementLinked')}`}
                     </span>
                   </button>
+
+                  <div className="fm-idea__actions">
+                    <button
+                      type="button"
+                      className="fm-quiet"
+                      aria-label={t('idea.drop', { name: idea.name })}
+                      onClick={() => onDrop(idea.commitmentId)}
+                    >
+                      {t('action.drop')}
+                    </button>
+                  </div>
 
                   {/* Outside the button, not inside it: nesting a select in a
                       button gives a keyboard user something they can reach but

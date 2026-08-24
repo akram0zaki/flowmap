@@ -100,6 +100,32 @@ test('create → place → persist → reload → render', async ({ page }) => {
   await expectNoAxeViolations(page, 'after reload');
 });
 
+test('drops an Idea from the demand lane after confirming', async ({ page }) => {
+  await freshApp(page);
+  await captureIdea(page, 'Throwaway');
+
+  const idea = page.getByRole('button', { name: /Throwaway no team/ });
+  await expect(idea).toBeVisible();
+  await page.getByRole('button', { name: 'Drop Throwaway' }).click();
+  await expect(page.getByRole('alertdialog')).toBeVisible();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Drop', exact: true }).click();
+
+  await expect(idea).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Drop Throwaway' })).toHaveCount(0);
+});
+
+test('archives a team that holds no work', async ({ page }) => {
+  await freshApp(page);
+  await addTeam(page, 'Temp');
+
+  await expect(page.getByRole('rowheader', { name: /Temp/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Archive Temp' }).click();
+  await expect(page.getByRole('alertdialog')).toBeVisible();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Archive', exact: true }).click();
+
+  await expect(page.getByRole('rowheader', { name: /Temp/ })).toHaveCount(0);
+});
+
 test('list companion totals match the board exactly', async ({ page }) => {
   await freshApp(page);
 

@@ -163,7 +163,38 @@ describe('previewDrop', () => {
     expect(preview.allowed).toBe(true);
   });
 
-  it('cannot preview a container that does not exist yet', () => {
+  it('previews a not-yet-created container at the seeded default, and allows the drop', () => {
+    const preview = previewDrop(
+      cell({
+        teamQuarter: null,
+        summary: null,
+        blocks: [],
+        seed: { effectiveCapacity: 100, reservedTotal: 20, deliverableCapacity: 80 },
+      }),
+      idea,
+    );
+
+    expect(preview.allowed).toBe(true);
+    expect(preview.committedLoad).toBe(20);
+    expect(preview.percent).toBe(25);
+    expect(preview.percentDelta).toBe(25);
+    expect(preview.overflow).toBe(0);
+  });
+
+  it('still refuses a dependency drawn onto a container with no work', () => {
+    const preview = previewDrop(
+      cell({
+        teamQuarter: null,
+        summary: null,
+        blocks: [],
+        seed: { effectiveCapacity: 100, reservedTotal: 20, deliverableCapacity: 80 },
+      }),
+      { kind: 'LINK', commitmentId: 'c-1', name: 'SEPA instant payments', units: 0 },
+    );
+    expect(preview).toMatchObject({ allowed: false, refusal: 'LINK_NEEDS_WORK' });
+  });
+
+  it('cannot preview a container that has neither a summary nor a seed', () => {
     const preview = previewDrop(cell({ teamQuarter: null, summary: null }), idea);
     expect(preview).toMatchObject({ allowed: false, refusal: 'NOT_MATERIALISED', percent: null });
   });

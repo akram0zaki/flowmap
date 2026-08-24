@@ -11,6 +11,15 @@ import ExcelJS from 'exceljs';
 
 import type { DomainEvent, WorkspaceState } from '@flowmap/domain';
 
+import { paintGraphicalSheets } from './graphical-sheets.js';
+
+export {
+  PORTFOLIO_WALL_SHEET,
+  TIMELINE_SHEET,
+  portfolioWallModel,
+  timelineExportModel,
+} from './graphical-sheets.js';
+
 export const PACKAGE_NAME = '@flowmap/import-export';
 export const PORTABLE_FORMAT_VERSION = 1;
 /** Limits apply before a package is trusted, so a file cannot consume unbounded memory. */
@@ -491,14 +500,30 @@ export async function toWorkbook(
     readonly exportedAt: string;
     readonly schemaVersion: number;
   },
+  options?: { readonly state?: WorkspaceState },
 ): Promise<Uint8Array> {
   const book = new ExcelJS.Workbook();
-  appendRows(book.addWorksheet('_README'), [
+  const readmeRows: Readonly<Record<string, unknown>>[] = [
     { field: 'Workspace', value: readme.workspace },
     { field: 'Exported at', value: readme.exportedAt },
     { field: 'Schema version', value: readme.schemaVersion },
     { field: 'Sensitivity', value: SENSITIVITY_WARNING },
-  ]);
+  ];
+  if (options?.state) {
+    readmeRows.push(
+      {
+        field: 'Portfolio wall',
+        value: 'Graphical team × quarter view of placed work.',
+      },
+      {
+        field: 'Timeline',
+        value:
+          'Graphical footprint view across the horizon. Not a Gantt: no percent complete, no critical path.',
+      },
+    );
+  }
+  appendRows(book.addWorksheet('_README'), readmeRows);
+  if (options?.state) paintGraphicalSheets(book, options.state);
   for (const sheet of sheets) {
     appendRows(book.addWorksheet(sheet.name.slice(0, 31) || 'Flowmap'), sheet.rows);
   }

@@ -238,11 +238,15 @@ export function PortabilityPanel({
                 onClick: () =>
                   void download(
                     `${safeName(state.workspace.name)}-data.xlsx`,
-                    toWorkbook(workspaceDataSheets(state), {
-                      workspace: state.workspace.name,
-                      exportedAt: now(),
-                      schemaVersion: state.workspace.schemaVersion,
-                    }),
+                    toWorkbook(
+                      workspaceDataSheets(state),
+                      {
+                        workspace: state.workspace.name,
+                        exportedAt: now(),
+                        schemaVersion: state.workspace.schemaVersion,
+                      },
+                      { state },
+                    ),
                   ),
               },
               {

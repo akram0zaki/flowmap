@@ -4,9 +4,11 @@ import fc from 'fast-check';
 import {
   assignCapacityFootprint,
   createIdea,
+  archiveTeam,
   createTeam,
   createWorkspace,
   ensureTeamQuarter,
+  restoreTeam,
   linkIdeaToRefinementReserve,
   mergeCapacityFootprints,
   moveCapacityFootprint,
@@ -266,6 +268,72 @@ describe('CreateTeam', () => {
       teams: new Map([[team.id, { ...team, archivedAt: NOW }]]),
     };
     expect(createTeam(state, { name: 'Payments' }, command('CreateTeam'), ctx()).ok).toBe(true);
+  });
+});
+
+describe('ArchiveTeam', () => {
+  it('archives the team and its quarters when nothing sits on it', () => {
+    const result = archiveTeam(state, { teamId: 'team-1' }, command('ArchiveTeam'), ctx());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.changes.map((change) => change.op)).toEqual(['ARCHIVE', 'ARCHIVE']);
+    expect(result.effects.changes[0]!.ref).toEqual({ kind: 'TEAM', id: 'team-1' });
+    expect(result.effects.inverse?.name).toBe('RestoreTeam');
+  });
+
+  it('is blocked while a live footprint still sits on the team', () => {
+    state = { ...state, footprints: new Map([['fp-1', withFootprint()]]) };
+    expectError(
+      archiveTeam(state, { teamId: 'team-1' }, command('ArchiveTeam'), ctx()),
+      'TEAM_HAS_ACTIVE_FOOTPRINTS',
+    );
+  });
+
+  it('does not treat an archived footprint as blocking', () => {
+    state = {
+      ...state,
+      footprints: new Map([['fp-1', { ...withFootprint(), archivedAt: NOW, archivedBy: 'a' }]]),
+    };
+    expect(archiveTeam(state, { teamId: 'team-1' }, command('ArchiveTeam'), ctx()).ok).toBe(true);
+  });
+
+  it('requires a Planner', () => {
+    expectError(
+      archiveTeam(state, { teamId: 'team-1' }, command('ArchiveTeam'), ctx('CONTRIBUTOR')),
+      'UNAUTHORISED',
+    );
+  });
+
+  it('archives iff no live footprint sits on the team', () => {
+    fc.assert(
+      fc.property(fc.boolean(), (hasFootprint) => {
+        const next = hasFootprint
+          ? { ...state, footprints: new Map([['fp-1', withFootprint()]]) }
+          : { ...state, footprints: new Map() };
+        const result = archiveTeam(next, { teamId: 'team-1' }, command('ArchiveTeam'), ctx());
+        expect(result.ok).toBe(!hasFootprint);
+      }),
+    );
+  });
+});
+
+describe('RestoreTeam', () => {
+  it('restores the team and the quarters archived with it', () => {
+    const gone = { ...team, archivedAt: NOW, archivedBy: 'a' };
+    const goneQuarter = { ...teamQuarter, archivedAt: NOW, archivedBy: 'a' };
+    state = {
+      ...state,
+      teams: new Map([[gone.id, gone]]),
+      teamQuarters: new Map([[goneQuarter.id, goneQuarter]]),
+    };
+
+    const result = restoreTeam(state, { teamId: 'team-1' }, command('RestoreTeam'), ctx());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.effects.changes).toHaveLength(2);
+    expect(result.effects.changes.every((change) => change.op === 'RESTORE')).toBe(true);
+    expect((result.effects.changes[0]!.after as Team).archivedAt).toBeUndefined();
+    expect(result.effects.inverse?.name).toBe('ArchiveTeam');
   });
 });
 
@@ -775,6 +843,7 @@ describe('RestoreCapacityFootprint', () => {
 describe('every accepted command', () => {
   const accepted = [
     () => createTeam(state, { name: 'New' }, command('CreateTeam'), ctx()),
+    () => archiveTeam(state, { teamId: 'team-1' }, command('ArchiveTeam'), ctx()),
     () => createIdea({ name: 'New' }, command('CreateIdea'), ctx()),
     () =>
       ensureTeamQuarter(

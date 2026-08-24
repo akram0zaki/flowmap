@@ -137,6 +137,8 @@ export function App() {
     clearLocalData,
     loadSample,
     commitIdeaInto,
+    archiveTeam,
+    dropCommitment,
     moveFootprint,
     unplaceFootprint,
     resizeFootprint,
@@ -204,6 +206,11 @@ export function App() {
   const [showConflicts, setShowConflicts] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<
+    | { kind: 'drop'; commitmentId: string; name: string }
+    | { kind: 'archiveTeam'; teamId: string; name: string }
+    | null
+  >(null);
   const scenarioState = selectedScenarioId === null ? null : scenarioProjection(selectedScenarioId);
   const viewState = scenarioState ?? state;
   const scenarioRebase =
@@ -452,6 +459,14 @@ export function App() {
     () => (state ? readinessForIdeas(state.commitments, state.footprints) : new Map()),
     [state],
   );
+
+  const busyTeamIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const footprint of state?.footprints.values() ?? []) {
+      if (footprint.archivedAt === undefined) ids.add(footprint.teamId);
+    }
+    return ids;
+  }, [state]);
 
   /**
    * Focus reaches past the grid.
@@ -1444,6 +1459,11 @@ export function App() {
             setReveal({ teamId, quarterId });
             setActiveLens('PORTFOLIO');
           }}
+          onArchiveTeam={(teamId) => {
+            const team = state?.teams.get(teamId);
+            if (!team) return;
+            setPendingConfirm({ kind: 'archiveTeam', teamId, name: team.name });
+          }}
         />
       )}
       {activeLens === 'ATTENTION' && (
@@ -1500,6 +1520,11 @@ export function App() {
               setFocusedCommitmentId((current) => (current === commitmentId ? null : commitmentId))
             }
             onPickUp={pickUpIdea}
+            onDrop={(commitmentId) => {
+              const idea = state?.commitments.get(commitmentId);
+              if (!idea) return;
+              setPendingConfirm({ kind: 'drop', commitmentId, name: idea.name });
+            }}
             collapsed={railCollapsed}
             onToggleCollapsed={() => setRailCollapsed((was) => !was)}
             revealCommitmentId={
@@ -1548,6 +1573,12 @@ export function App() {
             onDropHere={drop}
             dependencyEdges={dependencyEdges}
             onMoveRow={(teamId, direction) => void moveTeamRow(teamId, direction)}
+            onArchiveTeam={(teamId) => {
+              const team = state?.teams.get(teamId);
+              if (!team) return;
+              setPendingConfirm({ kind: 'archiveTeam', teamId, name: team.name });
+            }}
+            busyTeamIds={busyTeamIds}
             ideaNames={ideaNames}
             reveal={reveal}
           />
@@ -1684,6 +1715,13 @@ export function App() {
               onOpenLink={(url) => void openLink(url)}
               onSetRecurrence={(recurrence) => void setRecurrence(panelCommitment.id, recurrence)}
               onRenew={() => void renewCommitment(panelCommitment.id)}
+              onDrop={() =>
+                setPendingConfirm({
+                  kind: 'drop',
+                  commitmentId: panelCommitment.id,
+                  name: panelCommitment.name,
+                })
+              }
               gate={
                 panelGate
                   ? {
@@ -1766,6 +1804,40 @@ export function App() {
           onConfirm={() => {
             setConfirmClear(false);
             void clearLocalData();
+          }}
+        />
+      )}
+      {pendingConfirm?.kind === 'drop' && (
+        <ConfirmDialog
+          title={t('drop.confirm.title', { name: pendingConfirm.name })}
+          body={t('drop.confirm.body')}
+          confirmLabel={t('action.drop')}
+          danger
+          onCancel={() => setPendingConfirm(null)}
+          onConfirm={() => {
+            const { commitmentId, name } = pendingConfirm;
+            setPendingConfirm(null);
+            void dropCommitment(commitmentId).then((ok) => {
+              if (!ok) return;
+              setFocusedCommitmentId((current) => (current === commitmentId ? null : current));
+              announce(t('action.dropped', { name }));
+            });
+          }}
+        />
+      )}
+      {pendingConfirm?.kind === 'archiveTeam' && (
+        <ConfirmDialog
+          title={t('team.archive.title', { name: pendingConfirm.name })}
+          body={t('team.archive.body')}
+          confirmLabel={t('action.archive')}
+          danger
+          onCancel={() => setPendingConfirm(null)}
+          onConfirm={() => {
+            const { teamId, name } = pendingConfirm;
+            setPendingConfirm(null);
+            void archiveTeam(teamId).then((ok) => {
+              if (ok) announce(t('action.archived', { name }));
+            });
           }}
         />
       )}

@@ -84,6 +84,8 @@ export type DetailPanelProps = {
   readonly onOpenLink: (url: string) => void;
   readonly onSetRecurrence: (pattern: Commitment['recurrence']) => void;
   readonly onRenew: () => void;
+  /** Drop is a decision not to take the work. Absent once the lifecycle is terminal. */
+  readonly onDrop: () => void;
   /** The gate, for work that has not passed it yet. */
   readonly gate: {
     readonly readiness: GateReadiness;
@@ -165,6 +167,7 @@ export function DetailPanel({
   onOpenLink,
   onSetRecurrence,
   onRenew,
+  onDrop,
   gate,
   onClose,
 }: DetailPanelProps) {
@@ -193,9 +196,21 @@ export function DetailPanel({
             )}
           </p>
         </div>
-        <button type="button" className="fm-panel__close" onClick={onClose}>
-          {t('panel.close')}
-        </button>
+        <div className="fm-panel__head-actions">
+          {commitment.lifecycle !== 'DONE' && commitment.lifecycle !== 'DROPPED' && (
+            <button
+              type="button"
+              className="fm-quiet"
+              aria-label={t('idea.drop', { name: commitment.name })}
+              onClick={onDrop}
+            >
+              {t('action.drop')}
+            </button>
+          )}
+          <button type="button" className="fm-panel__close" onClick={onClose}>
+            {t('panel.close')}
+          </button>
+        </div>
       </header>
 
       <div className="fm-panel__body">

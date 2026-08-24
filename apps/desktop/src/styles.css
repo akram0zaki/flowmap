@@ -1299,6 +1299,18 @@ label {
   cursor: default;
 }
 
+.fm-grid__archive {
+  align-self: start;
+  min-width: var(--hit-target-min);
+  min-height: var(--hit-target-min);
+  font-size: var(--text-2xs);
+}
+
+.fm-grid__archive:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* Reduced motion turns the fade off, not the control. */
 @media (prefers-reduced-motion: reduce) {
   .fm-grid__reorder {
@@ -2119,6 +2131,13 @@ label {
   border-bottom: 1px solid var(--rule);
 }
 
+.fm-panel__head-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .fm-panel__head h2 {
   margin: 0;
   font-size: var(--text-md);
@@ -2343,6 +2362,19 @@ label {
 }
 
 /* ── Refinement links in the rail ──────────────────────────────────────── */
+
+.fm-idea__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  padding-left: var(--space-2);
+}
+
+.fm-idea__actions button {
+  min-height: var(--hit-target-min);
+  font-size: var(--text-2xs);
+}
 
 .fm-idea__refine {
   display: flex;

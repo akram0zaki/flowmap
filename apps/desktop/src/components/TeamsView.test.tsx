@@ -106,6 +106,23 @@ function fixture(): WorkspaceState {
 }
 
 describe('TeamsView', () => {
+  it('offers archive and blocks it while the team still holds work', () => {
+    render(
+      <TeamsView
+        state={fixture()}
+        filter={NO_FILTER}
+        onOpenCell={() => undefined}
+        onArchiveTeam={() => undefined}
+      />,
+    );
+
+    const blocked = screen.getAllByRole('button', {
+      name: 'Payments still has work on the board. Move or remove its footprints first.',
+    });
+    expect(blocked.length).toBeGreaterThan(0);
+    expect(blocked.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+  });
+
   it('shows horizon capacity instead of commitment blocks', () => {
     render(<TeamsView state={fixture()} filter={NO_FILTER} onOpenCell={() => undefined} />);
 
