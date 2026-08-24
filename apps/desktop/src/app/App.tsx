@@ -134,6 +134,8 @@ export function App() {
     syncNow,
     resolveConflict,
     importIdeas,
+    importWorkspacePackage,
+    importWorkspaceJson,
     createSnapshot,
     restoreSnapshot,
     saveView,
@@ -1607,6 +1609,8 @@ export function App() {
                 entity: signal.entityRef.kind,
                 due: signal.dueOn ?? '',
               }))}
+              onImportWorkspace={importWorkspacePackage}
+              onImportWorkspaceJson={importWorkspaceJson}
               onImportedIdeas={importIdeas}
               savedMappings={state.workspace.settings.importMappings ?? []}
               onSaveMapping={saveImportMapping}

@@ -269,25 +269,26 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 
 ## M6 — Portability and workspaces
 
-| St  | ID       | Title                                                 | Size | Dep       |
-| --- | -------- | ----------------------------------------------------- | :--: | --------- |
-| ✅  | M6-IMP-1 | Parsers: XLSX, CSV, JSON                              |  M   | M1-DOM-3  |
-| ✅  | M6-IMP-2 | Guided mapping + saved mappings + enum value tables   |  L   | M6-IMP-1  |
-| ✅  | M6-IMP-3 | External-key matching + duplicate preview             |  M   | M6-IMP-2  |
-| ✅  | M6-IMP-4 | Validation + transactional apply + error CSV          |  M   | M6-IMP-3  |
-| ✅  | M6-EXP-1 | Exports: view, workspace, Radar, quarter review       |  M   | M2-A11Y-5 |
-| ✅  | M6-POR-1 | `.flowmap` package + hash + sensitivity warning       |  M   | M6-EXP-1  |
-| ✅  | M6-POR-2 | Round-trip property test (projection + rule equality) |  S   | M6-POR-1  |
-| ✅  | M6-SNP-1 | Snapshots: manual + automatic-before-barrier          |  M   | M6-POR-1  |
-| ✅  | M6-SNP-2 | Restore with `RestoreReport` and typed confirmation   |  M   | M6-SNP-1  |
-| ✅  | M6-WSP-1 | Multiple workspaces + switcher + smart defaults       |  M   | M1-DOM-4  |
-| ✅  | M6-WSP-2 | Sample workspace, marked and resettable               |  S   | M6-WSP-1  |
-| ✅  | M6-WSP-3 | Archive/restore + referential-integrity policy        |  M   | M1-DOM-5  |
-| ✅  | M6-WSP-4 | Saved views                                           |  S   | M2-MAP-8  |
-| ✅  | M6-WSP-5 | First-run guidance tooltips                           |  M   | M6-WSP-2  |
-| ✅  | M6-OPS-1 | Corrupted-cache recovery + rollback tests             |  M   | M1-STO-6  |
-| ✅  | M6-NOT-1 | Foreground notifications, coalesced and configurable  |  M   | M3-RUL-10 |
-| ✅  | M6-SEC-1 | Command-level permission harness                      |  M   | M1-DOM-3  |
+| St  | ID       | Title                                                  | Size | Dep       |
+| --- | -------- | ------------------------------------------------------ | :--: | --------- |
+| ✅  | M6-IMP-1 | Parsers: XLSX, CSV, JSON                               |  M   | M1-DOM-3  |
+| ✅  | M6-IMP-2 | Guided mapping + saved mappings + enum value tables    |  L   | M6-IMP-1  |
+| ✅  | M6-IMP-3 | External-key matching + duplicate preview              |  M   | M6-IMP-2  |
+| ✅  | M6-IMP-4 | Validation + transactional apply + error CSV           |  M   | M6-IMP-3  |
+| ✅  | M6-EXP-1 | Exports: view, workspace, Radar, quarter review        |  M   | M2-A11Y-5 |
+| ✅  | M6-POR-1 | `.flowmap` package + hash + sensitivity warning        |  M   | M6-EXP-1  |
+| ✅  | M6-POR-3 | Import a package or a data export into a new workspace |  M   | M6-POR-1  | Entity ids re-minted and references rewritten, so an import copies rather than moving; merge-into-existing not built |
+| ✅  | M6-POR-2 | Round-trip property test (projection + rule equality)  |  S   | M6-POR-1  |
+| ✅  | M6-SNP-1 | Snapshots: manual + automatic-before-barrier           |  M   | M6-POR-1  |
+| ✅  | M6-SNP-2 | Restore with `RestoreReport` and typed confirmation    |  M   | M6-SNP-1  |
+| ✅  | M6-WSP-1 | Multiple workspaces + switcher + smart defaults        |  M   | M1-DOM-4  |
+| ✅  | M6-WSP-2 | Sample workspace, marked and resettable                |  S   | M6-WSP-1  |
+| ✅  | M6-WSP-3 | Archive/restore + referential-integrity policy         |  M   | M1-DOM-5  |
+| ✅  | M6-WSP-4 | Saved views                                            |  S   | M2-MAP-8  |
+| ✅  | M6-WSP-5 | First-run guidance tooltips                            |  M   | M6-WSP-2  |
+| ✅  | M6-OPS-1 | Corrupted-cache recovery + rollback tests              |  M   | M1-STO-6  |
+| ✅  | M6-NOT-1 | Foreground notifications, coalesced and configurable   |  M   | M3-RUL-10 |
+| ✅  | M6-SEC-1 | Command-level permission harness                       |  M   | M1-DOM-3  |
 
 ## M7 — Desktop packaging
 

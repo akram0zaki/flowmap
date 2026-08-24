@@ -41,6 +41,10 @@ export type PortabilityPanelProps = {
   readonly now: () => string;
   readonly rows: readonly ExportRow[];
   readonly radarRows: readonly ExportRow[];
+  /** Restores a whole workspace package. Resolves to its name, or null. */
+  readonly onImportWorkspace: (bytes: Uint8Array) => Promise<string | null>;
+  /** The same restore, from the JSON the data export writes. */
+  readonly onImportWorkspaceJson: (text: string) => Promise<string | null>;
   readonly onImportedIdeas: (
     rows: readonly {
       readonly name: string;
@@ -62,6 +66,8 @@ export function PortabilityPanel({
   now,
   rows,
   radarRows,
+  onImportWorkspace,
+  onImportWorkspaceJson,
   onImportedIdeas,
   savedMappings,
   onSaveMapping,
@@ -113,13 +119,48 @@ export function PortabilityPanel({
 
   async function previewFile(file: File) {
     try {
+      // A whole workspace is not a sheet of rows, and running it through the
+      // tabular importer is what made choosing one do nothing at all.
+      if (isWorkspacePackage(file.name)) {
+        const restored = await onImportWorkspace(new Uint8Array(await file.arrayBuffer()));
+        if (restored) announce(t('portability.importedWorkspace', { name: restored }));
+        return;
+      }
+
       const format = formatFor(file.name);
       const source =
         format === 'XLSX' ? new Uint8Array(await file.arrayBuffer()) : await file.text();
+
+      /*
+       * The data export writes the same workspace and entities as the package,
+       * without the manifest — and it is the file people reach for, because it
+       * is the one labelled JSON. Read as rows it has nothing in it, which is
+       * how choosing it came to do nothing at all.
+       */
+      if (format === 'JSON' && looksLikeWorkspaceJson(String(source))) {
+        const restored = await onImportWorkspaceJson(String(source));
+        if (restored) announce(t('portability.importedWorkspace', { name: restored }));
+        return;
+      }
+
       const parsed = await parseImport(format, source);
       const sheet = parsed.sheets[0];
       if (!sheet) {
-        setPreview({ creates: [], updates: [], possibleDuplicates: [], errors: [] });
+        // Silence was the bug. A file with nothing the importer recognises used
+        // to set an empty preview and return, so the panel looked exactly as it
+        // had a moment earlier and the reader was left to guess.
+        setPreview({
+          creates: [],
+          updates: [],
+          possibleDuplicates: [],
+          errors: [
+            {
+              row: 0,
+              code: 'UNSUPPORTED_FORMAT',
+              message: t('portability.importNothing', { name: file.name }),
+            },
+          ],
+        });
         return;
       }
       const proposed = suggestMappings(sheet.columns);
@@ -301,7 +342,7 @@ export function PortabilityPanel({
               ref={fileRef}
               className="fm-visually-hidden"
               type="file"
-              accept=".csv,.json,.xlsx"
+              accept=".csv,.json,.xlsx,.flowmap"
               onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
                 if (file) void previewFile(file);
@@ -444,6 +485,19 @@ export function PortabilityPanel({
                 errors: preview.errors.length,
               })}
             </p>
+            {/* The count alone sent the reader to a CSV to find out what was
+                wrong with a file they had just chosen. The reasons are short;
+                the first few of them belong on screen. */}
+            {preview.errors.length > 0 && (
+              <ul className="fm-portability__errors">
+                {preview.errors.slice(0, 4).map((issue, index) => (
+                  <li key={`${issue.row}:${issue.code}:${index}`}>{issue.message}</li>
+                ))}
+                {preview.errors.length > 4 && (
+                  <li>{t('portability.moreErrors', { count: preview.errors.length - 4 })}</li>
+                )}
+              </ul>
+            )}
             {preview.errors.length > 0 && (
               <button
                 type="button"
@@ -506,6 +560,26 @@ function FormatGroup({
       </div>
     </div>
   );
+}
+
+/** The envelope the workspace data export writes: a whole portfolio, not rows. */
+function looksLikeWorkspaceJson(text: string): boolean {
+  try {
+    const value = JSON.parse(text) as Record<string, unknown>;
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      typeof value['workspace'] === 'object' &&
+      typeof value['entities'] === 'object'
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** The package the export button writes. It is a ZIP, not a sheet. */
+function isWorkspacePackage(name: string): boolean {
+  return name.toLowerCase().endsWith('.flowmap');
 }
 
 function formatFor(name: string): ImportFormat {

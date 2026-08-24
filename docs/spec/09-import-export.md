@@ -104,7 +104,16 @@ Rules:
 - `contentHash` is a SHA-256 over the canonical (sorted-key, `\n`-joined) serialisation of all entity
   files, verified on import.
 - Import of a `.flowmap` offers **new workspace** or **merge into existing** (which runs the same
-  duplicate/external-key rules as §1.4 and shows the same preview).
+  duplicate/external-key rules as §1.4 and shows the same preview). **Only "new workspace" is
+  built**; merge into existing is not.
+- **Every entity is given a fresh id on import, and every reference to an old one is rewritten.**
+  Rows are keyed by entity id, so importing a package that came from the same machine while keeping
+  its ids does not copy anything — it rewrites the existing rows' workspace and moves the portfolio
+  out of the workspace it was in. The rewrite is a deep string substitution rather than a list of
+  known reference fields, because ids also reach into settings, saved views and external-key maps.
+- The **workspace data JSON** export (§2) carries the same workspace and entities without the
+  manifest or hash, and imports by the same route. It is the file most people reach for, because it
+  is the one labelled JSON.
 - Round-trip is lossless for domain meaning and configuration — a property test exports, imports
   into a clean store, and asserts projection equality plus rule-result equality under a fixed clock.
 

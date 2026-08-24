@@ -30,6 +30,8 @@ describe('PortabilityPanel', () => {
         now={() => '2026-08-18T09:00:00Z'}
         rows={[]}
         radarRows={[]}
+        onImportWorkspace={async () => null}
+        onImportWorkspaceJson={async () => null}
         onImportedIdeas={async () => true}
         onSaveMapping={async () => true}
         onNotificationSettings={async () => true}

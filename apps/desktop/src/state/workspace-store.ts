@@ -49,6 +49,7 @@ import {
   restoreCapacityFootprint,
   restoreTeam,
   restoreWorkspaceSnapshot,
+  SCHEMA_VERSION,
   restoreWorkspace,
   setPrimaryTeam,
   splitCapacityFootprint,
@@ -110,6 +111,8 @@ import {
   SyncEngine,
 } from '@flowmap/storage';
 import { FileProvider, type FileSystemAdapter } from '@flowmap/storage-file';
+
+import { decodePortableWorkspace, rehydratePortableWorkspace } from '@flowmap/import-export';
 
 import { t } from '../i18n/t.js';
 import { SAMPLE_WORKSPACE_ID, seedSampleWorkspace } from './sample-workspace.js';
@@ -258,6 +261,23 @@ type StoreState = {
     readonly reserves?: readonly ReserveInput[] | null;
     readonly applyToOpenQuarters?: boolean;
   }): Promise<boolean>;
+  /**
+   * Restores a `.flowmap` package into a workspace of its own.
+   *
+   * The other half of the export button, which has been writing packages
+   * nothing could read back. Returns the new workspace's name on success.
+   */
+  importWorkspacePackage(bytes: Uint8Array): Promise<string | null>;
+  /**
+   * The same restore, from the plain JSON the data export writes.
+   *
+   * It carries the same workspace and entities as the package, without the
+   * manifest or the content hash — so it is importable, and says so, rather
+   * than being the file people reach for and find nothing happens.
+   */
+  importWorkspaceJson(text: string): Promise<string | null>;
+  /** Shared by both import routes: the state is already in domain shape. */
+  restoreImportedWorkspace(imported: WorkspaceState, name: string): Promise<string | null>;
   /** One quarter's own reserves — the exception the figures are computed from. */
   setTeamQuarterReserves(
     teamQuarterId: EntityId,
@@ -1049,6 +1069,190 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       }
       return true;
     });
+  },
+
+  async importWorkspaceJson(text) {
+    let imported: WorkspaceState;
+    let name: string;
+    try {
+      const parsed = JSON.parse(text) as {
+        workspace?: WorkspaceState['workspace'];
+        entities?: Record<string, unknown[]>;
+      };
+      if (!parsed.workspace || !parsed.entities) {
+        set({ status: { tone: 'critical', message: t('portability.importNotAWorkspace') } });
+        return null;
+      }
+      imported = rehydratePortableWorkspace({
+        manifest: undefined as never,
+        workspace: parsed.workspace,
+        entities: parsed.entities,
+        events: [],
+        savedViews: [],
+      });
+      name = parsed.workspace.name;
+    } catch {
+      set({ status: { tone: 'critical', message: t('portability.importUnreadable') } });
+      return null;
+    }
+    return get().restoreImportedWorkspace(imported, name);
+  },
+
+  async importWorkspacePackage(bytes) {
+    const { runtime } = get();
+    if (!runtime) return null;
+
+    let imported: WorkspaceState;
+    let name: string;
+    try {
+      const decoded = await decodePortableWorkspace(bytes);
+      imported = rehydratePortableWorkspace(decoded);
+      name = decoded.workspace.name;
+    } catch (error) {
+      // The decoder already refuses an oversized package, an unsafe path, a
+      // newer format version, and a content hash that does not match its
+      // manifest. Its message says which, and saying it is the whole point.
+      set({
+        status: {
+          tone: 'critical',
+          message: error instanceof Error ? error.message : t('portability.importUnreadable'),
+        },
+      });
+      return null;
+    }
+
+    return get().restoreImportedWorkspace(imported, name);
+  },
+
+  async restoreImportedWorkspace(imported, name) {
+    const { runtime } = get();
+    if (!runtime) return null;
+
+    if (imported.workspace.schemaVersion > SCHEMA_VERSION) {
+      set({ status: { tone: 'critical', message: t('portability.importNewer') } });
+      return null;
+    }
+
+    // Into a workspace of its own, so an import can never quietly overwrite the
+    // portfolio someone is looking at. Merging into an existing one is the
+    // other half of spec 09 §3 and is not built yet.
+    const created = await get().createWorkspace(
+      t('portability.importedName', { name }),
+      imported.workspace.timezone,
+    );
+    if (!created) return null;
+
+    const workspaceId = get().activeWorkspaceId;
+    const current = get().state;
+    if (!workspaceId || !current) return null;
+
+    /*
+     * Every entity is given a fresh id, and every reference to an old one is
+     * rewritten to match.
+     *
+     * Not a nicety. Rows are keyed by entity id, so importing a package that
+     * came from *this* machine while keeping its ids does not copy anything —
+     * it rewrites the existing rows' workspace, moving the portfolio out of the
+     * workspace it was in and into the new one. Which is what the first version
+     * of this did, and what a round trip through your own export would do to
+     * the thing you were trying to back up.
+     *
+     * The rewrite is a deep string substitution rather than a list of known
+     * reference fields: ids reach into settings, saved views and external-key
+     * maps, and a field missed there is a dangling pointer nobody notices until
+     * something silently fails to resolve.
+     */
+    const freshIds = new Map<string, string>();
+    for (const entities of [
+      imported.teams,
+      imported.teamQuarters,
+      imported.commitments,
+      imported.footprints,
+      imported.products,
+      imported.productImpacts,
+      imported.dependencies,
+      imported.milestones,
+      imported.externalLinks,
+      imported.themes,
+      imported.people,
+    ]) {
+      for (const id of entities?.keys() ?? []) freshIds.set(id, runtime.newId());
+    }
+
+    const remap = (value: unknown): unknown => {
+      if (typeof value === 'string') return freshIds.get(value) ?? value;
+      if (Array.isArray(value)) return value.map(remap);
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(
+          Object.entries(value as Record<string, unknown>).map(([key, inner]) => [
+            key,
+            remap(inner),
+          ]),
+        );
+      }
+      return value;
+    };
+
+    const adopt = <T>(entities: ReadonlyMap<string, T>): Map<string, T> =>
+      new Map(
+        [...entities].map(([id, entity]) => [
+          freshIds.get(id) ?? id,
+          { ...(remap(entity) as Record<string, unknown>), workspaceId } as T,
+        ]),
+      );
+
+    const target: WorkspaceState = {
+      ...imported,
+      workspace: {
+        ...imported.workspace,
+        // Settings carry ids too — external keys, saved views — so they go
+        // through the same rewrite as the entities they point at.
+        settings: remap(imported.workspace.settings) as WorkspaceState['workspace']['settings'],
+        id: workspaceId,
+        // The name it was given on the way in, and the revision it is at now:
+        // this workspace's history starts here, whatever the export recorded.
+        name: current.workspace.name,
+        revision: current.workspace.revision,
+        isSample: false,
+      },
+      teams: adopt(imported.teams),
+      teamQuarters: adopt(imported.teamQuarters),
+      commitments: adopt(imported.commitments),
+      footprints: adopt(imported.footprints),
+      ...(imported.products ? { products: adopt(imported.products) } : {}),
+      ...(imported.productImpacts ? { productImpacts: adopt(imported.productImpacts) } : {}),
+      ...(imported.dependencies ? { dependencies: adopt(imported.dependencies) } : {}),
+      ...(imported.milestones ? { milestones: adopt(imported.milestones) } : {}),
+      ...(imported.externalLinks ? { externalLinks: adopt(imported.externalLinks) } : {}),
+      ...(imported.themes ? { themes: adopt(imported.themes) } : {}),
+      ...(imported.people ? { people: adopt(imported.people) } : {}),
+    };
+
+    const cmd = makeCommand(runtime, 'ImportWorkspace', workspaceId);
+    const result = restoreWorkspaceSnapshot(
+      current,
+      target,
+      cmd,
+      makeContext(runtime, await runtime.repository.nextSequence(workspaceId)),
+    );
+    if (!result.ok) {
+      set({
+        status: {
+          tone: 'critical',
+          message: t(`errors.${result.error.code}`, result.error.params ?? {}),
+        },
+      });
+      return null;
+    }
+
+    await runtime.repository.apply({
+      workspaceId,
+      changes: result.effects.changes,
+      events: result.effects.events,
+      command: cmd,
+    });
+    await get().switchWorkspace(workspaceId);
+    return get().state?.workspace.name ?? name;
   },
 
   async setTeamQuarterReserves(teamQuarterId, reserves) {
