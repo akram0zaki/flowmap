@@ -38,6 +38,10 @@ import {
   renewCommitment,
   setRecurrence,
   setNotificationSettings,
+  setDefaultReserves,
+  setTeamDefaults,
+  setTeamQuarterReserves,
+  type ReserveInput,
   saveImportMapping,
   saveView,
   removeSavedView,
@@ -238,6 +242,26 @@ type StoreState = {
   removeSavedView(viewId: string): Promise<boolean>;
   saveImportMapping(mapping: Omit<SavedImportMapping, 'id'>): Promise<boolean>;
   setNotificationSettings(settings: NotificationSettings): Promise<boolean>;
+  /** Workspace defaults: what a team-quarter starts from when nothing overrides it. */
+  setCapacityDefaults(input: {
+    readonly defaultTeamQuarterCapacity: number;
+    readonly reserves: readonly ReserveInput[];
+  }): Promise<boolean>;
+  /**
+   * One team's own defaults, and optionally the same figures written onto the
+   * open quarters it already has — one step, so it is one undo.
+   */
+  setTeamDefaults(input: {
+    readonly teamId: EntityId;
+    readonly defaultQuarterCapacity?: number;
+    readonly reserves?: readonly ReserveInput[] | null;
+    readonly applyToOpenQuarters?: boolean;
+  }): Promise<boolean>;
+  /** One quarter's own reserves — the exception the figures are computed from. */
+  setTeamQuarterReserves(
+    teamQuarterId: EntityId,
+    reserves: readonly ReserveInput[],
+  ): Promise<boolean>;
   addTeam(name: string): Promise<boolean>;
   /** Hides a team from the map. Blocked while any live footprint still sits on it. */
   archiveTeam(teamId: EntityId): Promise<boolean>;
@@ -907,6 +931,82 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       setNotificationSettings(state, settings, cmd, ctx),
     );
     return Boolean(result);
+  },
+
+  async setCapacityDefaults(input) {
+    return (
+      (await get().dispatch('SetDefaultReserves', (state, cmd, ctx) =>
+        setDefaultReserves(
+          state,
+          {
+            reserves: input.reserves,
+            defaultTeamQuarterCapacity: input.defaultTeamQuarterCapacity,
+          },
+          cmd,
+          ctx,
+        ),
+      )) !== false
+    );
+  },
+
+  async setTeamDefaults(input) {
+    return runAsStep(async () => {
+      const changed = await get().dispatch('SetTeamDefaults', (state, cmd, ctx) =>
+        setTeamDefaults(
+          state,
+          {
+            teamId: input.teamId,
+            ...(input.defaultQuarterCapacity !== undefined
+              ? { defaultQuarterCapacity: input.defaultQuarterCapacity }
+              : {}),
+            ...(input.reserves !== undefined ? { defaultReserves: input.reserves } : {}),
+          },
+          cmd,
+          ctx,
+        ),
+      );
+      if (changed === false) return false;
+      if (!input.applyToOpenQuarters) return true;
+
+      /*
+       * The retrofit, and the reason it is opt-in. A default is what a new
+       * quarter starts from; writing it onto quarters that already exist moves
+       * figures someone has planned against, so it happens only when asked —
+       * and never to a closed quarter, which is history.
+       *
+       * Inside the same step, so the defaults and every quarter they were
+       * applied to come back together on one undo.
+       */
+      const state = get().state;
+      const reserves =
+        input.reserves ??
+        state?.teams.get(input.teamId)?.defaultReserves ??
+        state?.workspace.settings.capacity.defaultReserves ??
+        [];
+
+      const open = [...(state?.teamQuarters.values() ?? [])].filter(
+        (teamQuarter) =>
+          teamQuarter.teamId === input.teamId &&
+          teamQuarter.closedAt === undefined &&
+          teamQuarter.archivedAt === undefined,
+      );
+
+      for (const teamQuarter of open) {
+        const applied = await get().dispatch('SetTeamQuarterReserves', (current, cmd, ctx) =>
+          setTeamQuarterReserves(current, { teamQuarterId: teamQuarter.id, reserves }, cmd, ctx),
+        );
+        if (applied === false) return false;
+      }
+      return true;
+    });
+  },
+
+  async setTeamQuarterReserves(teamQuarterId, reserves) {
+    return (
+      (await get().dispatch('SetTeamQuarterReserves', (state, cmd, ctx) =>
+        setTeamQuarterReserves(state, { teamQuarterId, reserves }, cmd, ctx),
+      )) !== false
+    );
   },
 
   async captureIdea(name) {
@@ -1747,6 +1847,12 @@ function runNamed(
       return createTeam(state, payload as never, cmd, ctx);
     case 'EnsureTeamQuarter':
       return ensureTeamQuarter(state, payload as never, cmd, ctx);
+    case 'SetDefaultReserves':
+      return setDefaultReserves(state, payload as never, cmd, ctx);
+    case 'SetTeamDefaults':
+      return setTeamDefaults(state, payload as never, cmd, ctx);
+    case 'SetTeamQuarterReserves':
+      return setTeamQuarterReserves(state, payload as never, cmd, ctx);
     case 'AssignCapacityFootprint':
       return assignCapacityFootprint(state, payload as never, cmd, ctx);
     case 'MoveCapacityFootprint':

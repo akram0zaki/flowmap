@@ -154,6 +154,12 @@ export type Team = EntityEnvelope & {
   readonly name: string;
   readonly description?: string;
   readonly defaultQuarterCapacity: CapacityUnits;
+  /**
+   * What this team's new quarters start from, when the workspace default is
+   * wrong for it — a platform team carrying the pager does not spend its
+   * quarter the way a delivery team does. Absent means "follow the workspace".
+   */
+  readonly defaultReserves?: readonly DefaultReserve[];
   /** Alphabetical by default; Planner-reorderable. Pressure never reshuffles rows. */
   readonly displayOrder: number;
   readonly active: boolean;

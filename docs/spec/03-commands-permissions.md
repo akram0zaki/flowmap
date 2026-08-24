@@ -92,35 +92,36 @@ explicit compensating action.
 
 ### 3.1 Workspace & settings
 
-| Command                                | Role | Notes                                                   | Undo |
-| -------------------------------------- | ---- | ------------------------------------------------------- | ---- |
-| `CreateWorkspace`                      | —    | Name + timezone only; seeds defaults, opens the map     | —    |
-| `RenameWorkspace`                      | P    |                                                         | ✓    |
-| `SetWorkspaceTimezone`                 | A    | Warns: changes date-boundary evaluation for all rules   | ✓    |
-| `SetSizeMapping`                       | P    | Affects new footprints only                             | ✓    |
-| `MigrateFootprintUnits`                | P    | Two-step: `preview` then `apply`; skips closed quarters | —    |
-| `SetDefaultReserves`                   | P    | Affects new team-quarters only                          | ✓    |
-| `SetRuleThresholds`                    | P    | Per-rule; `ResetRuleThresholds` restores defaults       | ✓    |
-| `SetChangeLoadSettings`                | P    | Weights and thresholds                                  | ✓    |
-| `SetGuardrails`                        | P    | Enable/disable the configurable guardrail subset        | ✓    |
-| `SetValueDrivers`                      | P    | Rejects removal of a driver still in use unless `force` | ✓    |
-| `ResetSampleWorkspace`                 | P    | Sample workspaces only                                  | —    |
-| `ArchiveWorkspace` / `DeleteWorkspace` | A    | Delete requires typing the workspace name               | —    |
+| Command                                | Role | Notes                                                                     | Undo |
+| -------------------------------------- | ---- | ------------------------------------------------------------------------- | ---- |
+| `CreateWorkspace`                      | —    | Name + timezone only; seeds defaults, opens the map                       | —    |
+| `RenameWorkspace`                      | P    |                                                                           | ✓    |
+| `SetWorkspaceTimezone`                 | A    | Warns: changes date-boundary evaluation for all rules                     | ✓    |
+| `SetSizeMapping`                       | P    | Affects new footprints only                                               | ✓    |
+| `MigrateFootprintUnits`                | P    | Two-step: `preview` then `apply`; skips closed quarters                   | —    |
+| `SetDefaultReserves`                   | P    | Reserves and the default quarter capacity; affects new team-quarters only | ✓    |
+| `SetRuleThresholds`                    | P    | Per-rule; `ResetRuleThresholds` restores defaults                         | ✓    |
+| `SetChangeLoadSettings`                | P    | Weights and thresholds                                                    | ✓    |
+| `SetGuardrails`                        | P    | Enable/disable the configurable guardrail subset                          | ✓    |
+| `SetValueDrivers`                      | P    | Rejects removal of a driver still in use unless `force`                   | ✓    |
+| `ResetSampleWorkspace`                 | P    | Sample workspaces only                                                    | —    |
+| `ArchiveWorkspace` / `DeleteWorkspace` | A    | Delete requires typing the workspace name                                 | —    |
 
 ### 3.2 Teams & capacity
 
-| Command                                          | Role | Notes                                                       | Undo |
-| ------------------------------------------------ | ---- | ----------------------------------------------------------- | ---- |
-| `CreateTeam`                                     | P    | Name only; `displayOrder` appended                          | ✓    |
-| `RenameTeam` / `SetTeamDescription`              | P    |                                                             | ✓    |
-| `SetTeamDefaultCapacity`                         | P    | Seeds future team-quarters only                             | ✓    |
-| `ReorderTeams`                                   | P    | Explicit order; pressure never auto-reshuffles rows         | ✓    |
-| `ArchiveTeam` / `RestoreTeam`                    | P    | Blocked while active footprints exist                       | ✓    |
-| `EnsureTeamQuarter`                              | P    | Idempotent; creates with seeded defaults                    | —    |
-| `SetCapacityAdjustment`                          | P    | Signed; optional note                                       | ✓    |
-| `AddReserve` / `UpdateReserve` / `RemoveReserve` | P    | Rejects `HOLD`; rejects breaking `RESERVES_EXCEED_CAPACITY` | ✓    |
-| `LinkIdeaToRefinementReserve` / `UnlinkIdea…`    | C    | Qualitative only                                            | ✓    |
-| `AcceptOverflow`                                 | P    | Optional reason                                             | ✓    |
+| Command                                       | Role | Notes                                                                                       | Undo |
+| --------------------------------------------- | ---- | ------------------------------------------------------------------------------------------- | ---- |
+| `CreateTeam`                                  | P    | Name only; `displayOrder` appended                                                          | ✓    |
+| `RenameTeam` / `SetTeamDescription`           | P    |                                                                                             | ✓    |
+| `SetTeamDefaultCapacity`                      | P    | Seeds future team-quarters only                                                             | ✓    |
+| `ReorderTeams`                                | P    | Explicit order; pressure never auto-reshuffles rows                                         | ✓    |
+| `ArchiveTeam` / `RestoreTeam`                 | P    | Blocked while active footprints exist                                                       | ✓    |
+| `EnsureTeamQuarter`                           | P    | Idempotent; creates with seeded defaults                                                    | —    |
+| `SetCapacityAdjustment`                       | P    | Signed; optional note                                                                       | ✓    |
+| `SetTeamDefaults`                             | P    | Capacity and reserves; seeds future team-quarters only                                      | ✓    |
+| `SetTeamQuarterReserves`                      | P    | Replaces the list; rejects `HOLD`, closed quarters, and breaking `RESERVES_EXCEED_CAPACITY` | ✓    |
+| `LinkIdeaToRefinementReserve` / `UnlinkIdea…` | C    | Qualitative only                                                                            | ✓    |
+| `AcceptOverflow`                              | P    | Optional reason                                                                             | ✓    |
 
 ### 3.3 Commitments
 

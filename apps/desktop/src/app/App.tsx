@@ -141,6 +141,9 @@ export function App() {
     dropCommitment,
     moveFootprint,
     placeFootprint,
+    setCapacityDefaults,
+    setTeamDefaults,
+    setTeamQuarterReserves,
     unplaceFootprint,
     resizeFootprint,
     editCommitment,
@@ -1861,6 +1864,19 @@ export function App() {
             setConfirmClear(true);
           }}
           onClose={() => setShowSettings(false)}
+          state={state}
+          onSaveCapacityDefaults={(input) => void setCapacityDefaults(input)}
+          onSaveTeamCapacity={(input) =>
+            void setTeamDefaults({
+              teamId: input.teamId,
+              defaultQuarterCapacity: input.defaultQuarterCapacity,
+              reserves: input.reserves,
+              applyToOpenQuarters: input.applyToOpenQuarters,
+            })
+          }
+          onSaveQuarterReserves={(teamQuarterId, reserves) =>
+            void setTeamQuarterReserves(teamQuarterId, reserves)
+          }
         />
       )}
       {showConflicts && (

@@ -1716,6 +1716,15 @@ label {
   color: var(--ink-subtle);
 }
 
+/* Quieter than the headroom beside it: the denominator is what the figure is
+   measured against, not a second measurement. */
+.fm-vessel__of {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
 .fm-vessel[data-over-capacity] .fm-vessel__delta {
   color: var(--critical-fg);
   font-weight: var(--weight-bold);
@@ -3884,4 +3893,116 @@ label {
     order: 1;
     width: 100%;
   }
+}
+
+/* ── Capacity settings ─────────────────────────────────────────────────── */
+
+/* Three levels, laid out as the sentence they make: workspace defaults seed a
+   team's defaults, which seed a quarter, which is what the board measures. */
+.fm-capacity {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--rule);
+}
+
+.fm-capacity h3 {
+  margin: 0 0 var(--space-2);
+}
+
+.fm-capacity__group {
+  margin: var(--space-5) 0 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+}
+
+/* The team form sits inside the team fieldset; a second box around it would
+   say the two are different things. */
+.fm-capacity__group--plain {
+  padding: 0;
+  border: none;
+}
+
+.fm-capacity__group legend {
+  padding: 0 var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--ink-subtle);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+
+.fm-capacity__note {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-2xs);
+  color: var(--ink-subtle);
+}
+
+.fm-capacity__pick,
+.fm-capacity__capacity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.fm-capacity__follows,
+.fm-capacity__retrofit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  font-size: var(--text-xs);
+}
+
+.fm-capacity__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.fm-capacity__rows li,
+.fm-capacity__quarter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fm-capacity__rows input[type='number'],
+.fm-capacity__quarter input {
+  inline-size: var(--space-9);
+}
+
+.fm-capacity__quarter {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.fm-capacity__quarter label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fm-capacity__add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+}
+
+/* The figure the board will actually measure against, worked out as you type.
+   It is the whole reason for the panel, so it leads. */
+.fm-capacity__deliverable {
+  margin: var(--space-3) 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink);
+}
+
+.fm-capacity__deliverable[data-over] {
+  color: var(--critical-fg);
 }

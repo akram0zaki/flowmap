@@ -734,6 +734,18 @@ export function CapacityVessel({
                   ? t('capacity.overBy', { units: summary.overflow })
                   : t('capacity.headroom', { units: summary.headroom })}
           </span>
+          {/* The denominator, on screen. Without it the figure is unreadable:
+              10 units of a 100-unit quarter shows as 13%, because it is 13% of
+              the 80 that are deliverable — and the bar behind it is drawn
+              against the full 100, so the block looks like a quarter of the
+              container while the number says an eighth. The screen-reader
+              label has said "of deliverable capacity" all along; this is the
+              same sentence, for the people looking at it. */}
+          {percent !== null && !overCapacity && (
+            <span className="fm-vessel__of">
+              {t('capacity.ofDeliverable', { units: summary.deliverableCapacity })}
+            </span>
+          )}
         </span>
 
         {/* Why the container is smaller than a normal quarter. Without this the
