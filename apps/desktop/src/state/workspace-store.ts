@@ -941,65 +941,72 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   },
 
   async placeFootprint(input) {
-    const ensured = await get().dispatch('EnsureTeamQuarter', (state, cmd, ctx) =>
-      ensureTeamQuarter(
-        state,
-        { teamId: input.teamId, quarterId: input.quarterId as never },
-        cmd,
-        ctx,
-      ),
-    );
-    if (ensured === false) return false;
-
-    return (
-      (await get().dispatch('AssignCapacityFootprint', (state, cmd, ctx) =>
-        assignCapacityFootprint(
-          state,
-          {
-            commitmentId: input.commitmentId,
-            teamId: input.teamId,
-            quarterId: input.quarterId as never,
-            ...(input.units !== undefined ? { units: input.units } : {}),
-            ...(input.size !== undefined ? { size: input.size } : {}),
-            ...(input.isPrimary !== undefined ? { isPrimary: input.isPrimary } : {}),
-          },
-          cmd,
-          ctx,
-        ),
-      )) !== false
-    );
-  },
-
-  async moveFootprint(footprintId, target) {
-    // MoveCapacityFootprint does not materialise its destination, unlike
-    // assign. Dragging into a quarter a team has never been given lands on a
-    // container that does not exist yet, so create it first.
-    if (target.teamId !== undefined && target.quarterId !== undefined) {
+    // One gesture, one undo. Materialising the destination is part of placing
+    // into it, not a separate thing the user did and would have to take back.
+    return runAsStep(async () => {
       const ensured = await get().dispatch('EnsureTeamQuarter', (state, cmd, ctx) =>
         ensureTeamQuarter(
           state,
-          { teamId: target.teamId as EntityId, quarterId: target.quarterId as never },
+          { teamId: input.teamId, quarterId: input.quarterId as never },
           cmd,
           ctx,
         ),
       );
       if (ensured === false) return false;
-    }
 
-    return (
-      (await get().dispatch('MoveCapacityFootprint', (state, cmd, ctx) =>
-        moveCapacityFootprint(
-          state,
-          {
-            footprintId,
-            ...(target.teamId !== undefined ? { teamId: target.teamId } : {}),
-            ...(target.quarterId !== undefined ? { quarterId: target.quarterId as never } : {}),
-          },
-          cmd,
-          ctx,
-        ),
-      )) !== false
-    );
+      return (
+        (await get().dispatch('AssignCapacityFootprint', (state, cmd, ctx) =>
+          assignCapacityFootprint(
+            state,
+            {
+              commitmentId: input.commitmentId,
+              teamId: input.teamId,
+              quarterId: input.quarterId as never,
+              ...(input.units !== undefined ? { units: input.units } : {}),
+              ...(input.size !== undefined ? { size: input.size } : {}),
+              ...(input.isPrimary !== undefined ? { isPrimary: input.isPrimary } : {}),
+            },
+            cmd,
+            ctx,
+          ),
+        )) !== false
+      );
+    });
+  },
+
+  async moveFootprint(footprintId, target) {
+    // MoveCapacityFootprint does not materialise its destination, unlike
+    // assign. Dragging into a quarter a team has never been given lands on a
+    // container that does not exist yet, so create it first — inside the step,
+    // so the move and the container it needed come back together.
+    return runAsStep(async () => {
+      if (target.teamId !== undefined && target.quarterId !== undefined) {
+        const ensured = await get().dispatch('EnsureTeamQuarter', (state, cmd, ctx) =>
+          ensureTeamQuarter(
+            state,
+            { teamId: target.teamId as EntityId, quarterId: target.quarterId as never },
+            cmd,
+            ctx,
+          ),
+        );
+        if (ensured === false) return false;
+      }
+
+      return (
+        (await get().dispatch('MoveCapacityFootprint', (state, cmd, ctx) =>
+          moveCapacityFootprint(
+            state,
+            {
+              footprintId,
+              ...(target.teamId !== undefined ? { teamId: target.teamId } : {}),
+              ...(target.quarterId !== undefined ? { quarterId: target.quarterId as never } : {}),
+            },
+            cmd,
+            ctx,
+          ),
+        )) !== false
+      );
+    });
   },
 
   async commitIdeaInto(input) {

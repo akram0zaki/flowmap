@@ -140,6 +140,7 @@ export function App() {
     archiveTeam,
     dropCommitment,
     moveFootprint,
+    placeFootprint,
     unplaceFootprint,
     resizeFootprint,
     editCommitment,
@@ -547,6 +548,26 @@ export function App() {
           : t('link.needsWork');
       }
 
+      // A block in hand can do two things, and which one is a modifier away.
+      // Saying "would land on" for both is how a drag that quietly duplicated
+      // work would read exactly like one that moved it.
+      if (payload.kind === 'BLOCK') {
+        return payload.intent === 'ADD'
+          ? t('drop.wouldAlsoTake', {
+              team: cell.teamName,
+              name: payload.name,
+              quarter: cell.quarterId,
+              units: payload.addUnits,
+              percent: preview.percent ?? 0,
+            })
+          : t('drop.wouldMove', {
+              name: payload.name,
+              team: cell.teamName,
+              quarter: cell.quarterId,
+              percent: preview.percent ?? 0,
+            });
+      }
+
       const landing = t('drop.wouldLand', {
         name: payload.name,
         team: cell.teamName,
@@ -618,6 +639,28 @@ export function App() {
       }
 
       if (payload.kind === 'BLOCK') {
+        // Adding is not placing an Idea: no team becomes the owner, no gate is
+        // passed, no lifecycle moves. It is one more team carrying some of the
+        // load, which is `AssignCapacityFootprint` and nothing else.
+        if (payload.intent === 'ADD') {
+          void placeFootprint({
+            commitmentId: payload.commitmentId,
+            teamId: target.teamId,
+            quarterId: target.quarterId,
+            units: payload.addUnits,
+          }).then((ok) => {
+            if (!ok) return;
+            announce(
+              t('drop.alsoTaken', {
+                team: cell.teamName,
+                name: payload.name,
+                quarter: cell.quarterId,
+                units: payload.addUnits,
+              }),
+            );
+          });
+          return;
+        }
         void moveFootprint(payload.footprintId, {
           teamId: target.teamId,
           quarterId: target.quarterId,
@@ -646,6 +689,7 @@ export function App() {
       board,
       state,
       moveFootprint,
+      placeFootprint,
       commitIdeaInto,
       unplaceFootprint,
       relate,
@@ -655,11 +699,24 @@ export function App() {
     ],
   );
 
+  /**
+   * Alt, read live, is the difference between the two things a held placement
+   * can do. Plain is the common case — another team picks the work up too —
+   * because most demand is worked by more than one squad, and a board that made
+   * that the awkward path would be arguing with reality.
+   */
+  const resolveIntent = useCallback(
+    (payload: DragPayload, alt: boolean): DragPayload =>
+      payload.kind === 'BLOCK' ? { ...payload, intent: alt ? 'MOVE' : 'ADD' } : payload,
+    [],
+  );
+
   const { placement, carryRef, beginPointer, beginKeyboard, aim, drop, cancel } = usePlacement({
     onDrop: applyDrop,
     onCancel: (payload) => announce(t('drop.cancelled', { name: payload.name })),
     announce,
     describe: describeDrag,
+    resolve: resolveIntent,
   });
 
   const pickUpIdea = useCallback(
@@ -732,6 +789,9 @@ export function App() {
         fromClosed: board
           ? (findCell(board, teamId, quarterId as QuarterId)?.closed ?? false)
           : false,
+        // The gesture's default. `resolveIntent` rewrites it while Alt is held.
+        intent: 'ADD',
+        addUnits: defaultDropUnits(state.workspace.settings.capacity.sizeMapping),
       };
       if (event) beginPointer(payload, event);
       else beginKeyboard(payload);
@@ -764,6 +824,10 @@ export function App() {
         fromClosed: board
           ? (findCell(board, teamId, quarterId as QuarterId)?.closed ?? false)
           : false,
+        // Taking work off the board is the same decision whichever way a drop
+        // on a container would have gone; the intent is carried, not consulted.
+        intent: 'MOVE',
+        addUnits: block.units,
       });
 
       if (!removal.allowed) {

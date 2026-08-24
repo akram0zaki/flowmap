@@ -1466,3 +1466,112 @@ test('holding a dragged Idea at the bottom edge scrolls the board down to meet i
   await page.keyboard.press('Escape');
   await page.mouse.up();
 });
+
+/**
+ * One piece of work, several teams.
+ *
+ * Most demand is picked up by more than one squad — an epic worked by three is
+ * the ordinary case — and the model has always allowed it: uniqueness is
+ * (commitment, team, quarter), and only the *primary* footprint is singular.
+ * What was missing was a gesture. A plain drag between rows is that gesture;
+ * Alt is the move it used to be.
+ */
+
+/** Where a commitment holds blocks, as `team/quarter` keys in board order. */
+async function placementsOf(page: Page, name: string): Promise<string[]> {
+  return page.evaluate(
+    (commitment) =>
+      [...document.querySelectorAll('[data-commitment]')]
+        .filter((block) => (block.textContent ?? '').includes(commitment))
+        .map((block) => {
+          const cell = block.closest('[data-drop-team][data-drop-quarter]') as HTMLElement | null;
+          return cell ? `${cell.dataset['dropTeam']}/${cell.dataset['dropQuarter']}` : '?';
+        }),
+    name,
+  );
+}
+
+/**
+ * A block on the board and a cell on another team's row in the same quarter,
+ * both scrolled into view, as viewport coordinates ready to drag between.
+ */
+async function twoRows(page: Page, name: string) {
+  return page.evaluate((commitment) => {
+    const block = [...document.querySelectorAll('[data-commitment]')].find((candidate) =>
+      (candidate.textContent ?? '').includes(commitment),
+    );
+    if (!block) throw new Error(`no block for ${commitment}`);
+    const source = block.closest('[data-drop-team][data-drop-quarter]') as HTMLElement;
+    const quarter = source.dataset['dropQuarter'];
+
+    const target = [...document.querySelectorAll<HTMLElement>('[data-drop-team]')].find(
+      (cell) =>
+        cell.dataset['dropQuarter'] === quarter &&
+        cell.dataset['dropTeam'] !== source.dataset['dropTeam'],
+    );
+    if (!target) throw new Error('no second row in this quarter');
+
+    const b = block.getBoundingClientRect();
+    const t = target.getBoundingClientRect();
+    return {
+      from: { x: b.left + b.width / 2, y: b.top + b.height / 2 },
+      to: { x: t.left + t.width / 2, y: t.top + t.height * 0.7 },
+      sourceKey: `${source.dataset['dropTeam']}/${quarter}`,
+      targetKey: `${target.dataset['dropTeam']}/${quarter}`,
+    };
+  }, name);
+}
+
+/** A zoom level and viewport that fit two team rows on screen at once. */
+async function boardWithTwoRowsVisible(page: Page) {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await openSampleWorkspace(page);
+  await page.getByRole('button', { name: 'Areas', exact: true }).click();
+  await expect(page.locator('[data-commitment]').first()).toBeVisible();
+}
+
+test('dragging a block to another team has that team pick the work up as well', async ({
+  page,
+}) => {
+  await boardWithTwoRowsVisible(page);
+
+  const spots = await twoRows(page, 'Core ledger');
+  expect(await placementsOf(page, 'Core ledger')).toContain(spots.sourceKey);
+
+  await dragTo(page, spots.from, spots.to);
+  await page.mouse.up();
+
+  // Both, not one: the team it was dragged from keeps what it had.
+  await expect
+    .poll(async () => (await placementsOf(page, 'Core ledger')).includes(spots.targetKey))
+    .toBe(true);
+  expect(await placementsOf(page, 'Core ledger')).toContain(spots.sourceKey);
+
+  // One gesture, one undo — materialising the destination container is part of
+  // placing into it, not a second thing the user did and must take back twice.
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect
+    .poll(async () => (await placementsOf(page, 'Core ledger')).includes(spots.targetKey))
+    .toBe(false);
+});
+
+test('Alt while dragging moves the placement instead of adding one', async ({ page }) => {
+  await boardWithTwoRowsVisible(page);
+
+  const spots = await twoRows(page, 'Core ledger');
+  const before = (await placementsOf(page, 'Core ledger')).length;
+
+  await page.keyboard.down('Alt');
+  await dragTo(page, spots.from, spots.to);
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+
+  // Still one placement, on a different row — the count cannot have grown.
+  await expect
+    .poll(async () => (await placementsOf(page, 'Core ledger')).includes(spots.targetKey))
+    .toBe(true);
+  const after = await placementsOf(page, 'Core ledger');
+  expect(after).toHaveLength(before);
+  expect(after).not.toContain(spots.sourceKey);
+});

@@ -26,6 +26,7 @@ import {
 } from 'react';
 import {
   allBlocks,
+  arrivingUnits,
   isBlockFocused,
   isCellFocused,
   locateReveal,
@@ -569,7 +570,10 @@ export function PortfolioMap({
                         {...(aimedHere && preview
                           ? {
                               incoming: {
-                                units: dragging?.units ?? 0,
+                                // Not `dragging.units`: an addition arrives at
+                                // its own size, and the ghost has to be the
+                                // block the figure below it was computed from.
+                                units: dragging ? arrivingUnits(dragging) : 0,
                                 allowed: preview.allowed,
                                 percent: preview.percent,
                                 overflow: preview.overflow,
