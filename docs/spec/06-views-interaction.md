@@ -79,6 +79,10 @@ competing permanent layout.
 - The current quarter is visually centred on load and marked with a persistent "now" rule.
 - The Ideas/Demand lane is pinned left, outside the capacity grid. Ideas appear on the grid only as
   thin connector markers from a refinement reserve ([02 §5.1](02-capacity-model.md#51-refinement-reserve-links)).
+- **The lane carries a search field, directly under its title.** Case-insensitive substring on the
+  Idea's name, narrowing as you type. Ordering by preparation is right for a queue you read and
+  wrong for one you scan; past a dozen Ideas, finding the one you mean by eye is the slowest part of
+  placing it. The header count stays the size of the queue, not of the search.
 - **The lane scrolls independently of the grid, and the grid scrolls in both axes inside its own
   region.** The page itself does not scroll on this lens. A shared scroll couples the two — reaching
   an Idea near the bottom of the lane carries the team row you meant to drop it on off the screen —

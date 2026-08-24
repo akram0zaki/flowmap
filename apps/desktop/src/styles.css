@@ -1115,6 +1115,35 @@ label {
   color: var(--ink-subtle);
 }
 
+/* A queue of five is read; a queue of fifty is searched. Sits directly under
+   the title, above the hints, because it is how you use the list rather than
+   something to learn about it. */
+.fm-ideas__search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.fm-ideas__search input {
+  /* Form controls cap at 200px, which is wider than this rail. */
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+
+/* Chrome's own clear affordance sits on top of the one that works everywhere. */
+.fm-ideas__search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.fm-ideas__search button {
+  flex: none;
+  min-height: var(--hit-target-min);
+  padding: 0 var(--space-2);
+  color: var(--ink-subtle);
+}
+
 .fm-ideas ul {
   list-style: none;
   margin: 0;

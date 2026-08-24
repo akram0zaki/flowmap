@@ -14,7 +14,7 @@
  * See docs/spec/06-views-interaction.md §3.1 and 05-scenarios-qbr.md §8.
  */
 
-import { useEffect, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { READINESS_GAPS, type IdeaModel, type IdeaReadinessMap } from '@flowmap/visual-model';
 
 import { t } from '../i18n/t.js';
@@ -74,12 +74,27 @@ export function IdeasLane({
   onUnlinkRefinement,
   revealCommitmentId = null,
 }: IdeasLaneProps) {
+  /*
+   * A queue of five is read; a queue of fifty is searched. The filter is local
+   * and ephemeral on purpose — it narrows what you are looking at right now and
+   * changes nothing about the portfolio, so it is not a saved view and not part
+   * of the board's filter state.
+   */
+  const [query, setQuery] = useState('');
+  const needle = query.trim().toLowerCase();
+
   useEffect(() => {
     if (!revealCommitmentId) return;
     const idea = document.querySelector<HTMLElement>(
       `[data-idea="${CSS.escape(revealCommitmentId)}"]`,
     );
-    if (!idea) return;
+    // Open landed on an Idea the search is hiding. Clearing the filter is the
+    // only reading of that gesture that shows you what you asked for; the
+    // effect runs again once the row exists.
+    if (!idea) {
+      setQuery('');
+      return;
+    }
     const motion =
       document.documentElement.getAttribute('data-motion') === 'reduced' ||
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -90,15 +105,21 @@ export function IdeasLane({
 
   const ready = ideas.filter((idea) => readiness.get(idea.commitmentId)?.readyToPlace).length;
 
-  const ordered = [...ideas].sort((a, b) => {
-    const settledA = readiness.get(a.commitmentId)?.settled ?? 0;
-    const settledB = readiness.get(b.commitmentId)?.settled ?? 0;
-    if (settledA !== settledB) return settledB - settledA;
+  const ordered = useMemo(() => {
+    const sorted = [...ideas].sort((a, b) => {
+      const settledA = readiness.get(a.commitmentId)?.settled ?? 0;
+      const settledB = readiness.get(b.commitmentId)?.settled ?? 0;
+      if (settledA !== settledB) return settledB - settledA;
 
-    const importance =
-      (IMPORTANCE_ORDER[a.importance] ?? 3) - (IMPORTANCE_ORDER[b.importance] ?? 3);
-    return importance !== 0 ? importance : a.name.localeCompare(b.name);
-  });
+      const importance =
+        (IMPORTANCE_ORDER[a.importance] ?? 3) - (IMPORTANCE_ORDER[b.importance] ?? 3);
+      return importance !== 0 ? importance : a.name.localeCompare(b.name);
+    });
+
+    // Case-insensitive substring, and nothing cleverer. You are looking for a
+    // name you already know; a fuzzy match would rank surprises above it.
+    return needle ? sorted.filter((idea) => idea.name.toLowerCase().includes(needle)) : sorted;
+  }, [ideas, readiness, needle]);
 
   return (
     // A drop target as well as a source: the lane is where work comes from and
@@ -125,20 +146,66 @@ export function IdeasLane({
           {collapsed ? '›' : '‹'}
         </button>
         {!collapsed && <h2>{t('map.ideasLane')}</h2>}
+        {/* The total, always. A count that shrank as you typed would answer a
+            question about the search rather than about the portfolio. */}
         <span className="fm-ideas__count">{ideas.length}</span>
       </div>
+
+      {!collapsed && ideas.length > 0 && (
+        <div className="fm-ideas__search">
+          <input
+            type="search"
+            value={query}
+            aria-label={t('map.ideasSearch')}
+            placeholder={t('map.ideasSearch')}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              // Escape clears rather than bubbling: inside a field with text in
+              // it, that is what the key means, and letting it through would
+              // cancel a drag or close a panel instead.
+              if (event.key === 'Escape' && query !== '') {
+                event.preventDefault();
+                event.stopPropagation();
+                setQuery('');
+              }
+            }}
+          />
+          {query !== '' && (
+            <button
+              type="button"
+              className="fm-quiet"
+              aria-label={t('map.ideasSearchClear')}
+              onClick={() => setQuery('')}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
 
       {collapsed ? null : ideas.length === 0 ? (
         <p className="fm-idea__meta">{t('map.ideasEmpty')}</p>
       ) : (
         <>
-          {ready > 0 && <p className="fm-ideas__ready">{t('idea.readyCount', { count: ready })}</p>}
+          {/* Live, because typing changes what is on screen and a screen-reader
+              user gets no other signal that the list moved under them. */}
+          {needle ? (
+            <p className="fm-ideas__ready" role="status" aria-live="polite">
+              {t('map.ideasSearchCount', { count: ordered.length, total: ideas.length })}
+            </p>
+          ) : (
+            ready > 0 && <p className="fm-ideas__ready">{t('idea.readyCount', { count: ready })}</p>
+          )}
           <p className="fm-ideas__hint">{t('drop.railHint')}</p>
           {/* The board's own gesture, stated where the board's other gestures
               are. A plain drag between rows adds rather than moves, which is
               worth saying once rather than leaving to be discovered. */}
           <p className="fm-ideas__hint">{t('drop.blockHint')}</p>
           <p className="fm-ideas__hint">{t('remove.hint')}</p>
+
+          {needle && ordered.length === 0 && (
+            <p className="fm-idea__meta">{t('map.ideasSearchEmpty', { query: query.trim() })}</p>
+          )}
 
           <ul>
             {ordered.map((idea) => {
