@@ -160,8 +160,34 @@ Six reserve types, each with distinct meaning and UI treatment:
 | `HOLD`        | System-managed; preserved capacity for an on-hold commitment | —       | System only |
 | `OTHER`       | Escape hatch with mandatory label                            | 0       | Planner     |
 
-A new `TeamQuarter` is seeded from `settings.capacity.defaultReserves`, giving **80 deliverable
-units** out of 100 by default.
+A new `TeamQuarter` is seeded from `team.defaultReserves` when the team has them, and from
+`settings.capacity.defaultReserves` otherwise — giving **80 deliverable units** out of 100 by
+default.
+
+**Three levels, each the starting point for the next:**
+
+```
+workspace settings  →  team defaults  →  the team-quarter itself
+   (all new teams)      (that team's       (what the board's
+                         new quarters)      figures are computed from)
+```
+
+The lower two are optional overrides: a team with no defaults of its own follows the workspace, and
+clearing a team's override is an absent field, not an empty list — "this team reserves nothing" is a
+different statement from "this team follows the workspace".
+
+**Seeding is a copy, taken once.** A default is what a _new_ container starts from, never a live
+reference. Changing a default therefore cannot rewrite a quarter that already exists — someone has
+planned against it, and last quarter's figures are history. Writing new defaults onto quarters that
+already exist is a separate, explicit decision (`SetTeamQuarterReserves` per quarter, offered
+alongside the team edit); it never touches a closed quarter, and the whole application is one undo
+step.
+
+Reserving more than the quarter has is refused (`RESERVES_EXCEED_CAPACITY`) at every level, checked
+against the capacity being set in the same command rather than the one being replaced — otherwise
+raising BAU and capacity together fails while doing it in two steps succeeds. A `HOLD` reserve is
+system-managed: it survives an edit, counts against what is left to reserve, and cannot be created
+or removed through the editor.
 
 **Material deviation from routine operational load does not go in a reserve** — it becomes an
 explicit commitment (usually `class: OPERATIONAL`) so it is visible, ownable, and attributable. The

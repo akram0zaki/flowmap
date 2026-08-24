@@ -8,6 +8,7 @@
  * See docs/spec/03-commands-permissions.md §1 and §3.
  */
 
+import { seedReservesFor } from './capacity-settings.js';
 import {
   isActive,
   DEFAULT_RESERVES,
@@ -286,7 +287,10 @@ export function ensureTeamQuarter(
     quarterId: payload.quarterId,
     capacityBaseline: team.defaultQuarterCapacity,
     capacityAdjustment: 0,
-    reserves: state.workspace.settings.capacity.defaultReserves.map((reserve) => ({
+    // The team's own defaults, or the workspace's when it has none. Copied,
+    // not referenced: from here the quarter belongs to itself, and changing a
+    // default later cannot rewrite a quarter someone has planned against.
+    reserves: seedReservesFor(state, team).map((reserve) => ({
       ...reserve,
       id: ctx.ids.next(),
     })),

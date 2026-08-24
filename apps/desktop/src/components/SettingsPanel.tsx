@@ -1,10 +1,17 @@
 /**
  * Instance settings: where data lives, which WebView is in use, and how to
  * make this copy fully portable (spec 10 §3.1–3.2).
+ *
+ * Also the workspace's capacity settings. Those are not instance settings, but
+ * this is the door marked Settings, and a reserve you cannot find is a reserve
+ * you cannot correct.
  */
+
+import type { ReserveInput, EntityId, WorkspaceState } from '@flowmap/domain';
 
 import type { Runtime } from '../state/workspace-store.js';
 import { t } from '../i18n/t.js';
+import { CapacitySettings } from './CapacitySettings.jsx';
 import { Field } from './Field.jsx';
 
 export type SettingsPanelProps = {
@@ -12,6 +19,22 @@ export type SettingsPanelProps = {
   readonly shared?: boolean;
   readonly onClearLocalData: () => void;
   readonly onClose: () => void;
+  /** Absent before a workspace has loaded; the capacity section waits for it. */
+  readonly state?: WorkspaceState;
+  readonly onSaveCapacityDefaults?: (input: {
+    defaultTeamQuarterCapacity: number;
+    reserves: readonly ReserveInput[];
+  }) => void;
+  readonly onSaveTeamCapacity?: (input: {
+    teamId: EntityId;
+    defaultQuarterCapacity: number;
+    reserves: readonly ReserveInput[] | null;
+    applyToOpenQuarters: boolean;
+  }) => void;
+  readonly onSaveQuarterReserves?: (
+    teamQuarterId: EntityId,
+    reserves: readonly ReserveInput[],
+  ) => void;
 };
 
 export function SettingsPanel({
@@ -19,6 +42,10 @@ export function SettingsPanel({
   shared = false,
   onClearLocalData,
   onClose,
+  state,
+  onSaveCapacityDefaults,
+  onSaveTeamCapacity,
+  onSaveQuarterReserves,
 }: SettingsPanelProps) {
   const version = runtime.version ?? t('settings.versionUnknown');
   const webview = runtime.webview ?? 'browser';
@@ -81,6 +108,15 @@ export function SettingsPanel({
           {t(`settings.webview.${webview}`)}
         </p>
         {webview !== 'wkwebview' && <p>{t('settings.webview.missingHint', { version })}</p>}
+
+        {state && onSaveCapacityDefaults && onSaveTeamCapacity && onSaveQuarterReserves && (
+          <CapacitySettings
+            state={state}
+            onSaveDefaults={onSaveCapacityDefaults}
+            onSaveTeam={onSaveTeamCapacity}
+            onSaveQuarter={onSaveQuarterReserves}
+          />
+        )}
 
         <h3>{t('settings.rolesTitle')}</h3>
         <p>{t('settings.rolesAdvisory')}</p>

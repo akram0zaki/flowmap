@@ -16,6 +16,8 @@ export const COMMAND_PERMISSIONS: Readonly<Record<string, WorkspaceRole>> = {
   SetSizeMapping: 'PLANNER',
   MigrateFootprintUnits: 'PLANNER',
   SetDefaultReserves: 'PLANNER',
+  SetTeamDefaults: 'PLANNER',
+  SetTeamQuarterReserves: 'PLANNER',
   SetRuleThresholds: 'PLANNER',
   ResetRuleThresholds: 'PLANNER',
   SetChangeLoadSettings: 'PLANNER',

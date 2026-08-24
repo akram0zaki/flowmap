@@ -4,6 +4,7 @@ export * from './refs.js';
 export * from './errors.js';
 export * from './entities.js';
 export * from './capacity.js';
+export * from './capacity-settings.js';
 export * from './command.js';
 export * from './handlers.js';
 export * from './lifecycle.js';
