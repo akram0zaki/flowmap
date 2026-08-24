@@ -1404,3 +1404,65 @@ test('the panel carries all three confidences, value drivers, and themes', async
   await expectNoAxeViolations(page, 'detail panel outcome section');
   await expectNoUnresolvedKeys(page);
 });
+
+test('the rail and the board each scroll on their own, and the page does not', async ({ page }) => {
+  await freshApp(page);
+  await openSampleWorkspace(page);
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  // The board is taller and wider than its window — that is the point of the
+  // horizon — so it has to be its own scroll container. When the page carried
+  // that scroll instead, moving the rail moved the board with it and a drag
+  // could not reach a team row past the fold.
+  const geometry = await page.evaluate(() => {
+    const rail = document.querySelector('.fm-ideas')!;
+    const board = document.querySelector('.fm-map__scroll')!;
+    const root = document.documentElement;
+    return {
+      pageOverflow: root.scrollHeight - root.clientHeight,
+      railOverflow: rail.scrollHeight - rail.clientHeight,
+      boardOverflowY: board.scrollHeight - board.clientHeight,
+      boardOverflowX: board.scrollWidth - board.clientWidth,
+    };
+  });
+  expect(geometry.pageOverflow).toBe(0);
+  expect(geometry.railOverflow).toBeGreaterThan(0);
+  expect(geometry.boardOverflowY).toBeGreaterThan(0);
+  expect(geometry.boardOverflowX).toBeGreaterThan(0);
+
+  // Scrolling one leaves the other exactly where it was.
+  const moved = await page.evaluate(() => {
+    const rail = document.querySelector('.fm-ideas')!;
+    const board = document.querySelector('.fm-map__scroll')!;
+    rail.scrollTop = 120;
+    const boardAfterRail = board.scrollTop;
+    board.scrollTop = 200;
+    return { rail: rail.scrollTop, boardAfterRail, board: board.scrollTop };
+  });
+  expect(moved.rail).toBe(120);
+  expect(moved.boardAfterRail).toBe(0);
+  expect(moved.board).toBe(200);
+});
+
+test('holding a dragged Idea at the bottom edge scrolls the board down to meet it', async ({
+  page,
+}) => {
+  await freshApp(page);
+  await openSampleWorkspace(page);
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const board = page.locator('.fm-map__scroll');
+  const box = (await board.boundingBox())!;
+  const idea = page.locator('.fm-idea').first();
+  const from = (await idea.boundingBox())!;
+
+  await page.mouse.move(from.x + 40, from.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 60, from.y + 30);
+  // Held inside the board's bottom edge zone: the rows below the fold are
+  // reachable only if the board scrolls itself under the drag.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height - 20, { steps: 4 });
+  await expect.poll(() => board.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+});
