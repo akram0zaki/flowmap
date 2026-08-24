@@ -41,6 +41,7 @@ import {
   setDefaultReserves,
   setTeamDefaults,
   setTeamQuarterReserves,
+  reorderFootprints,
   type ReserveInput,
   saveImportMapping,
   saveView,
@@ -261,6 +262,15 @@ type StoreState = {
   setTeamQuarterReserves(
     teamQuarterId: EntityId,
     reserves: readonly ReserveInput[],
+  ): Promise<boolean>;
+  /**
+   * Which work in a container sits above the capacity rule. The whole container
+   * is sent, bottom of the stack first — a partial order cannot be drawn.
+   */
+  reorderFootprints(
+    teamId: EntityId,
+    quarterId: string,
+    footprintIds: readonly EntityId[],
   ): Promise<boolean>;
   /**
    * Runs work across more quarters, or fewer, for one team. One gesture, so one
@@ -1010,6 +1020,14 @@ export const useWorkspace = create<StoreState>((set, get) => ({
       }
       return true;
     });
+  },
+
+  async reorderFootprints(teamId, quarterId, footprintIds) {
+    return (
+      (await get().dispatch('ReorderFootprints', (state, cmd, ctx) =>
+        reorderFootprints(state, { teamId, quarterId, footprintIds }, cmd, ctx),
+      )) !== false
+    );
   },
 
   async stretchFootprint({ commitmentId, teamId, units, add, remove }) {
@@ -1885,6 +1903,8 @@ function runNamed(
       return setTeamDefaults(state, payload as never, cmd, ctx);
     case 'SetTeamQuarterReserves':
       return setTeamQuarterReserves(state, payload as never, cmd, ctx);
+    case 'ReorderFootprints':
+      return reorderFootprints(state, payload as never, cmd, ctx);
     case 'AssignCapacityFootprint':
       return assignCapacityFootprint(state, payload as never, cmd, ctx);
     case 'MoveCapacityFootprint':

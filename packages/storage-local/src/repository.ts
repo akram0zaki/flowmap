@@ -832,6 +832,7 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
           units_source: String(e['unitsSource']),
           confidence: (e['confidence'] as string) ?? null,
           is_primary: e['isPrimary'] ? 1 : 0,
+          stack_order: e['stackOrder'] === undefined ? null : Number(e['stackOrder']),
           carry_over_from_quarter_id: (e['carryOverFromQuarterId'] as string) ?? null,
           carry_over_from_footprint_id: (e['carryOverFromFootprintId'] as string) ?? null,
           closed_as_unfinished:
@@ -1029,6 +1030,12 @@ export class SqliteWorkspaceRepository implements WorkspaceRepository {
       unitsSource: String(row['units_source']) as CapacityFootprint['unitsSource'],
       confidence: s(row['confidence']) as CapacityFootprint['confidence'],
       isPrimary: Number(row['is_primary']) === 1,
+      // Null is not zero: absent means the container was never ordered by hand
+      // and is still drawn by the old rule.
+      stackOrder:
+        row['stack_order'] === null || row['stack_order'] === undefined
+          ? undefined
+          : Number(row['stack_order']),
       carryOverFromQuarterId: s(
         row['carry_over_from_quarter_id'],
       ) as CapacityFootprint['carryOverFromQuarterId'],

@@ -147,7 +147,16 @@ export function arrivingUnits(payload: DragPayload): CapacityUnits {
  * Called for every visible cell on every pointer move, so it stays arithmetic —
  * no allocation of a projected board, no re-layout.
  */
-export function previewDrop(cell: CellModel, payload: DragPayload): DropPreview {
+export function previewDrop(
+  cell: CellModel,
+  payload: DragPayload,
+  /**
+   * The block under the pointer, when there is one. Dropping a block onto
+   * another **in its own container** is not a move that goes nowhere — it is a
+   * reorder, which is how you choose what sits above the capacity rule.
+   */
+  over?: EntityId,
+): DropPreview {
   const summary = cell.summary ?? summaryFromSeed(cell);
 
   // A container that does not exist yet is not a refusal in the domain — the
@@ -193,7 +202,7 @@ export function previewDrop(cell: CellModel, payload: DragPayload): DropPreview 
       payload.primaryTeamId !== cell.teamId,
   };
 
-  const refusal = refuse(cell, payload, movingWithin);
+  const refusal = refuse(cell, payload, movingWithin, over);
   return refusal ? { allowed: false, refusal, ...base } : { allowed: true, ...base };
 }
 
@@ -201,6 +210,7 @@ function refuse(
   cell: CellModel,
   payload: DragPayload,
   movingWithin: boolean,
+  over?: EntityId,
 ): DropRefusal | undefined {
   // A dependency points at work. A container is not work, and work cannot
   // depend on itself.
@@ -213,7 +223,17 @@ function refuse(
   }
 
   if (cell.closed) return 'CLOSED_QUARTER';
-  if (movingWithin) return 'ALREADY_HERE';
+  if (movingWithin) {
+    // Onto another block in the same container: a reorder, and the only way to
+    // say which work is the work that will not fit.
+    const onAnother =
+      payload.kind === 'BLOCK' &&
+      over !== undefined &&
+      cell.blocks.some(
+        (block) => block.commitmentId === over && block.footprintId !== payload.footprintId,
+      );
+    return onAnother ? undefined : 'ALREADY_HERE';
+  }
 
   // One commitment cannot hold two footprints in the same container — the
   // domain refuses it, so the drag must too rather than failing on release.

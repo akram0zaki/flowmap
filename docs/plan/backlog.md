@@ -161,19 +161,20 @@ persistence, and back to a rendered projection — on both the browser and Tauri
 
 ### Epic: Portfolio Map
 
-| St  | ID        | Title                                                  | Size | Dep      | Acceptance                                                                                                                |
-| --- | --------- | ------------------------------------------------------ | :--: | -------- | ------------------------------------------------------------------------------------------------------------------------- |
-| ✅  | M2-MAP-1  | Canvas primitives: viewport, pan, zoom, hit-testing    |  M   | M1-VS-3  | 60 fps pan/zoom at 500 commitments; hit areas ≥ 24 px even for XS blocks                                                  |
-| ✅  | M2-MAP-2  | Quarter columns + team rows + current-quarter centring |  M   | M2-MAP-1 | Alphabetical default order; Planner reorder persists; pressure never reorders rows                                        |
-| ✅  | M2-MAP-3  | Semantic zoom L1/L2/L3 + explicit level control        |  L   | M2-MAP-2 | Level thresholds per spec 06 §3.3; level changes announced; ≤ 250 ms                                                      |
-| ✅  | M2-MAP-4  | Reserve plinth with per-type segments and labels       |  S   | M2-MAP-2 | Each reserve type uses its own pattern token; tooltip lists linked Ideas for refinement                                   |
-| ✅  | M2-MAP-13 | Capacity settings: workspace, team, team-quarter       |  M   | M2-MAP-4 | Three levels, each seeding the next; retrofit to open quarters is opt-in and one undo; over-reserving refused             |
-| ✅  | M2-MAP-14 | Run work across quarters by dragging a block's side    |  M   | M2-MAP-2 | Grips on the ends of a run only; extending copies the amount; closed quarters refused; `Shift + ← →` is the keyboard path |
-| ✅  | M2-MAP-5  | Overflow spill + units/percent/glyph label             |  S   | M2-MAP-4 | Never colour alone; matches the projection exactly                                                                        |
-| ✅  | M2-MAP-6  | Focus mode                                             |  M   | M2-MAP-3 | Unrelated content to 25 %; related footprints, products, dependencies, milestones emphasised; announced                   |
-| ✅  | M2-MAP-7  | Ideas/Demand lane + refinement links                   |  M   | M2-MAP-2 | Ideas never occupy capacity blocks; links render as connector markers; links change no total                              |
-| ✅  | M2-MAP-8  | Lens switcher + filter chips (fade, not remove)        |  M   | M2-MAP-3 | Filtering preserves spatial context; "hide filtered" toggle available                                                     |
-| 🔵  | M2-MAP-9  | Scale rendering tests 25/100/500                       |  S   | M2-MAP-3 | Budgets from spec 11 §6.2 met on reference hardware                                                                       |
+| St  | ID        | Title                                                  | Size | Dep      | Acceptance                                                                                                                    |
+| --- | --------- | ------------------------------------------------------ | :--: | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| ✅  | M2-MAP-1  | Canvas primitives: viewport, pan, zoom, hit-testing    |  M   | M1-VS-3  | 60 fps pan/zoom at 500 commitments; hit areas ≥ 24 px even for XS blocks                                                      |
+| ✅  | M2-MAP-2  | Quarter columns + team rows + current-quarter centring |  M   | M2-MAP-1 | Alphabetical default order; Planner reorder persists; pressure never reorders rows                                            |
+| ✅  | M2-MAP-3  | Semantic zoom L1/L2/L3 + explicit level control        |  L   | M2-MAP-2 | Level thresholds per spec 06 §3.3; level changes announced; ≤ 250 ms                                                          |
+| ✅  | M2-MAP-4  | Reserve plinth with per-type segments and labels       |  S   | M2-MAP-2 | Each reserve type uses its own pattern token; tooltip lists linked Ideas for refinement                                       |
+| ✅  | M2-MAP-13 | Capacity settings: workspace, team, team-quarter       |  M   | M2-MAP-4 | Three levels, each seeding the next; retrofit to open quarters is opt-in and one undo; over-reserving refused                 |
+| ✅  | M2-MAP-14 | Run work across quarters by dragging a block's side    |  M   | M2-MAP-2 | Grips on the ends of a run only; extending copies the amount; closed quarters refused; `Shift + ← →` is the keyboard path     |
+| ✅  | M2-MAP-15 | Order a container's stack by hand                      |  M   | M2-MAP-2 | Drag within a cell or `Alt + ↑ ↓`; overrides the sort including mandatory; whole container per command; new work lands on top |
+| ✅  | M2-MAP-5  | Overflow spill + units/percent/glyph label             |  S   | M2-MAP-4 | Never colour alone; matches the projection exactly                                                                            |
+| ✅  | M2-MAP-6  | Focus mode                                             |  M   | M2-MAP-3 | Unrelated content to 25 %; related footprints, products, dependencies, milestones emphasised; announced                       |
+| ✅  | M2-MAP-7  | Ideas/Demand lane + refinement links                   |  M   | M2-MAP-2 | Ideas never occupy capacity blocks; links render as connector markers; links change no total                                  |
+| ✅  | M2-MAP-8  | Lens switcher + filter chips (fade, not remove)        |  M   | M2-MAP-3 | Filtering preserves spatial context; "hide filtered" toggle available                                                         |
+| 🔵  | M2-MAP-9  | Scale rendering tests 25/100/500                       |  S   | M2-MAP-3 | Budgets from spec 11 §6.2 met on reference hardware                                                                           |
 
 ### Epic: Commitment model in the UI
 

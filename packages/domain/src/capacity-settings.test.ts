@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  reorderFootprints,
   setDefaultReserves,
   setTeamDefaults,
   setTeamQuarterReserves,
@@ -14,6 +15,7 @@ import {
   DEFAULT_RESERVES,
   DEFAULT_SIZE_MAPPING,
   DEFAULT_VALUE_DRIVERS,
+  type CapacityFootprint,
   type Team,
   type TeamQuarter,
   type Workspace,
@@ -427,5 +429,165 @@ describe('one quarter’s own reserves', () => {
         { type: 'REFINEMENT', amount: 5 },
       ],
     });
+  });
+});
+
+/*
+ * Which work sits above the capacity rule is a decision, not an artefact.
+ * Sorted by size, whichever items happen to be smallest are drawn as the
+ * overflow, and the board marks them as the questionable ones when they may be
+ * the least questionable thing in the quarter.
+ */
+describe('ordering a container’s stack', () => {
+  const fp = (id: string, over: Partial<CapacityFootprint> = {}): CapacityFootprint => ({
+    ...env(id),
+    commitmentId: `c-${id}`,
+    teamId: 'team-1',
+    quarterId: Q,
+    units: 10,
+    unitsSource: 'EXPLICIT',
+    isPrimary: false,
+    ...over,
+  });
+
+  const held = [fp('f1'), fp('f2'), fp('f3')];
+
+  function withFootprints(footprints: readonly CapacityFootprint[]): void {
+    state = { ...state, footprints: new Map(footprints.map((f) => [f.id, f])) };
+  }
+
+  it('writes a position onto every footprint in the container', () => {
+    withFootprints(held);
+    const result = reorderFootprints(
+      state,
+      { teamId: 'team-1', quarterId: Q, footprintIds: ['f3', 'f1', 'f2'] },
+      command('ReorderFootprints'),
+      ctx(),
+    );
+    if (!result.ok) throw new Error('expected success');
+    const written = new Map(
+      result.effects.changes.map((change) => [
+        (change.after as CapacityFootprint).id,
+        (change.after as CapacityFootprint).stackOrder,
+      ]),
+    );
+    expect(written.get('f3')).toBe(0);
+    expect(written.get('f1')).toBe(1);
+    expect(written.get('f2')).toBe(2);
+  });
+
+  // A partial order is the state that cannot be drawn, so the command refuses
+  // to create one rather than leaving blocks with no position.
+  it('refuses a list that is not the whole container', () => {
+    withFootprints(held);
+    expectError(
+      reorderFootprints(
+        state,
+        { teamId: 'team-1', quarterId: Q, footprintIds: ['f1', 'f2'] },
+        command('ReorderFootprints'),
+        ctx(),
+      ),
+      'NAME_REQUIRED',
+    );
+  });
+
+  it('refuses a list that repeats a footprint', () => {
+    withFootprints(held);
+    expectError(
+      reorderFootprints(
+        state,
+        { teamId: 'team-1', quarterId: Q, footprintIds: ['f1', 'f1', 'f2'] },
+        command('ReorderFootprints'),
+        ctx(),
+      ),
+      'NAME_REQUIRED',
+    );
+  });
+
+  it('refuses a settled quarter', () => {
+    withFootprints(held);
+    withTeamQuarter({ closedAt: NOW });
+    expectError(
+      reorderFootprints(
+        state,
+        { teamId: 'team-1', quarterId: Q, footprintIds: ['f3', 'f1', 'f2'] },
+        command('ReorderFootprints'),
+        ctx(),
+      ),
+      'QUARTER_CLOSED',
+    );
+  });
+
+  /*
+   * The order a never-ordered container was *drawn* in is the sort rule, which
+   * needs the commitments: without them there is no mandatory-ness and no name
+   * to break ties, and undo puts the stack back in an order that was never on
+   * screen. Caught by an e2e whose undo did not restore what it started with.
+   */
+  it('undoes a never-ordered container to the order it was drawn in', () => {
+    withFootprints([fp('f1', { units: 10 }), fp('f2', { units: 30 }), fp('f3', { units: 20 })]);
+    state = {
+      ...state,
+      commitments: new Map(
+        (['f1', 'f2', 'f3'] as const).map((id) => [
+          `c-${id}`,
+          {
+            ...env(`c-${id}`),
+            name: id,
+            lifecycle: 'COMMITTED',
+            class: id === 'f1' ? 'MANDATORY' : 'STRATEGIC',
+            importance: 'MEDIUM',
+            valueDrivers: [],
+          } as never,
+        ]),
+      ),
+    };
+
+    const result = reorderFootprints(
+      state,
+      { teamId: 'team-1', quarterId: Q, footprintIds: ['f2', 'f3', 'f1'] },
+      command('ReorderFootprints'),
+      ctx(),
+    );
+    if (!result.ok) throw new Error('expected success');
+    // Mandatory at the bottom, then largest first — what the board drew.
+    expect(result.effects.inverse?.payload).toMatchObject({
+      footprintIds: ['f1', 'f2', 'f3'],
+    });
+  });
+
+  it('undoes to the order that was there before', () => {
+    withFootprints([
+      fp('f1', { stackOrder: 0 }),
+      fp('f2', { stackOrder: 1 }),
+      fp('f3', { stackOrder: 2 }),
+    ]);
+    const result = reorderFootprints(
+      state,
+      { teamId: 'team-1', quarterId: Q, footprintIds: ['f3', 'f2', 'f1'] },
+      command('ReorderFootprints'),
+      ctx(),
+    );
+    if (!result.ok) throw new Error('expected success');
+    expect(result.effects.inverse?.payload).toMatchObject({
+      footprintIds: ['f1', 'f2', 'f3'],
+    });
+  });
+
+  it('writes nothing when the order is already what was asked for', () => {
+    withFootprints([
+      fp('f1', { stackOrder: 0 }),
+      fp('f2', { stackOrder: 1 }),
+      fp('f3', { stackOrder: 2 }),
+    ]);
+    const result = reorderFootprints(
+      state,
+      { teamId: 'team-1', quarterId: Q, footprintIds: ['f1', 'f2', 'f3'] },
+      command('ReorderFootprints'),
+      ctx(),
+    );
+    if (!result.ok) throw new Error('expected success');
+    expect(result.effects.changes).toEqual([]);
+    expect(result.effects.events).toEqual([]);
   });
 });

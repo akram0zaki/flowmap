@@ -397,6 +397,24 @@ export function assignCapacityFootprint(
   const resolved = resolveFootprintUnits(payload, state);
   if (!resolved.ok) return { ok: false, error: resolved.error };
 
+  /*
+   * Into a container someone has ordered by hand, new work lands on top — it is
+   * the first thing pushed past the rule, which is usually the honest answer to
+   * "can we also take this?". A container nobody has ordered stays sorted, and
+   * the new block falls where its size puts it.
+   */
+  const siblings = [...state.footprints.values()].filter(
+    (candidate) =>
+      isActive(candidate) &&
+      candidate.teamId === payload.teamId &&
+      candidate.quarterId === payload.quarterId,
+  );
+  const ordered =
+    siblings.length > 0 && siblings.every((candidate) => candidate.stackOrder !== undefined);
+  const onTop = ordered
+    ? Math.max(...siblings.map((candidate) => candidate.stackOrder!)) + 1
+    : undefined;
+
   const footprint: CapacityFootprint = {
     ...newEnvelope(ctx.ids.next(), cmd, ctx),
     commitmentId: commitment.id,
@@ -405,6 +423,7 @@ export function assignCapacityFootprint(
     units: resolved.value.units,
     unitsSource: resolved.value.source,
     isPrimary: payload.isPrimary ?? false,
+    ...(onTop !== undefined ? { stackOrder: onTop } : {}),
     ...(payload.size !== undefined ? { sizeAtCreation: payload.size } : {}),
   };
 
