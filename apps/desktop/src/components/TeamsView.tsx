@@ -21,10 +21,12 @@ export function TeamsView({
   state,
   filter,
   onOpenCell,
+  onArchiveTeam,
 }: {
   readonly state: WorkspaceState;
   readonly filter: FilterState;
   readonly onOpenCell: (teamId: string, quarterId: QuarterId) => void;
+  readonly onArchiveTeam?: (teamId: string) => void;
 }) {
   const [preset, setPreset] = useState<HorizonPreset>('HORIZON');
   const [cursor, setCursor] = useState({ row: 0, col: 0 });
@@ -105,6 +107,14 @@ export function TeamsView({
     }
   };
 
+  const busyTeamIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const footprint of state.footprints.values()) {
+      if (footprint.archivedAt === undefined) ids.add(footprint.teamId);
+    }
+    return ids;
+  }, [state.footprints]);
+
   const empty =
     model.rows.length === 0
       ? t('teams.empty')
@@ -180,6 +190,21 @@ export function TeamsView({
                   <strong>{row.teamName}</strong>
                   {row.overflowingCells > 0 && (
                     <span>{t('map.rowOverflow', { count: row.overflowingCells })}</span>
+                  )}
+                  {onArchiveTeam && (
+                    <button
+                      type="button"
+                      className="fm-quiet"
+                      disabled={busyTeamIds.has(row.teamId)}
+                      aria-label={
+                        busyTeamIds.has(row.teamId)
+                          ? t('team.archiveBlocked', { team: row.teamName })
+                          : t('map.archiveTeam', { team: row.teamName })
+                      }
+                      onClick={() => onArchiveTeam(row.teamId)}
+                    >
+                      {t('action.archive')}
+                    </button>
                   )}
                 </div>
                 {visibleQuarters.map((quarterId, colIndex) => {
@@ -282,11 +307,12 @@ export function TeamsView({
               <th>{t('fields.utilisation.label')}</th>
               <th>{t('fields.overflow.label')}</th>
               <th>{t('teams.open')}</th>
+              {onArchiveTeam ? <th>{t('action.archive')}</th> : null}
             </tr>
           </thead>
           <tbody>
             {visibleRows.flatMap((row) =>
-              visibleQuarters.map((quarterId) => {
+              visibleQuarters.map((quarterId, index) => {
                 const cell = row.cells.find((item) => item.quarterId === quarterId);
                 if (!cell) return null;
                 return (
@@ -311,6 +337,25 @@ export function TeamsView({
                         {t('teams.open')}
                       </button>
                     </td>
+                    {onArchiveTeam ? (
+                      <td>
+                        {index === 0 ? (
+                          <button
+                            type="button"
+                            className="fm-quiet"
+                            disabled={busyTeamIds.has(row.teamId)}
+                            aria-label={
+                              busyTeamIds.has(row.teamId)
+                                ? t('team.archiveBlocked', { team: row.teamName })
+                                : t('map.archiveTeam', { team: row.teamName })
+                            }
+                            onClick={() => onArchiveTeam(row.teamId)}
+                          >
+                            {t('action.archive')}
+                          </button>
+                        ) : null}
+                      </td>
+                    ) : null}
                   </tr>
                 );
               }),

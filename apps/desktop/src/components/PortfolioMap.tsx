@@ -98,6 +98,9 @@ export type PortfolioMapProps = {
   readonly onDropHere: () => void;
   /** Planner-only: move a team row up or down. Absent for anyone else. */
   readonly onMoveRow?: (teamId: string, direction: -1 | 1) => void;
+  /** Archive a team. Blocked while the row still holds live footprints. */
+  readonly onArchiveTeam?: (teamId: string) => void;
+  readonly busyTeamIds?: ReadonlySet<string>;
   /** Names for the Ideas a refinement reserve supports, by id. */
   readonly ideaNames?: ReadonlyMap<string, string>;
   /** Radar/list Open: scroll this cell into view on both axes. */
@@ -130,6 +133,8 @@ export function PortfolioMap({
   dependencyEdges,
   onDropHere,
   onMoveRow,
+  onArchiveTeam,
+  busyTeamIds,
   ideaNames,
   reveal = null,
 }: PortfolioMapProps) {
@@ -460,6 +465,21 @@ export function PortfolioMap({
                     </button>
                   </span>
                 )}
+                {onArchiveTeam && (
+                  <button
+                    type="button"
+                    className="fm-quiet fm-grid__archive"
+                    disabled={busyTeamIds?.has(row.teamId) === true}
+                    aria-label={
+                      busyTeamIds?.has(row.teamId) === true
+                        ? t('team.archiveBlocked', { team: row.teamName })
+                        : t('map.archiveTeam', { team: row.teamName })
+                    }
+                    onClick={() => onArchiveTeam(row.teamId)}
+                  >
+                    {t('action.archive')}
+                  </button>
+                )}
                 <span className="fm-grid__team-meta" data-figure="">
                   {row.capacity === 0
                     ? '—'
@@ -509,10 +529,25 @@ export function PortfolioMap({
                     {aimedHere && preview && !preview.allowed && preview.refusal && (
                       <span className="fm-drop__refusal">{t(`drop.no.${preview.refusal}`)}</span>
                     )}
-                    {/* Never reassign ownership quietly. */}
-                    {aimedHere && preview?.allowed && preview.reassignsOwner && (
+                    {/* Never reassign ownership quietly. An empty cell has no
+                        vessel to draw the incoming band on, so the figure the
+                        drop would open the quarter at lives here too. */}
+                    {aimedHere && preview?.allowed && (!cell.summary || preview.reassignsOwner) && (
                       <span className="fm-drop__note">
-                        {t('drop.reassigns', { team: cell.teamName })}
+                        {[
+                          !cell.summary
+                            ? preview.percent === null
+                              ? t('capacity.noDeliverable')
+                              : preview.overflow > 0
+                                ? t('capacity.overBy', { units: preview.overflow })
+                                : t('drop.wouldOpen', { percent: preview.percent })
+                            : null,
+                          preview.reassignsOwner
+                            ? t('drop.reassigns', { team: cell.teamName })
+                            : null,
+                        ]
+                          .filter((part): part is string => part !== null)
+                          .join(' · ')}
                       </span>
                     )}
                     {level === 1 ? (

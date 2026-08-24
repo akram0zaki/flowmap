@@ -151,6 +151,105 @@ export function createTeam(
   });
 }
 
+export type ArchiveTeamPayload = { readonly teamId: EntityId };
+
+/**
+ * Hides a team from the map. Blocked while any live footprint still sits on it.
+ * Team-quarters archive with the team (spec 01 §12).
+ */
+export function archiveTeam(
+  state: WorkspaceState,
+  payload: ArchiveTeamPayload,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'PLANNER');
+  if (unauthorised) return unauthorised;
+
+  const team = state.teams.get(payload.teamId);
+  if (!team) return fail('ENTITY_NOT_FOUND', { entityRef: { kind: 'TEAM', id: payload.teamId } });
+  if (!isActive(team)) {
+    return succeed({ changes: [], events: [], affectedProjections: [] });
+  }
+
+  const blocking = [...state.footprints.values()].find(
+    (footprint) => isActive(footprint) && footprint.teamId === team.id,
+  );
+  if (blocking) {
+    return fail('TEAM_HAS_ACTIVE_FOOTPRINTS', { params: { team: team.name } });
+  }
+
+  const after = bumped({ ...team, archivedAt: ctx.clock.now(), archivedBy: ctx.actorId }, ctx);
+  const ref = { kind: 'TEAM', id: team.id } as const;
+  const changes: EntityChange[] = [archived(ref, team, after)];
+  const projections: ProjectionKey[] = [];
+
+  for (const teamQuarter of state.teamQuarters.values()) {
+    if (!isActive(teamQuarter) || teamQuarter.teamId !== team.id) continue;
+    const archivedQuarter = bumped(
+      { ...teamQuarter, archivedAt: ctx.clock.now(), archivedBy: ctx.actorId },
+      ctx,
+    );
+    changes.push(
+      archived({ kind: 'TEAM_QUARTER', id: teamQuarter.id }, teamQuarter, archivedQuarter),
+    );
+    projections.push(capacityKey(team.id, teamQuarter.quarterId));
+  }
+
+  return succeed({
+    changes,
+    events: [event(cmd, ctx, 0, 'TEAM_ARCHIVED', [ref], { name: team.name })],
+    affectedProjections: projections,
+    inverse: { ...cmd, id: ctx.ids.next(), name: 'RestoreTeam', payload: { teamId: team.id } },
+  });
+}
+
+export type RestoreTeamPayload = { readonly teamId: EntityId };
+
+/**
+ * Inverse of ArchiveTeam. Restores the team and the team-quarters archived
+ * with it, subject to current invariants (spec 01 §12).
+ */
+export function restoreTeam(
+  state: WorkspaceState,
+  payload: RestoreTeamPayload,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'PLANNER');
+  if (unauthorised) return unauthorised;
+
+  const team = state.teams.get(payload.teamId);
+  if (!team) return fail('ENTITY_NOT_FOUND', { entityRef: { kind: 'TEAM', id: payload.teamId } });
+  if (isActive(team)) {
+    return succeed({ changes: [], events: [], affectedProjections: [] });
+  }
+
+  const { archivedAt: _archivedAt, archivedBy: _archivedBy, ...live } = team;
+  const after = bumped(live as Team, ctx);
+  const ref = { kind: 'TEAM', id: team.id } as const;
+  const changes: EntityChange[] = [{ ...updated(ref, team, after), op: 'RESTORE' }];
+  const projections: ProjectionKey[] = [];
+
+  for (const teamQuarter of state.teamQuarters.values()) {
+    if (isActive(teamQuarter) || teamQuarter.teamId !== team.id) continue;
+    const { archivedAt: _at, archivedBy: _by, ...quarterLive } = teamQuarter;
+    const restoredQuarter = bumped(quarterLive as TeamQuarter, ctx);
+    changes.push({
+      ...updated({ kind: 'TEAM_QUARTER', id: teamQuarter.id }, teamQuarter, restoredQuarter),
+      op: 'RESTORE',
+    });
+    projections.push(capacityKey(team.id, teamQuarter.quarterId));
+  }
+
+  return succeed({
+    changes,
+    events: [event(cmd, ctx, 0, 'TEAM_RESTORED', [ref], { name: team.name })],
+    affectedProjections: projections,
+    inverse: { ...cmd, id: ctx.ids.next(), name: 'ArchiveTeam', payload: { teamId: team.id } },
+  });
+}
+
 // ── EnsureTeamQuarter ──────────────────────────────────────────────────────
 
 export type EnsureTeamQuarterPayload = {

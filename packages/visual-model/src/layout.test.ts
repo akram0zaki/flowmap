@@ -193,6 +193,24 @@ describe('board grammar', () => {
     expect(empty?.teamQuarter).toBeNull();
     expect(empty?.summary).toBeNull();
     expect(empty?.blocks).toEqual([]);
+    expect(empty?.seed).toEqual({
+      effectiveCapacity: 100,
+      reservedTotal: 20,
+      deliverableCapacity: 80,
+    });
+  });
+
+  it('seeds an empty cell from the team default, not the workspace default', () => {
+    const board = buildBoard(
+      input({
+        teams: new Map([['t-a', { ...team('t-a', 'Alpha', 0), defaultQuarterCapacity: 50 }]]),
+      }),
+    );
+    expect(findCell(board, 't-a', '2027-Q1')?.seed).toEqual({
+      effectiveCapacity: 50,
+      reservedTotal: 20,
+      deliverableCapacity: 30,
+    });
   });
 
   it('excludes archived teams', () => {

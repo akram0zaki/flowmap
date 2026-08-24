@@ -12,6 +12,7 @@
 import { create } from 'zustand';
 import {
   applyTransition,
+  archiveTeam,
   archiveWorkspace,
   applyScenario as applyScenarioBatch,
   assignCapacityFootprint,
@@ -41,6 +42,7 @@ import {
   saveView,
   removeSavedView,
   restoreCapacityFootprint,
+  restoreTeam,
   restoreWorkspaceSnapshot,
   restoreWorkspace,
   setPrimaryTeam,
@@ -237,6 +239,13 @@ type StoreState = {
   saveImportMapping(mapping: Omit<SavedImportMapping, 'id'>): Promise<boolean>;
   setNotificationSettings(settings: NotificationSettings): Promise<boolean>;
   addTeam(name: string): Promise<boolean>;
+  /** Hides a team from the map. Blocked while any live footprint still sits on it. */
+  archiveTeam(teamId: EntityId): Promise<boolean>;
+  /**
+   * A decision not to take the work. Ideas leave the demand lane; committed
+   * work stops consuming capacity. DROPPED is terminal.
+   */
+  dropCommitment(commitmentId: EntityId): Promise<boolean>;
   placeFootprint(input: {
     commitmentId: EntityId;
     teamId: EntityId;
@@ -915,6 +924,22 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     );
   },
 
+  async archiveTeam(teamId) {
+    return (
+      (await get().dispatch('ArchiveTeam', (state, cmd, ctx) =>
+        archiveTeam(state, { teamId }, cmd, ctx),
+      )) !== false
+    );
+  },
+
+  async dropCommitment(commitmentId) {
+    return (
+      (await get().dispatch('DropCommitment', (state, cmd, ctx) =>
+        applyTransition('DropCommitment', state, { commitmentId }, cmd, ctx),
+      )) !== false
+    );
+  },
+
   async placeFootprint(input) {
     const ensured = await get().dispatch('EnsureTeamQuarter', (state, cmd, ctx) =>
       ensureTeamQuarter(
@@ -1371,6 +1396,19 @@ export const useWorkspace = create<StoreState>((set, get) => ({
     const idea = projected.commitments.get(input.commitmentId);
     if (!idea || idea.lifecycle !== 'IDEA') return false;
     const drafts: Command[] = [];
+    const quarterExists = [...projected.teamQuarters.values()].some(
+      (teamQuarter) =>
+        teamQuarter.teamId === input.teamId &&
+        teamQuarter.quarterId === input.quarterId &&
+        teamQuarter.archivedAt === undefined,
+    );
+    if (!quarterExists) {
+      drafts.push({
+        ...makeCommand(runtime, 'EnsureTeamQuarter', activeWorkspaceId),
+        scenarioId: input.scenarioId,
+        payload: { teamId: input.teamId, quarterId: input.quarterId as QuarterId },
+      });
+    }
     if (idea.primaryTeamId !== input.teamId) {
       drafts.push({
         ...makeCommand(runtime, 'SetPrimaryTeam', activeWorkspaceId),
@@ -1700,6 +1738,8 @@ function runNamed(
       return createIdea(payload as never, cmd, ctx);
     case 'CreateTeam':
       return createTeam(state, payload as never, cmd, ctx);
+    case 'EnsureTeamQuarter':
+      return ensureTeamQuarter(state, payload as never, cmd, ctx);
     case 'AssignCapacityFootprint':
       return assignCapacityFootprint(state, payload as never, cmd, ctx);
     case 'MoveCapacityFootprint':
@@ -1708,8 +1748,11 @@ function runNamed(
       return resizeCapacityFootprint(state, payload as never, cmd, ctx);
     case 'RemoveCapacityFootprint':
     case 'ArchiveCommitment':
-    case 'ArchiveTeam':
       return removeCapacityFootprint(state, payload as never, cmd, ctx);
+    case 'ArchiveTeam':
+      return archiveTeam(state, payload as never, cmd, ctx);
+    case 'RestoreTeam':
+      return restoreTeam(state, payload as never, cmd, ctx);
     case 'RestoreCapacityFootprint':
       return restoreCapacityFootprint(state, payload as never, cmd, ctx);
     case 'SetPrimaryTeam':

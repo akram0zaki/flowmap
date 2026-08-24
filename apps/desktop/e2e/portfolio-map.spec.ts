@@ -99,7 +99,7 @@ test('keeps Ideas out of the capacity grid until they are placed', async ({ page
   await seed(page);
 
   const lane = page.getByRole('region', { name: /ideas and demand/i });
-  await expect(lane.getByRole('button', { name: /SEPA instant/ })).toBeVisible();
+  await expect(lane.locator('.fm-idea').filter({ hasText: 'SEPA instant' })).toBeVisible();
 
   // No block anywhere on the grid yet.
   await expect(page.getByRole('gridcell', { name: /SEPA instant/ })).toHaveCount(0);
@@ -452,6 +452,39 @@ test('an Idea dragged onto a quarter shows what it would do before it does it', 
   // primary footprint, so the Idea leaves the rail as committed work.
   await expect(cell).toContainText('Request to pay');
   await expect(page.locator('.fm-idea').filter({ hasText: 'Request to pay' })).toHaveCount(0);
+});
+
+test('dropping an Idea onto a quarter with no container yet opens it at the default', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await seed(page);
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const idea = page.locator('.fm-idea').filter({ hasText: 'SEPA instant' });
+  // Second visible quarter — seed creates teams but no TeamQuarter rows, so
+  // every cell is empty. Drag used to refuse these as "no capacity set".
+  const cell = page.locator('.fm-grid__cell[data-drop-team]').nth(1);
+
+  const from = await idea.boundingBox();
+  const to = await cell.boundingBox();
+  if (!from || !to) throw new Error('missing geometry');
+
+  await dragTo(
+    page,
+    { x: from.x + 40, y: from.y + 15 },
+    { x: to.x + to.width / 2, y: to.y + to.height / 2 },
+  );
+
+  await expect(cell).toHaveAttribute('data-drop', 'ok');
+  await expect(cell).toContainText('would open at');
+  await expect(cell).not.toContainText('no capacity set');
+
+  await page.mouse.up();
+
+  await expect(cell).toContainText('SEPA instant');
+  await expect(page.locator('.fm-idea').filter({ hasText: 'SEPA instant' })).toHaveCount(0);
 });
 
 test('a drop the model would refuse is refused during the drag, with the reason', async ({

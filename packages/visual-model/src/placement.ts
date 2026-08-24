@@ -13,7 +13,13 @@
  * See docs/spec/06-views-interaction.md §5 and 04-capacity-model.md §7.
  */
 
-import type { CapacityUnits, Commitment, EntityId, QuarterId } from '@flowmap/domain';
+import type {
+  CapacitySummary,
+  CapacityUnits,
+  Commitment,
+  EntityId,
+  QuarterId,
+} from '@flowmap/domain';
 import { utilisationPercent, withCommittedLoad } from '@flowmap/domain';
 
 import type { CellModel } from './layout.js';
@@ -106,12 +112,13 @@ export type DropPreview = {
  * no allocation of a projected board, no re-layout.
  */
 export function previewDrop(cell: CellModel, payload: DragPayload): DropPreview {
-  const { summary } = cell;
+  const summary = cell.summary ?? summaryFromSeed(cell);
 
   // A container that does not exist yet is not a refusal in the domain — the
-  // store materialises it on drop — but it has no capacity to preview, so it
-  // cannot answer the question this function exists to answer.
-  if (!cell.teamQuarter || !summary) {
+  // store materialises it on drop. The cell carries the seed `EnsureTeamQuarter`
+  // would apply, so the gesture can still say what the quarter would become.
+  // A cell with neither a summary nor a seed cannot answer that question.
+  if (!summary) {
     return {
       allowed: false,
       refusal: 'NOT_MATERIALISED',
@@ -190,6 +197,26 @@ function refuse(
   }
 
   return undefined;
+}
+
+/**
+ * Empty cells still have a capacity figure: the seed `EnsureTeamQuarter` would
+ * write. Load is zero because no footprints exist until the drop lands.
+ */
+function summaryFromSeed(cell: CellModel): CapacitySummary | null {
+  const seed = cell.seed;
+  if (!seed) return null;
+  return {
+    teamId: cell.teamId,
+    quarterId: cell.quarterId,
+    effectiveCapacity: seed.effectiveCapacity,
+    reservedTotal: seed.reservedTotal,
+    deliverableCapacity: seed.deliverableCapacity,
+    committedLoad: 0,
+    headroom: seed.deliverableCapacity,
+    overflow: 0,
+    utilisation: seed.deliverableCapacity === 0 ? null : 0,
+  };
 }
 
 /**
