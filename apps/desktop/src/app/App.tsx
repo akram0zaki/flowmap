@@ -196,6 +196,19 @@ export function App() {
   const [filter, setFilter] = useState<FilterState>(NO_FILTER);
   const [focusedCommitmentId, setFocusedCommitmentId] = useState<string | null>(null);
   const [reveal, setReveal] = useState<BoardReveal | null>(null);
+  /**
+   * Work that has just landed and has not been focused yet.
+   *
+   * A drop is the end of one decision and the start of the next — how big is
+   * it, does it run on, is it in the right place — and all of those are
+   * gestures on the block. Leaving focus where the drag started means the
+   * first thing you do afterwards is hunt for what you just placed.
+   */
+  const [justPlaced, setJustPlaced] = useState<{
+    readonly commitmentId: string;
+    readonly teamId: string;
+    readonly quarterId: string;
+  } | null>(null);
   const [showList, setShowList] = useState(true);
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [announcement, setAnnouncement] = useState('');
@@ -693,6 +706,11 @@ export function App() {
             units: payload.addUnits,
           }).then((ok: boolean) => {
             if (!ok) return;
+            setJustPlaced({
+              commitmentId: payload.commitmentId,
+              teamId: target.teamId,
+              quarterId: target.quarterId,
+            });
             announce(
               t('drop.alsoTaken', {
                 team: cell.teamName,
@@ -707,7 +725,13 @@ export function App() {
         void moveFootprint(payload.footprintId, {
           teamId: target.teamId,
           quarterId: target.quarterId,
-        });
+        }).then(() =>
+          setJustPlaced({
+            commitmentId: payload.commitmentId,
+            teamId: target.teamId,
+            quarterId: target.quarterId,
+          }),
+        );
       } else if (selectedScenarioId !== null) {
         void placeScenarioIdea({
           scenarioId: selectedScenarioId,
@@ -722,7 +746,13 @@ export function App() {
           teamId: target.teamId,
           quarterId: target.quarterId,
           units: payload.units,
-        });
+        }).then(() =>
+          setJustPlaced({
+            commitmentId: payload.commitmentId,
+            teamId: target.teamId,
+            quarterId: target.quarterId,
+          }),
+        );
       }
       announce(
         t('drop.placed', { name: payload.name, team: cell.teamName, quarter: cell.quarterId }),
@@ -1152,6 +1182,32 @@ export function App() {
     },
     [board, beginSpan],
   );
+
+  /*
+   * Focus lands once the block is actually drawn — the command has to round
+   * trip through the repository and the projection first, so there is nothing
+   * to focus at the moment the drop is applied.
+   */
+  useEffect(() => {
+    if (!justPlaced || !board) return;
+    const { commitmentId, teamId, quarterId } = justPlaced;
+
+    const cell = document.querySelector(
+      `[data-drop-team="${CSS.escape(teamId)}"][data-drop-quarter="${CSS.escape(quarterId)}"]`,
+    );
+    const element = cell?.querySelector<SVGGElement>(
+      `[data-commitment="${CSS.escape(commitmentId)}"]`,
+    );
+    if (!element) return;
+
+    setJustPlaced(null);
+    const placedBlock = findCell(board, teamId, quarterId as QuarterId)?.blocks.find(
+      (candidate) => candidate.commitmentId === commitmentId,
+    );
+    if (placedBlock) select(placedBlock.footprintId);
+    element.focus({ preventScroll: true });
+    element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [justPlaced, board, select]);
 
   /**
    * What the panel shows. Driven by the focused commitment rather than a
