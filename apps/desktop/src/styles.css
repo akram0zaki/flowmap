@@ -40,6 +40,49 @@ body {
   background: var(--ground);
 }
 
+/* The board is the one lens where the page must not scroll.
+ *
+ * Everywhere else a tall view can push the document down and the window
+ * scrollbar carries it. On the portfolio that is wrong twice over: the Ideas
+ * rail and the grid share the single page scroll, so reaching an Idea near the
+ * bottom of the rail drags the team row you wanted to drop it on off the top of
+ * the screen — and a drag cannot scroll the page under itself, so any row past
+ * the fold is simply unreachable by pointer.
+ *
+ * Clamping the shell to the viewport here hands each region its own scroll:
+ * the rail scrolls its list, the grid scrolls its board in both axes, and
+ * neither moves the other. `usePlacement` then edge-scrolls the grid — now a
+ * real scroll container vertically as well as horizontally — so every cell is
+ * a drop target no matter where it sits. Scoped to this lens: the other lenses
+ * are documents and keep the page scroll they were written for.
+ */
+.fm-shell[data-lens='PORTFOLIO'] {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Chrome keeps its intrinsic height; only the body absorbs what is left. */
+.fm-shell[data-lens='PORTFOLIO'] > * {
+  flex: none;
+}
+
+/* Everything below the chrome. On other lenses it is a plain block and the page
+   scrolls it; on the portfolio it is the one region that scrolls, and the board
+   is sized to fill it exactly, so the table companion sits a scroll beneath the
+   board rather than eating half of it. */
+.fm-shell[data-lens='PORTFOLIO'] > .fm-body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.fm-shell[data-lens='PORTFOLIO'] > .fm-body > .fm-workspace {
+  /* Definite, because the body's height is: this is what makes the rail's and
+     the grid's own `overflow` resolve against the viewport instead of against
+     their content. */
+  block-size: 100%;
+}
+
 /* ── Header ────────────────────────────────────────────────────────────── */
 
 .fm-header {
@@ -1043,6 +1086,10 @@ label {
   gap: var(--space-2);
   padding: var(--space-6) var(--space-5);
   overflow-y: auto;
+  /* The rail's scroll is its own. Chaining it into the body would scroll the
+     board away the moment the list of Ideas ran out, which is the coupling
+     this layout exists to remove. */
+  overscroll-behavior: contain;
   border-right: 1px solid var(--rule);
 }
 
@@ -1154,12 +1201,21 @@ label {
   --fm-row-header: 150px;
   flex: 1 1 auto;
   min-width: 0;
+  /* Without this the column's automatic minimum is its content height, the
+     scroller never shrinks, and `overflow: auto` below has nothing to do —
+     which is how the board came to scroll the whole page instead of itself. */
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
 .fm-map__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
+  /* Reaching the last team row must not carry on into the body and pull the
+     board off the screen — the companion table is a deliberate scroll away. */
+  overscroll-behavior: contain;
   /* macOS hides overlay scrollbars until something scrolls, so a mouse-only
      user had no way to tell there was more board — and no way to reach it.
      A permanent, quiet gutter is the cheapest honest fix. */

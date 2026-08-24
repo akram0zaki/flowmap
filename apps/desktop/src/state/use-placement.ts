@@ -178,29 +178,48 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
       if (node) node.style.transform = `translate(${x + 14}px, ${y + 14}px)`;
     };
 
-    // The horizon is wider than the window, and a hit test can only see what is
-    // on screen: without this, the last two quarters are simply unreachable by
-    // pointer. Holding near an edge scrolls the board towards it.
+    // The board is bigger than its window in both axes, and a hit test can only
+    // see what is on screen: without this the last quarters and the team rows
+    // below the fold are simply unreachable by pointer. Holding near an edge
+    // scrolls the board towards it — vertically as well as horizontally, which
+    // is what lets an Idea taken from anywhere in the rail reach any cell.
     let edgeTimer: ReturnType<typeof setInterval> | null = null;
+    let edgeSpeed = { x: 0, y: 0 };
     const stopEdgeScroll = () => {
       if (edgeTimer !== null) clearInterval(edgeTimer);
       edgeTimer = null;
+      edgeSpeed = { x: 0, y: 0 };
       document.querySelector('.fm-map__scroll')?.removeAttribute('data-dragging');
     };
-    const edgeScroll = (x: number) => {
+    const edgeScroll = (x: number, y: number) => {
       const scroller = document.querySelector<HTMLElement>('.fm-map__scroll');
       if (!scroller) return;
       const box = scroller.getBoundingClientRect();
       const zone = 72;
-      const speed =
-        x < box.left + zone ? -EDGE_SCROLL_PX : x > box.right - zone ? EDGE_SCROLL_PX : 0;
+      // The zone is measured against the scroller, not the window: past its
+      // edge the pointer is over the rail or the chrome, and pulling the board
+      // then would drag it away under a drop the user has already aimed.
+      const axis = (position: number, start: number, end: number) =>
+        position < start || position > end
+          ? 0
+          : position < start + zone
+            ? -EDGE_SCROLL_PX
+            : position > end - zone
+              ? EDGE_SCROLL_PX
+              : 0;
 
-      if (speed === 0) return stopEdgeScroll();
+      edgeSpeed = {
+        x: axis(x, box.left, box.right),
+        y: axis(y, box.top, box.bottom),
+      };
+
+      if (edgeSpeed.x === 0 && edgeSpeed.y === 0) return stopEdgeScroll();
       if (edgeTimer !== null) return;
       // Snapping fights a programmatic scroll, so it stands down for the drag.
       scroller.setAttribute('data-dragging', 'true');
       edgeTimer = setInterval(() => {
-        scroller.scrollLeft += speed;
+        scroller.scrollLeft += edgeSpeed.x;
+        scroller.scrollTop += edgeSpeed.y;
       }, 16);
     };
 
@@ -226,7 +245,7 @@ export function usePlacement({ onDrop, onCancel, announce, describe }: UsePlacem
 
       // Always cheap: a style write on one absolutely-positioned element.
       moveCarry(event.clientX, event.clientY);
-      edgeScroll(event.clientX);
+      edgeScroll(event.clientX, event.clientY);
 
       const target = latest.current.targetAt(event.clientX, event.clientY);
       if (describeTarget(target) === describeTarget(current.target)) return;
