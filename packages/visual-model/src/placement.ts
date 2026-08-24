@@ -360,9 +360,26 @@ export function previewRemoval(payload: DragPayload): RemovalPreview {
 
   const last = payload.footprintCount <= 1;
 
-  // Only COMMITTED work can go back through the gate. Work already in delivery,
-  // done, held or dropped has a history that unplacing would quietly rewrite.
-  if (last && payload.lifecycle !== 'COMMITTED') {
+  /*
+   * Dropped work has no gate left to revert and no delivery to record. The
+   * decision is held on the commitment, and taking its placement off the board
+   * does not touch that — so there is nothing to protect by refusing.
+   *
+   * Refusing it was a dead end: `DROPPED` has no transition out of it, and
+   * neither the drag nor Delete would remove a last footprint, so the block sat
+   * in its cell for good under a message advising the reader to drop something
+   * they had already dropped.
+   *
+   * `DONE` is terminal too and is deliberately *not* included. Completed work
+   * on the board is the record of what a team delivered that quarter; removing
+   * it changes what the quarter says it shipped, which is a different decision
+   * from tidying away work nobody is going to do.
+   */
+  const dropped = payload.lifecycle === 'DROPPED';
+
+  // Only COMMITTED work can go back through the gate. Work in delivery, on
+  // hold, or done has a history that unplacing would quietly rewrite.
+  if (last && !dropped && payload.lifecycle !== 'COMMITTED') {
     return {
       allowed: false,
       refusal: 'NOT_REVERTIBLE',
@@ -371,7 +388,9 @@ export function previewRemoval(payload: DragPayload): RemovalPreview {
     };
   }
 
-  return { allowed: true, returnsToRail: last, units: payload.units };
+  // Dropped work is unplaced, never returned: the lane is for demand, and a
+  // decision not to do something is not demand.
+  return { allowed: true, returnsToRail: last && !dropped, units: payload.units };
 }
 
 export function defaultDropUnits(sizeMapping: Readonly<Record<string, number>>): CapacityUnits {

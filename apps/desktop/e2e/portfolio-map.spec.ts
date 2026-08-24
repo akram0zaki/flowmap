@@ -1575,3 +1575,60 @@ test('Alt while dragging moves the placement instead of adding one', async ({ pa
   expect(after).toHaveLength(before);
   expect(after).not.toContain(spots.sourceKey);
 });
+
+/**
+ * Dropped work must be able to leave the board.
+ *
+ * `DROPPED` is terminal — nothing in the transition table leads out of it — so
+ * refusing to unplace its **last** footprint stranded the block in its cell for
+ * good, under a message advising the reader to drop what they had just dropped.
+ */
+test('work that has been dropped can still be taken off the board', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await openSampleWorkspace(page);
+  // Detail: a block is only its own click target at this zoom.
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  /*
+   * Chosen from the board rather than named, so the test keeps testing the
+   * thing it is about when the fixture changes: work with exactly one
+   * placement — removing it is then the lifecycle question rather than
+   * ordinary capacity — that is still droppable, so not already done.
+   */
+  const work = await page.evaluate(() => {
+    const seen = new Map<string, { count: number; label: string }>();
+    for (const block of document.querySelectorAll('[data-commitment]')) {
+      const label = block.getAttribute('aria-label') ?? '';
+      const name = label.split('.')[0] ?? '';
+      const entry = seen.get(name) ?? { count: 0, label };
+      seen.set(name, { count: entry.count + 1, label });
+    }
+    for (const [name, { count, label }] of seen) {
+      if (count === 1 && (label.includes('Committed') || label.includes('In delivery')))
+        return name;
+    }
+    throw new Error('no single-placement, droppable work on the board');
+  });
+  await expect.poll(async () => (await placementsOf(page, work)).length).toBe(1);
+
+  const block = page.locator('[data-commitment]').filter({ hasText: work }).first();
+  await block.click();
+
+  // Drop it: a decision not to take the work, recorded on the commitment. The
+  // panel's button names itself after the work, so the label is "Drop <name>".
+  const panel = page.getByRole('complementary', { name: /Details for/ });
+  await panel.getByRole('button', { name: `Drop ${work}` }).click();
+  await page.getByRole('button', { name: 'Drop', exact: true }).click();
+  await expect(block).toHaveAttribute('aria-label', /Dropped/);
+
+  // Delete on it must now work rather than refusing with "put it on hold or
+  // drop it instead" — advice for a state it is already past.
+  await block.focus();
+  await page.keyboard.press('Delete');
+  await expect.poll(async () => (await placementsOf(page, work)).length).toBe(0);
+
+  // Unplaced, never returned: the demand lane is for demand, and a decision not
+  // to do something is not demand.
+  await expect(page.locator('.fm-idea').filter({ hasText: work })).toHaveCount(0);
+});
