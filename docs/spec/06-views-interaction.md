@@ -105,6 +105,25 @@ the ordinary case, not the exception. Footprint uniqueness is `(commitmentId, te
 - An addition arrives at the same default size an Idea lands at, because how much of the work the
   second team takes is a new question and not one the first team's number answers.
 
+#### 3.1.2 Taking a placement off the board
+
+Dragging a block onto the Ideas/Demand lane, or pressing `Delete` on it, removes that placement.
+What happens to the commitment depends on how many it had left:
+
+- **More than one** — the footprint is archived and nothing else changes. The work is still
+  committed, elsewhere.
+- **The last one, `COMMITTED`** — `RevertCommitGate` runs first and the work returns to the lane as
+  demand.
+- **The last one, `DROPPED`** — the footprint is archived and the commitment keeps its record. It is
+  **not** returned to the lane: the lane is for demand, and a decision not to do something is not
+  demand. Refusing this stranded dropped work, because `DROPPED` has no transition out of it and no
+  other gesture removes a last footprint.
+- **The last one, `IN_DELIVERY`, `ON_HOLD` or `DONE`** — refused. That work has a history unplacing
+  would quietly rewrite. `DONE` is terminal like `DROPPED`, but completed work on the board is the
+  record of what a team delivered that quarter; removing it changes what the quarter says it shipped.
+
+A settled quarter is refused throughout: it is history, and the domain declines to edit it.
+
 ### 3.2 Container anatomy
 
 Bottom-up within each cell: reserve band (hatched, one segment per reserve type, labelled on hover

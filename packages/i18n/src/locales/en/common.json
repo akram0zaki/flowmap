@@ -476,7 +476,7 @@
   "remove.hint": "Drag a block here to take it off the board, or press Delete on it.",
   "remove.no.FROM_CLOSED_QUARTER": "that quarter is closed",
   "remove.no.IDEA_NOT_PLACED": "it is not on the board yet",
-  "remove.no.NOT_REVERTIBLE": "work past the Commit Gate cannot go back to the lane; put it on hold or drop it instead",
+  "remove.no.NOT_REVERTIBLE": "work past the Commit Gate cannot go back to the lane; only committed work can be returned to demand",
   "remove.refused": "Cannot take this off the board — {reason}.",
   "remove.returned": "{name} returned to the demand lane.",
   "remove.unplaced": "{name} taken off the board.",

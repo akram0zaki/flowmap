@@ -361,6 +361,44 @@ describe('previewRemoval', () => {
     expect(previewRemoval(idea)).toMatchObject({ allowed: false, refusal: 'IDEA_NOT_PLACED' });
   });
 
+  /*
+   * Dropped work used to be stranded: `DROPPED` is terminal so nothing led out
+   * of it, and refusing to unplace its last footprint left the block in the
+   * cell for good — under a message telling the reader to drop it.
+   */
+  describe('work that has been dropped', () => {
+    it('can leave the board even when it is the only placement', () => {
+      const preview = previewRemoval({ ...carried, lifecycle: 'DROPPED' });
+      expect(preview).toMatchObject({ allowed: true, units: 20 });
+    });
+
+    // The lane is for demand, and a decision not to do something is not demand.
+    it('is unplaced rather than returned to the lane', () => {
+      expect(previewRemoval({ ...carried, lifecycle: 'DROPPED' }).returnsToRail).toBe(false);
+    });
+
+    // The decision lives on the commitment, not on the cell, so a settled
+    // quarter is still off limits — that is history the domain will not edit.
+    it('still cannot be taken out of a closed quarter', () => {
+      expect(previewRemoval({ ...carried, lifecycle: 'DROPPED', fromClosed: true })).toMatchObject({
+        allowed: false,
+        refusal: 'FROM_CLOSED_QUARTER',
+      });
+    });
+
+    /*
+     * `DONE` is terminal too, and deliberately not included: completed work on
+     * the board is the record of what a team delivered that quarter, and
+     * removing it changes what the quarter says it shipped.
+     */
+    it('does not extend the same licence to completed work', () => {
+      expect(previewRemoval({ ...carried, lifecycle: 'DONE' })).toMatchObject({
+        allowed: false,
+        refusal: 'NOT_REVERTIBLE',
+      });
+    });
+  });
+
   // A settled quarter is history. The domain refuses to edit it, so the drag
   // must refuse too rather than promising something the command will decline.
   it('refuses to take work out of a closed quarter', () => {
