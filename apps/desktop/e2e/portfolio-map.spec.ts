@@ -1632,3 +1632,39 @@ test('work that has been dropped can still be taken off the board', async ({ pag
   // to do something is not demand.
   await expect(page.locator('.fm-idea').filter({ hasText: work })).toHaveCount(0);
 });
+
+/**
+ * Searching the demand lane.
+ *
+ * The rail orders by preparation, which is right for a queue you read and wrong
+ * for one you scan: past a dozen Ideas, finding the one you mean by eye is the
+ * slowest part of placing it.
+ */
+test('the demand lane can be searched down to the Idea you meant', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await openSampleWorkspace(page);
+
+  const names = page.locator('.fm-idea__name');
+  const total = await names.count();
+  expect(total).toBeGreaterThan(1);
+
+  // Upper case, and a word from the middle of the name: contains, not
+  // starts-with, and neither side of the match is case-sensitive.
+  const field = page.getByLabel('Search ideas');
+  await field.fill('REPORT');
+  await expect(names).toHaveCount(1);
+  await expect(names.first()).toContainText(/reporting/i);
+  await expect(page.locator('.fm-ideas__ready')).toContainText(`1 of ${total} shown`);
+
+  // The badge counts the queue, not the search.
+  await expect(page.locator('.fm-ideas__count')).toHaveText(String(total));
+
+  await field.fill('nothing matches this');
+  await expect(names).toHaveCount(0);
+  await expect(page.locator('.fm-ideas')).toContainText('nothing matches this');
+
+  // Escape clears the field without cancelling anything behind it.
+  await field.press('Escape');
+  await expect(names).toHaveCount(total);
+});
