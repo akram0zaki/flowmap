@@ -128,6 +128,32 @@ What happens to the commitment depends on how many it had left:
 
 A settled quarter is refused throughout: it is history, and the domain declines to edit it.
 
+#### 3.1.3 A commitment across several quarters
+
+Work that runs for more than one quarter consumes capacity in each of them — one footprint per
+team-quarter, exactly as for several teams ([§3.1.1](#311-a-commitment-across-several-teams)).
+
+- **A block's sides are its reach.** The top edge says how much of a quarter the work takes; the
+  sides say how many quarters it takes it for. Dragging a side outwards runs the work into the
+  quarters it reaches; dragging it inwards gives them back.
+- **Extending copies the amount, it does not divide it.** A footprint means "this team spends this
+  much of _this_ quarter on this work", so three quarters of work costs three quarters. Dividing a
+  fixed total across quarters is a different operation and already exists: `SplitCapacityFootprint`,
+  in the detail panel.
+- **Only the ends of a run carry a grip.** A middle block's sides are interior; a grip there would
+  ask which of two answers it meant. An edge belongs to the run, not to the block that draws it.
+- **A run never empties itself.** Retracting past its own start would be unplacing the work, which
+  is [§3.1.2](#312-taking-a-placement-off-the-board)'s decision, not this one.
+- **A run is an unbroken sequence.** A footprint further out with a gap between is a separate
+  placement, and dragging an edge must not silently adopt it.
+- Closed quarters are refused at either end: they can be neither occupied nor vacated.
+- Consecutive footprints are drawn as separate blocks with a tick on the edges that continue, never
+  as one joined shape. A block's height depends on what else is stacked in _its_ cell, so the same
+  work sits at a different height in each quarter whenever the neighbours differ — a joined bar would
+  be a stepped ribbon far more often than a rectangle.
+- Keyboard equivalent: `Shift + ←` / `Shift + →` on the focused block, acting on the same edges the
+  pointer can grab.
+
 ### 3.2 Container anatomy
 
 Bottom-up within each cell: reserve band (hatched, one segment per reserve type, labelled on hover
@@ -288,6 +314,7 @@ Canvas (roving tabindex — the canvas is a single tab stop, arrows move within 
 | `Space`             | Toggle focus mode on the object                                                                                       |
 | `m`                 | **Move mode** — arrows choose target team-quarter, live headroom announced, `Enter` commits, `Esc` cancels            |
 | `Alt + Enter`       | Commit the carried placement as a **move** rather than an addition ([§3.1.1](#311-a-commitment-across-several-teams)) |
+| `Shift + ← →`       | Run the focused work across one more quarter, or one fewer ([§3.1.3](#313-a-commitment-across-several-quarters))      |
 | `r`                 | Resize mode — `←/→` step through sizes or ±1 unit with `Shift`                                                        |
 | `d`                 | Draw dependency — arrows choose a target, `Enter` creates a `REQUIRES` dependency                                     |
 | `f`                 | Expand dependency neighbourhood by one hop                                                                            |

@@ -27,6 +27,7 @@ const CANVAS: readonly { readonly keys: string; readonly action: string }[] = [
   { keys: 'm', action: 'shortcuts.moveMode' },
   { keys: 'Alt + Enter', action: 'shortcuts.moveInstead' },
   { keys: 'r', action: 'shortcuts.resizeMode' },
+  { keys: 'Shift + ← →', action: 'shortcuts.span' },
   { keys: 'd', action: 'shortcuts.draw' },
   { keys: 'Delete', action: 'shortcuts.drop' },
   { keys: 'f', action: 'shortcuts.neighbourhood' },

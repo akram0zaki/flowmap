@@ -97,6 +97,28 @@ export type PortfolioMapProps = {
   /** Dependencies of the focused commitment, drawn over the grid. */
   readonly dependencyEdges: readonly DependencyEdge[];
   readonly onDropHere: () => void;
+  /** Dragging a block's side runs the work across more quarters, or fewer. */
+  readonly onSpanStart?: (
+    footprintId: string,
+    teamId: string,
+    quarterId: string,
+    edge: 'START' | 'END',
+    event: ReactPointerEvent,
+  ) => void;
+  /** The same reach, one quarter at a time, from the keyboard. */
+  readonly onSpanStep?: (
+    footprintId: string,
+    teamId: string,
+    quarterId: string,
+    edge: 'START' | 'END',
+    direction: 1 | -1,
+  ) => void;
+  /** Quarters the stretch in progress would add or drop, for this team row. */
+  readonly spanning?: {
+    readonly teamId: string;
+    readonly added: readonly string[];
+    readonly removed: readonly string[];
+  } | null;
   /** Planner-only: move a team row up or down. Absent for anyone else. */
   readonly onMoveRow?: (teamId: string, direction: -1 | 1) => void;
   /** Archive a team. Blocked while the row still holds live footprints. */
@@ -133,6 +155,9 @@ export function PortfolioMap({
   onWheelZoom,
   dependencyEdges,
   onDropHere,
+  onSpanStart,
+  onSpanStep,
+  spanning = null,
   onMoveRow,
   onArchiveTeam,
   busyTeamIds,
@@ -521,6 +546,18 @@ export function PortfolioMap({
                     data-dimmed={!focused || undefined}
                     data-closed={cell.closed || undefined}
                     data-drop={aimedHere ? (preview?.allowed ? 'ok' : 'no') : undefined}
+                    // What a stretch in progress would do to this container:
+                    // the reach is drawn on the cells it reaches, not on the
+                    // block, because the consequence is theirs.
+                    data-span={
+                      spanning?.teamId === cell.teamId
+                        ? spanning.added.includes(cell.quarterId)
+                          ? 'add'
+                          : spanning.removed.includes(cell.quarterId)
+                            ? 'remove'
+                            : undefined
+                        : undefined
+                    }
                     onClick={() => {
                       setCursor({ row: rowIndex, col: colIndex });
                       onSelectCell(cell.teamId, cell.quarterId);
@@ -587,6 +624,32 @@ export function PortfolioMap({
                         onPickUp={(footprintId: string, event?: ReactPointerEvent) =>
                           onPickUpBlock(footprintId, cell.teamId, cell.quarterId, event)
                         }
+                        {...(onSpanStep
+                          ? {
+                              onSpanStep: (
+                                footprintId: string,
+                                edge: 'START' | 'END',
+                                direction: 1 | -1,
+                              ) =>
+                                onSpanStep(
+                                  footprintId,
+                                  cell.teamId,
+                                  cell.quarterId,
+                                  edge,
+                                  direction,
+                                ),
+                            }
+                          : {})}
+                        {...(onSpanStart
+                          ? {
+                              onSpanStart: (
+                                footprintId: string,
+                                edge: 'START' | 'END',
+                                event: ReactPointerEvent,
+                              ) =>
+                                onSpanStart(footprintId, cell.teamId, cell.quarterId, edge, event),
+                            }
+                          : {})}
                         onRemove={(footprintId: string) =>
                           onRemoveBlock(footprintId, cell.teamId, cell.quarterId)
                         }

@@ -262,6 +262,17 @@ type StoreState = {
     teamQuarterId: EntityId,
     reserves: readonly ReserveInput[],
   ): Promise<boolean>;
+  /**
+   * Runs work across more quarters, or fewer, for one team. One gesture, so one
+   * undo, however many quarters the edge crossed.
+   */
+  stretchFootprint(input: {
+    readonly commitmentId: EntityId;
+    readonly teamId: EntityId;
+    readonly units: number;
+    readonly add: readonly string[];
+    readonly remove: readonly EntityId[];
+  }): Promise<boolean>;
   addTeam(name: string): Promise<boolean>;
   /** Hides a team from the map. Blocked while any live footprint still sits on it. */
   archiveTeam(teamId: EntityId): Promise<boolean>;
@@ -996,6 +1007,27 @@ export const useWorkspace = create<StoreState>((set, get) => ({
           setTeamQuarterReserves(current, { teamQuarterId: teamQuarter.id, reserves }, cmd, ctx),
         );
         if (applied === false) return false;
+      }
+      return true;
+    });
+  },
+
+  async stretchFootprint({ commitmentId, teamId, units, add, remove }) {
+    return runAsStep(async () => {
+      // Removals first: retracting past a quarter and re-reaching it in the
+      // same gesture is not possible, but doing the additions first would put
+      // the load in two places at once for the length of the step.
+      for (const footprintId of remove) {
+        if ((await get().removeFootprint(footprintId)) === false) return false;
+      }
+      for (const quarterId of add) {
+        const placed = await get().placeFootprint({
+          commitmentId,
+          teamId,
+          quarterId: quarterId as never,
+          units,
+        });
+        if (!placed) return false;
       }
       return true;
     });
