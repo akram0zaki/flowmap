@@ -123,6 +123,56 @@ describe('TeamsView', () => {
     expect(blocked.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
   });
 
+  /*
+   * Reaching a team's BAU figure should not mean opening a dialog about where
+   * the database lives and scrolling past the workspace defaults to a picker
+   * for the team whose row you just clicked.
+   */
+  it('opens a team’s default allocations from its own row', async () => {
+    const user = userEvent.setup();
+    const opened: string[] = [];
+    render(
+      <TeamsView
+        state={fixture()}
+        filter={NO_FILTER}
+        onOpenCell={() => undefined}
+        onArchiveTeam={() => undefined}
+        onOpenTeamSettings={(teamId) => opened.push(teamId)}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Default allocations for Payments' }));
+    expect(opened).toHaveLength(1);
+  });
+
+  // Two buttons stacked cost a row of height on every team and push the grid
+  // off the screen, so they share one row and wrap only when they must.
+  it('puts Settings and Archive in one row together', () => {
+    render(
+      <TeamsView
+        state={fixture()}
+        filter={NO_FILTER}
+        onOpenCell={() => undefined}
+        onArchiveTeam={() => undefined}
+        onOpenTeamSettings={() => undefined}
+      />,
+    );
+
+    const actions = document.querySelectorAll('.fm-teams__actions');
+    expect(actions.length).toBeGreaterThan(0);
+    expect([...actions[0]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual([
+      'Settings',
+      'Archive',
+    ]);
+  });
+
+  // The board is read far more often than it is configured; a lens with no way
+  // to edit teams must not grow buttons that do nothing.
+  it('offers no team buttons when neither action is wired', () => {
+    render(<TeamsView state={fixture()} filter={NO_FILTER} onOpenCell={() => undefined} />);
+    expect(document.querySelector('.fm-teams__actions')).toBeNull();
+  });
+
   it('shows horizon capacity instead of commitment blocks', () => {
     render(<TeamsView state={fixture()} filter={NO_FILTER} onOpenCell={() => undefined} />);
 

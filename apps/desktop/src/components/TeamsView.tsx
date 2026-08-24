@@ -22,11 +22,14 @@ export function TeamsView({
   filter,
   onOpenCell,
   onArchiveTeam,
+  onOpenTeamSettings,
 }: {
   readonly state: WorkspaceState;
   readonly filter: FilterState;
   readonly onOpenCell: (teamId: string, quarterId: QuarterId) => void;
   readonly onArchiveTeam?: (teamId: string) => void;
+  /** Opens this team's default allocations — the figures its new quarters start from. */
+  readonly onOpenTeamSettings?: (teamId: string) => void;
 }) {
   const [preset, setPreset] = useState<HorizonPreset>('HORIZON');
   const [cursor, setCursor] = useState({ row: 0, col: 0 });
@@ -191,20 +194,37 @@ export function TeamsView({
                   {row.overflowingCells > 0 && (
                     <span>{t('map.rowOverflow', { count: row.overflowingCells })}</span>
                   )}
-                  {onArchiveTeam && (
-                    <button
-                      type="button"
-                      className="fm-quiet"
-                      disabled={busyTeamIds.has(row.teamId)}
-                      aria-label={
-                        busyTeamIds.has(row.teamId)
-                          ? t('team.archiveBlocked', { team: row.teamName })
-                          : t('map.archiveTeam', { team: row.teamName })
-                      }
-                      onClick={() => onArchiveTeam(row.teamId)}
-                    >
-                      {t('action.archive')}
-                    </button>
+                  {/* Side by side, wrapping only when the column is too narrow
+                      to hold both. Stacked, two buttons cost a row of height on
+                      every team and push the grid off the screen. */}
+                  {(onArchiveTeam || onOpenTeamSettings) && (
+                    <div className="fm-teams__actions">
+                      {onOpenTeamSettings && (
+                        <button
+                          type="button"
+                          className="fm-quiet"
+                          aria-label={t('team.settingsFor', { team: row.teamName })}
+                          onClick={() => onOpenTeamSettings(row.teamId)}
+                        >
+                          {t('team.settings')}
+                        </button>
+                      )}
+                      {onArchiveTeam && (
+                        <button
+                          type="button"
+                          className="fm-quiet"
+                          disabled={busyTeamIds.has(row.teamId)}
+                          aria-label={
+                            busyTeamIds.has(row.teamId)
+                              ? t('team.archiveBlocked', { team: row.teamName })
+                              : t('map.archiveTeam', { team: row.teamName })
+                          }
+                          onClick={() => onArchiveTeam(row.teamId)}
+                        >
+                          {t('action.archive')}
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
                 {visibleQuarters.map((quarterId, colIndex) => {

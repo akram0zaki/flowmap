@@ -87,6 +87,7 @@ import { WorkspaceSwitcher } from '../components/WorkspaceSwitcher.jsx';
 import { PortabilityPanel } from '../components/PortabilityPanel.jsx';
 import { SavedViews } from '../components/SavedViews.jsx';
 import { SettingsPanel } from '../components/SettingsPanel.jsx';
+import { TeamCapacityDialog } from '../components/TeamCapacityDialog.jsx';
 import { SyncStatus } from '../components/SyncStatus.jsx';
 import { ConflictResolver } from '../components/ConflictResolver.jsx';
 import { ShortcutReference } from '../components/ShortcutReference.jsx';
@@ -213,6 +214,8 @@ export function App() {
   const [activeLens, setActiveLens] = useState<ActiveLens>('PORTFOLIO');
   const [showPalette, setShowPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  /** The team whose default allocations are open, from its own row in the lens. */
+  const [teamSettingsFor, setTeamSettingsFor] = useState<string | null>(null);
   const [showConflicts, setShowConflicts] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -1715,6 +1718,7 @@ export function App() {
             if (!team) return;
             setPendingConfirm({ kind: 'archiveTeam', teamId, name: team.name });
           }}
+          onOpenTeamSettings={setTeamSettingsFor}
         />
       )}
       {activeLens === 'ATTENTION' && (
@@ -2038,6 +2042,21 @@ export function App() {
           onSearch={search}
         />
       )}
+      {teamSettingsFor !== null && state && (
+        <TeamCapacityDialog
+          state={state}
+          teamId={teamSettingsFor}
+          onSave={(input) => {
+            void setTeamDefaults(input);
+            setTeamSettingsFor(null);
+          }}
+          onSaveQuarter={(teamQuarterId, reserves) =>
+            void setTeamQuarterReserves(teamQuarterId, reserves)
+          }
+          onClose={() => setTeamSettingsFor(null)}
+        />
+      )}
+
       {showSettings && runtime && (
         <SettingsPanel
           runtime={runtime}
