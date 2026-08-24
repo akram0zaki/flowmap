@@ -113,6 +113,8 @@ export type CapacityVesselProps = {
   ) => void;
   /** The same reach, one quarter at a time, from the keyboard. */
   readonly onSpanStep?: (footprintId: string, edge: 'START' | 'END', direction: 1 | -1) => void;
+  /** One step up or down the container's stack, from the keyboard. */
+  readonly onReorderStep?: (footprintId: string, direction: 1 | -1) => void;
   /** While a resize is in flight, draw this block at that size instead. */
   readonly resizing?: { readonly footprintId: string; readonly units: number };
   /**
@@ -162,6 +164,7 @@ export function CapacityVessel({
   onResizeStart,
   onSpanStart,
   onSpanStep,
+  onReorderStep,
   onLink,
   resizing,
   ideaNames,
@@ -471,6 +474,17 @@ export function CapacityVessel({
                     } else if (e.key === ' ') {
                       e.preventDefault();
                       onPickUp?.(block.footprint.id);
+                    } else if (
+                      e.altKey &&
+                      (e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+                      onReorderStep
+                    ) {
+                      // One step up or down the stack. Plain arrows resize, so
+                      // the modifier is what separates "how big" from "how far
+                      // up" — the same two questions the pointer answers with
+                      // the top edge and the body of the block.
+                      e.preventDefault();
+                      onReorderStep(block.footprint.id, e.key === 'ArrowUp' ? 1 : -1);
                     } else if (
                       e.shiftKey &&
                       (e.key === 'ArrowRight' || e.key === 'ArrowLeft') &&

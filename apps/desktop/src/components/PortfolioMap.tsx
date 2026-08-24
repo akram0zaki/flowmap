@@ -113,6 +113,13 @@ export type PortfolioMapProps = {
     edge: 'START' | 'END',
     direction: 1 | -1,
   ) => void;
+  /** One step up or down a container's stack, from the keyboard. */
+  readonly onReorderStep?: (
+    footprintId: string,
+    teamId: string,
+    quarterId: string,
+    direction: 1 | -1,
+  ) => void;
   /** Quarters the stretch in progress would add or drop, for this team row. */
   readonly spanning?: {
     readonly teamId: string;
@@ -157,6 +164,7 @@ export function PortfolioMap({
   onDropHere,
   onSpanStart,
   onSpanStep,
+  onReorderStep,
   spanning = null,
   onMoveRow,
   onArchiveTeam,
@@ -624,6 +632,12 @@ export function PortfolioMap({
                         onPickUp={(footprintId: string, event?: ReactPointerEvent) =>
                           onPickUpBlock(footprintId, cell.teamId, cell.quarterId, event)
                         }
+                        {...(onReorderStep
+                          ? {
+                              onReorderStep: (footprintId: string, direction: 1 | -1) =>
+                                onReorderStep(footprintId, cell.teamId, cell.quarterId, direction),
+                            }
+                          : {})}
                         {...(onSpanStep
                           ? {
                               onSpanStep: (

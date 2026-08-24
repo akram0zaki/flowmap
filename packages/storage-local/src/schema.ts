@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS capacity_footprint (
   units_source                TEXT NOT NULL,
   confidence                  TEXT,
   is_primary                  INTEGER NOT NULL DEFAULT 0,
+  stack_order                 INTEGER,
   carry_over_from_quarter_id  TEXT,
   carry_over_from_footprint_id TEXT,
   closed_as_unfinished        INTEGER,
@@ -558,6 +559,10 @@ const V7_COLUMNS: readonly { table: string; column: string; definition: string }
   { table: 'outbox', column: 'base_remote_version', definition: 'TEXT' },
 ];
 
+const V8_COLUMNS: readonly { table: string; column: string; definition: string }[] = [
+  { table: 'capacity_footprint', column: 'stack_order', definition: 'INTEGER' },
+];
+
 export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
@@ -656,6 +661,35 @@ export const MIGRATIONS: readonly Migration[] = [
         if (trimmed.length > 0) await ctx.exec(trimmed);
       }
       for (const column of V7_COLUMNS) {
+        const table = await ctx.get<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+          [column.table],
+        );
+        if (!table) continue;
+        const existing = await ctx.get<{ name: string }>(
+          `SELECT name FROM pragma_table_info('${column.table}') WHERE name = ?`,
+          [column.column],
+        );
+        if (!existing) {
+          await ctx.exec(
+            `ALTER TABLE ${column.table} ADD COLUMN ${column.column} ${column.definition}`,
+          );
+        }
+      }
+    },
+  },
+  {
+    version: 8,
+    /*
+     * Where a block sits in its container's stack, once someone has ordered it
+     * by hand. Absent means the container is still drawn by the old rule —
+     * mandatory first, then largest — so there is no backfill to do: a null
+     * column *is* the previous behaviour, exactly.
+     */
+    name: 'footprint-stack-order',
+    checksumSource: V8_COLUMNS.map((column) => `${column.table}.${column.column}`).join(','),
+    up: async (ctx) => {
+      for (const column of V8_COLUMNS) {
         const table = await ctx.get<{ name: string }>(
           "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
           [column.table],

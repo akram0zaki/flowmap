@@ -154,6 +154,32 @@ team-quarter, exactly as for several teams ([§3.1.1](#311-a-commitment-across-s
 - Keyboard equivalent: `Shift + ←` / `Shift + →` on the focused block, acting on the same edges the
   pointer can grab.
 
+#### 3.1.4 Choosing what sits above the rule
+
+A container stacks from its reserve plinth upwards, ordered **mandatory first, then largest, then by
+name** ([§3.2](#32-container-anatomy)). That is a default, not a finding: sorted by size, whichever
+items happen to be smallest are drawn as the overflow and carry the over-capacity mark, when they
+may be the least questionable thing in the quarter.
+
+So the order is a decision that can be made and recorded.
+
+- **Dragging a block onto another block in its own container** reorders the stack, putting the one
+  in hand where the one under the pointer sits. Between containers the same drag still moves or adds
+  ([§3.1.1](#311-a-commitment-across-several-teams)); only within one is it an ordering.
+- **The order overrides everything, mandatory work included.** A lead who needs to show that the
+  regulatory item is what will not fit has to be able to say so.
+- **A container is wholly ordered or wholly sorted**, never half of each: two rules at once cannot be
+  predicted. `ReorderFootprints` therefore takes the whole container, bottom first, which makes a
+  partial order unrepresentable rather than merely discouraged.
+- **Into a container ordered by hand, new work lands on top** — the first thing pushed past the rule,
+  which is usually the honest answer to "can we also take this as well?". A container nobody has
+  ordered stays sorted, and new work falls where its size puts it.
+- Undo restores the order that was on screen, including the sorted order of a container that had
+  never been ordered.
+- Closed quarters are refused: settled figures are history.
+- Keyboard equivalent: `Alt + ↑` / `Alt + ↓` on the focused block. Plain arrows resize, so the
+  modifier is what separates "how big" from "how far up".
+
 ### 3.2 Container anatomy
 
 Bottom-up within each cell: reserve band (hatched, one segment per reserve type, labelled on hover
@@ -306,20 +332,21 @@ Global:
 
 Canvas (roving tabindex — the canvas is a single tab stop, arrows move within it):
 
-| Key                 | Action                                                                                                                |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `← → ↑ ↓`           | Move selection between cells / blocks                                                                                 |
-| `Tab` / `Shift+Tab` | Move between regions (lane, grid, panel)                                                                              |
-| `Enter`             | Open focused object                                                                                                   |
-| `Space`             | Toggle focus mode on the object                                                                                       |
-| `m`                 | **Move mode** — arrows choose target team-quarter, live headroom announced, `Enter` commits, `Esc` cancels            |
-| `Alt + Enter`       | Commit the carried placement as a **move** rather than an addition ([§3.1.1](#311-a-commitment-across-several-teams)) |
-| `Shift + ← →`       | Run the focused work across one more quarter, or one fewer ([§3.1.3](#313-a-commitment-across-several-quarters))      |
-| `r`                 | Resize mode — `←/→` step through sizes or ±1 unit with `Shift`                                                        |
-| `d`                 | Draw dependency — arrows choose a target, `Enter` creates a `REQUIRES` dependency                                     |
-| `f`                 | Expand dependency neighbourhood by one hop                                                                            |
-| `+` / `−`           | Zoom level                                                                                                            |
-| `g`                 | Commit Gate for the focused Idea                                                                                      |
+| Key                 | Action                                                                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `← → ↑ ↓`           | Move selection between cells / blocks                                                                                             |
+| `Tab` / `Shift+Tab` | Move between regions (lane, grid, panel)                                                                                          |
+| `Enter`             | Open focused object                                                                                                               |
+| `Space`             | Toggle focus mode on the object                                                                                                   |
+| `m`                 | **Move mode** — arrows choose target team-quarter, live headroom announced, `Enter` commits, `Esc` cancels                        |
+| `Alt + Enter`       | Commit the carried placement as a **move** rather than an addition ([§3.1.1](#311-a-commitment-across-several-teams))             |
+| `Shift + ← →`       | Run the focused work across one more quarter, or one fewer ([§3.1.3](#313-a-commitment-across-several-quarters))                  |
+| `Alt + ↑ ↓`         | Move the focused block up or down its stack, choosing what sits above the rule ([§3.1.4](#314-choosing-what-sits-above-the-rule)) |
+| `r`                 | Resize mode — `←/→` step through sizes or ±1 unit with `Shift`                                                                    |
+| `d`                 | Draw dependency — arrows choose a target, `Enter` creates a `REQUIRES` dependency                                                 |
+| `f`                 | Expand dependency neighbourhood by one hop                                                                                        |
+| `+` / `−`           | Zoom level                                                                                                                        |
+| `g`                 | Commit Gate for the focused Idea                                                                                                  |
 
 **Every drag/drop interaction has a keyboard equivalent, and every keyboard equivalent produces the
 same command.** A visual affordance without its keyboard path does not ship.

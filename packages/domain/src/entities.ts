@@ -261,6 +261,19 @@ export type CapacityFootprint = EntityEnvelope & {
   readonly confidence?: Confidence;
   /** Exactly one per commitment once committed, on the primary team. */
   readonly isPrimary: boolean;
+  /**
+   * Where this block sits in its container's stack, counted from the plinth up.
+   *
+   * Absent until someone orders the cell by hand, and then present on every
+   * footprint in it — a cell is wholly ordered or wholly sorted, never half of
+   * each, because two rules at once cannot be predicted.
+   *
+   * It exists because which work sits above the capacity rule is a decision,
+   * not an artefact. Sorted by size, whichever items happen to be smallest are
+   * drawn as the overflow, and the board says they are the questionable ones
+   * when they may be the least questionable thing in the quarter.
+   */
+  readonly stackOrder?: number;
   readonly carryOverFromQuarterId?: QuarterId;
   readonly carryOverFromFootprintId?: EntityId;
   /** Set at quarter close on the origin footprint. Preserves the original plan. */

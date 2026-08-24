@@ -37,6 +37,7 @@ import { effectiveCapacity } from './capacity.js';
 import type { Command, CommandContext, CommandResult, WorkspaceState } from './command.js';
 import type { CapacityUnits, EntityId } from './primitives.js';
 import type {
+  CapacityFootprint,
   CapacityReserve,
   DefaultReserve,
   ReserveType,
@@ -45,6 +46,8 @@ import type {
 } from './entities.js';
 import { isActive } from './entities.js';
 import { authorise, bumped, domainFail, event, succeed, updated } from './handler-kit.js';
+import { capacityKey } from './refs.js';
+import type { QuarterId } from './quarter.js';
 
 /**
  * A reserve as the user describes it: a type, a label, and an amount. No id —
@@ -363,4 +366,139 @@ export function setTeamQuarterReserves(
  */
 export function seedReservesFor(state: WorkspaceState, team: Team): readonly DefaultReserve[] {
   return team.defaultReserves ?? state.workspace.settings.capacity.defaultReserves;
+}
+
+// ── ReorderFootprints ──────────────────────────────────────────────────────
+
+export type ReorderFootprintsPayload = {
+  readonly teamId: EntityId;
+  readonly quarterId: string;
+  /** Every footprint in the container, bottom of the stack first. */
+  readonly footprintIds: readonly EntityId[];
+};
+
+/**
+ * Which work sits above the capacity rule, decided rather than derived.
+ *
+ * A container stacks from its reserve plinth upwards, and until now the order
+ * was mandatory-first, then largest, then by name. That is a reasonable default
+ * and a poor answer to the question the board is actually asked: sorted by size,
+ * whichever items happen to be smallest are drawn as the overflow, and the red
+ * mark says *those* are the questionable ones when they may be the least
+ * questionable thing in the quarter.
+ *
+ * So the order becomes a decision, recorded on the footprints. It overrides
+ * everything, mandatory work included — a lead who wants to show that the
+ * regulatory item is what will not fit has to be able to say so, and the whole
+ * argument of the board is that you can see what you have decided.
+ *
+ * The payload is the whole container, not a move of one block: a partial order
+ * is the state that cannot be drawn, and taking the list in one command is what
+ * makes that state unrepresentable.
+ */
+export function reorderFootprints(
+  state: WorkspaceState,
+  payload: ReorderFootprintsPayload,
+  cmd: Command,
+  ctx: CommandContext,
+): CommandResult {
+  const unauthorised = authorise(ctx, 'PLANNER');
+  if (unauthorised) return unauthorised;
+
+  const held = [...state.footprints.values()].filter(
+    (footprint) =>
+      footprint.teamId === payload.teamId &&
+      footprint.quarterId === payload.quarterId &&
+      footprint.archivedAt === undefined,
+  );
+
+  const closed = [...state.teamQuarters.values()].find(
+    (teamQuarter) =>
+      teamQuarter.teamId === payload.teamId &&
+      teamQuarter.quarterId === payload.quarterId &&
+      teamQuarter.closedAt !== undefined,
+  );
+  if (closed) return domainFail('QUARTER_CLOSED', { params: { quarter: payload.quarterId } });
+
+  // The list must be the container, exactly: every footprint in it, once each,
+  // and nothing from anywhere else. Anything looser leaves blocks with no
+  // position, which is the unorderable state this command exists to prevent.
+  const wanted = new Set(payload.footprintIds);
+  if (wanted.size !== payload.footprintIds.length || wanted.size !== held.length) {
+    return domainFail('NAME_REQUIRED', { field: 'footprintIds' });
+  }
+  for (const footprint of held) {
+    if (!wanted.has(footprint.id)) {
+      return domainFail('ENTITY_NOT_FOUND', {
+        entityRef: { kind: 'CAPACITY_FOOTPRINT', id: footprint.id },
+      });
+    }
+  }
+
+  const byId = new Map(held.map((footprint) => [footprint.id, footprint]));
+  const changes = payload.footprintIds.flatMap((footprintId, index) => {
+    const before = byId.get(footprintId)!;
+    if (before.stackOrder === index) return [];
+    const after = bumped({ ...before, stackOrder: index }, ctx);
+    return [updated({ kind: 'CAPACITY_FOOTPRINT', id: footprintId }, before, after)];
+  });
+
+  return succeed({
+    changes,
+    events:
+      changes.length === 0
+        ? []
+        : [
+            event(
+              cmd,
+              ctx,
+              0,
+              'FOOTPRINTS_REORDERED',
+              [{ kind: 'TEAM_QUARTER', id: `${payload.teamId}:${payload.quarterId}` }],
+              { team: payload.teamId, quarter: payload.quarterId, count: held.length },
+            ),
+          ],
+    affectedProjections: [capacityKey(payload.teamId, payload.quarterId as QuarterId)],
+    inverse: {
+      ...cmd,
+      id: ctx.ids.next(),
+      name: 'ReorderFootprints',
+      payload: {
+        teamId: payload.teamId,
+        quarterId: payload.quarterId,
+        /*
+         * The order as it stands, so undo restores it exactly — including the
+         * order a never-ordered container was *drawn* in, which is the sort
+         * rule and therefore needs the commitments: without them there is no
+         * mandatory-ness and no name to break ties, and undo puts the stack
+         * back in an order that was never on screen.
+         */
+        footprintIds: stackedOrder(held, state.commitments),
+      },
+    },
+  });
+}
+
+/**
+ * The order a container's footprints are drawn in, bottom first.
+ *
+ * By hand when it has been ordered; otherwise the old rule — mandatory first,
+ * because it is the work that cannot move, then largest, then by name.
+ */
+export function stackedOrder(
+  footprints: readonly CapacityFootprint[],
+  commitments?: ReadonlyMap<EntityId, { readonly class: string; readonly name: string }>,
+): EntityId[] {
+  const ordered = footprints.every((footprint) => footprint.stackOrder !== undefined);
+  return [...footprints]
+    .sort((a, b) => {
+      if (ordered) return a.stackOrder! - b.stackOrder!;
+      const left = commitments?.get(a.commitmentId);
+      const right = commitments?.get(b.commitmentId);
+      const mandatory = Number(right?.class === 'MANDATORY') - Number(left?.class === 'MANDATORY');
+      if (mandatory !== 0) return mandatory;
+      if (b.units !== a.units) return b.units - a.units;
+      return (left?.name ?? '').localeCompare(right?.name ?? '');
+    })
+    .map((footprint) => footprint.id);
 }

@@ -151,6 +151,7 @@ export function App() {
     setTeamDefaults,
     setTeamQuarterReserves,
     stretchFootprint,
+    reorderFootprints,
     unplaceFootprint,
     resizeFootprint,
     editCommitment,
@@ -553,7 +554,7 @@ export function App() {
       const cell = findCell(board, target.teamId, target.quarterId as QuarterId);
       if (!cell) return t('drop.carrying', { name: payload.name });
 
-      const preview = previewDrop(cell, payload);
+      const preview = previewDrop(cell, payload, target.commitmentId);
       if (!preview.allowed) {
         return t('drop.refusedAt', {
           team: cell.teamName,
@@ -577,6 +578,14 @@ export function App() {
       // Saying "would land on" for both is how a drag that quietly duplicated
       // work would read exactly like one that moved it.
       if (payload.kind === 'BLOCK') {
+        // In its own container a drop onto another block is neither: it is a
+        // reorder, and the only way to say which work will not fit.
+        if (payload.fromTeamId === target.teamId && payload.fromQuarterId === target.quarterId) {
+          const under = cell.blocks.find((block) => block.commitmentId === target.commitmentId);
+          return under
+            ? t('order.would', { name: payload.name, other: under.name })
+            : t('drop.carrying', { name: payload.name });
+        }
         return payload.intent === 'ADD'
           ? t('drop.wouldAlsoTake', {
               team: cell.teamName,
@@ -631,7 +640,7 @@ export function App() {
       const cell = findCell(board, target.teamId, target.quarterId as QuarterId);
       // Re-check on release. The board can change under a slow drag, and the
       // preview that allowed it may no longer be the truth.
-      if (!cell || !previewDrop(cell, payload).allowed) return;
+      if (!cell || !previewDrop(cell, payload, target.commitmentId).allowed) return;
 
       // A dependency lands on work, not on a container.
       if (payload.kind === 'LINK') {
@@ -664,6 +673,28 @@ export function App() {
       }
 
       if (payload.kind === 'BLOCK') {
+        /*
+         * Dropped in its own container, onto another block: reorder. Which work
+         * sits above the capacity rule is a decision, and sorting by size made
+         * it an artefact — whichever items happened to be smallest were drawn
+         * as the overflow and marked as the questionable ones.
+         *
+         * The whole container is sent, because a partial order cannot be drawn.
+         */
+        if (payload.fromTeamId === target.teamId && payload.fromQuarterId === target.quarterId) {
+          const order = cell.blocks.map((block) => block.footprintId);
+          const from = order.indexOf(payload.footprintId);
+          const to = cell.blocks.findIndex((block) => block.commitmentId === target.commitmentId);
+          if (from === -1 || to === -1 || from === to) return;
+
+          order.splice(from, 1);
+          order.splice(to, 0, payload.footprintId);
+          void reorderFootprints(target.teamId, target.quarterId, order).then((ok) => {
+            if (ok) announce(t('order.moved', { name: payload.name, position: to + 1 }));
+          });
+          return;
+        }
+
         // Adding is not placing an Idea: no team becomes the owner, no gate is
         // passed, no lifecycle moves. It is one more team carrying some of the
         // load, which is `AssignCapacityFootprint` and nothing else.
@@ -732,6 +763,7 @@ export function App() {
       state,
       moveFootprint,
       placeFootprint,
+      reorderFootprints,
       commitIdeaInto,
       unplaceFootprint,
       relate,
@@ -1095,6 +1127,31 @@ export function App() {
       });
     },
     [board, stretchFootprint, announce],
+  );
+
+  /**
+   * The keyboard half of dragging a block up or down its container's stack.
+   * Same command, so the two paths cannot disagree about what an order means.
+   */
+  const onReorderStep = useCallback(
+    (footprintId: string, teamId: string, quarterId: string, direction: 1 | -1) => {
+      const cell = findCell(board!, teamId, quarterId as QuarterId);
+      if (!cell) return;
+      const order = cell.blocks.map((block) => block.footprintId);
+      const from = order.indexOf(footprintId);
+      const to = from + direction;
+      if (from === -1 || to < 0 || to >= order.length) {
+        announce(t('order.atEnd'));
+        return;
+      }
+      const moved = cell.blocks[from]!;
+      order.splice(from, 1);
+      order.splice(to, 0, footprintId);
+      void reorderFootprints(teamId, quarterId, order).then((ok) => {
+        if (ok) announce(t('order.moved', { name: moved.name, position: to + 1 }));
+      });
+    },
+    [board, reorderFootprints, announce],
   );
 
   const onSpanStart = useCallback(
@@ -1884,6 +1941,7 @@ export function App() {
               onResizeStart={(input, event) => beginResize(input, event)}
               onSpanStart={onSpanStart}
               onSpanStep={onSpanStep}
+              onReorderStep={onReorderStep}
               spanning={spanPreview}
               resizing={
                 resizing ? { footprintId: resizing.footprintId, units: resizing.units } : null

@@ -290,6 +290,17 @@ function layOutBlocks(
         entry.commitment !== undefined && isActive(entry.commitment),
     )
     .sort((a, b) => {
+      /*
+       * By hand when the container has been ordered, and then for every block
+       * in it — a cell is wholly ordered or wholly sorted, never half of each.
+       * Which work sits above the capacity rule is a decision, and sorting by
+       * size makes it an artefact: whichever items happen to be smallest get
+       * drawn as the overflow and marked as the questionable ones.
+       */
+      if (a.footprint.stackOrder !== undefined && b.footprint.stackOrder !== undefined) {
+        return a.footprint.stackOrder - b.footprint.stackOrder;
+      }
+      // Mandatory first, because it is the work that cannot move.
       const mandatory =
         Number(b.commitment.class === 'MANDATORY') - Number(a.commitment.class === 'MANDATORY');
       if (mandatory !== 0) return mandatory;

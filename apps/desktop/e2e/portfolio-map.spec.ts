@@ -1764,3 +1764,67 @@ test('Shift and the arrows reach across quarters from the keyboard', async ({ pa
   await page.keyboard.press('Shift+ArrowLeft');
   await expect.poll(async () => (await quartersOf(page, work)).length).toBe(1);
 });
+
+/**
+ * Choosing which work sits above the capacity rule.
+ *
+ * A container stacks mandatory first, then largest, then by name. That is a
+ * reasonable default and a poor answer to the question the board is asked:
+ * sorted by size, whichever items happen to be smallest are drawn as the
+ * overflow and marked as the questionable ones, when they may be the least
+ * questionable thing in the quarter.
+ */
+test('a block dragged within its own cell decides what overflows', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await freshApp(page);
+  await openSampleWorkspace(page);
+  await page.getByRole('button', { name: 'Detail', exact: true }).click();
+
+  const stack = async (): Promise<string[]> =>
+    page.evaluate(() => {
+      const cell = [...document.querySelectorAll<HTMLElement>('[data-drop-team]')].find(
+        (candidate) =>
+          candidate.dataset['dropQuarter'] === '2026-Q3' &&
+          candidate.querySelectorAll('[data-commitment]').length > 2,
+      );
+      return [...(cell?.querySelectorAll('[data-commitment]') ?? [])].map(
+        (block) => (block.getAttribute('aria-label') ?? '').split('.')[0] ?? '',
+      );
+    });
+
+  const before = await stack();
+  expect(before.length).toBeGreaterThan(2);
+
+  // Drag the block at the bottom of the stack onto the one at the top.
+  const points = await page.evaluate(() => {
+    const cell = [...document.querySelectorAll<HTMLElement>('[data-drop-team]')].find(
+      (candidate) =>
+        candidate.dataset['dropQuarter'] === '2026-Q3' &&
+        candidate.querySelectorAll('[data-commitment]').length > 2,
+    )!;
+    cell.scrollIntoView({ block: 'center' });
+    const blocks = [...cell.querySelectorAll('[data-commitment]')];
+    const first = blocks[0]!.getBoundingClientRect();
+    const last = blocks[blocks.length - 1]!.getBoundingClientRect();
+    return {
+      from: { x: first.left + first.width / 2, y: first.top + first.height / 2 },
+      to: { x: last.left + last.width / 2, y: last.top + last.height / 2 },
+    };
+  });
+
+  await page.mouse.move(points.from.x, points.from.y);
+  await page.mouse.down();
+  await page.mouse.move(points.to.x, points.to.y, { steps: 10 });
+  await page.mouse.up();
+
+  // The block that was underneath everything is now on top, and it is the one
+  // drawn as the overflow — the total has not moved, only the decision about
+  // which work will not fit.
+  await expect.poll(async () => (await stack()).at(-1)).toBe(before[0]);
+  await expect(
+    page.locator('[data-commitment]').filter({ hasText: before[0]! }).first(),
+  ).toHaveAttribute('aria-label', /Over capacity/);
+
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect.poll(async () => await stack()).toEqual(before);
+});
