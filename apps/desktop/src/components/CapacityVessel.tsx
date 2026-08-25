@@ -135,6 +135,18 @@ const MILESTONE_GAP = 9;
 /** Grab area on a block's top edge. Generous, per the 24px hit-target rule. */
 const RESIZE_GRIP = 10;
 
+/**
+ * Width of the health marker down a block's leading edge.
+ *
+ * Health used to be drawn as a dashed border around the whole block. On a stack
+ * of six that redrew every outline in a signal colour, and the cell read as
+ * hazard tape rather than as a measurement — the one block actually at risk was
+ * harder to find, not easier. A bar on the leading edge is the same information
+ * in one place, and it leaves the block's own edge free to keep saying selected,
+ * hovered, and not-counted.
+ */
+const HEALTH_EDGE = 3;
+
 const AXIS_WIDTH = 34;
 const COMPACT_AXIS_WIDTH = 20;
 
@@ -428,6 +440,14 @@ export function CapacityVessel({
               : block.top - block.units / 2;
             const labelY = Math.max(y(block.top) + 8, y(labelCentre) + 4);
 
+            // Health is drawn, not outlined: a bar down the leading edge rather
+            // than a dashed border. The tick for work that continues into the
+            // previous quarter shares that edge, so it steps inside the marker
+            // instead of being painted over by it — two different facts about
+            // the same block, both still legible.
+            const health = block.health && block.health !== 'OK' ? block.health : undefined;
+            const healthWidth = health ? HEALTH_EDGE : 0;
+
             // The grip must never own most of a block, or a small block cannot
             // be picked up and moved at all — only resized.
             const gripHeight = Math.max(4, Math.min(RESIZE_GRIP, blockHeight * 0.4));
@@ -452,7 +472,7 @@ export function CapacityVessel({
                   className="fm-block"
                   data-commitment={block.commitment.id}
                   data-mandatory={block.commitment.class === 'MANDATORY' || undefined}
-                  data-health={block.health && block.health !== 'OK' ? block.health : undefined}
+                  data-health={health}
                   data-selected={selected || undefined}
                   data-counted={block.counted || undefined}
                   data-scenario-ghost={block.scenarioGhost || undefined}
@@ -555,6 +575,7 @@ export function CapacityVessel({
                       width={BODY_WIDTH - 12}
                       height={Math.max(2, underUnits * unitPx)}
                       rx={2}
+                      className="fm-block__carryover"
                       fill={`url(#${patternPrefix}-carryover)`}
                     />
                   )}
@@ -571,6 +592,21 @@ export function CapacityVessel({
                       height={Math.max(2, overUnits * unitPx)}
                       rx={2}
                       className="fm-block__over"
+                    />
+                  )}
+                  {/* Drawn after the tints, because a marker the overflow fill
+                      can cover is a marker that disappears exactly on the
+                      blocks most likely to be in trouble. Colour is the third
+                      channel here, not the only one — the caption names the
+                      state in words and the block's label announces it. */}
+                  {health && (
+                    <rect
+                      x={6}
+                      y={y(block.top) + 0.5}
+                      width={HEALTH_EDGE}
+                      height={Math.max(2, blockHeight - 1)}
+                      className="fm-block__health-edge"
+                      aria-hidden="true"
                     />
                   )}
                   {/* The sides are the reach. The top edge says how much of a
@@ -593,7 +629,7 @@ export function CapacityVessel({
                         <g key={edge}>
                           {continues && (
                             <rect
-                              x={left ? 6 : BODY_WIDTH - 8}
+                              x={left ? 6 + healthWidth : BODY_WIDTH - 8}
                               y={y(block.top) + 0.5}
                               width={2}
                               height={Math.max(2, blockHeight - 1)}
@@ -706,6 +742,12 @@ export function CapacityVessel({
                       className="fm-block__label"
                       data-over={isOverflow || undefined}
                     >
+                      {/* The block's own title says name · units, but it belongs
+                          to the whole cell, and a reader who cannot make out a
+                          truncated name points at the name. Titling the text
+                          itself puts the full string under the thing that was
+                          cut, rather than somewhere near it. */}
+                      <title>{block.commitment.name}</title>
                       {block.commitment.class === 'MANDATORY' ? '🔒 ' : ''}
                       {truncate(block.commitment.name, labelBudget(BODY_WIDTH - milestoneWidth))}
                     </text>
@@ -836,8 +878,16 @@ export function CapacityVessel({
               against the full 100, so the block looks like a quarter of the
               container while the number says an eighth. The screen-reader
               label has said "of deliverable capacity" all along; this is the
-              same sentence, for the people looking at it. */}
-          {percent !== null && !overCapacity && (
+              same sentence, for the people looking at it.
+
+              Shown over capacity too, where it used to be dropped. It is the
+              figure "+5 over" is over *by*, so hiding it removes the reference
+              exactly where the number needs one — and dropping a line only in
+              the over-capacity cells left the captions in a row at two
+              different heights, which is what pushed each drawing to a
+              different floor. Only a container with no deliverable capacity
+              has no denominator to state. */}
+          {percent !== null && (
             <span className="fm-vessel__of">
               {t('capacity.ofDeliverable', { units: summary.deliverableCapacity })}
             </span>
@@ -932,14 +982,17 @@ function refinementSupport(
  * A heuristic rather than a measurement: SVG text has no ellipsis, so the
  * string has to be cut before it is drawn, and measuring every label with
  * `getComputedTextLength` would mean a layout pass per block on every render.
- * 5.8px is Atkinson Hyperlegible's rough average advance at 12px. The reserve
- * is the left inset (14) plus the units figure right-aligned at bodyWidth-18,
- * plus a gap wide enough that a long name and a two-digit number do not read as
- * one word — "Legacy gateway decommiss10" is what a too-small reserve looks
- * like, and it reads as a rendering fault rather than as truncation.
+ * 6.3px is Atkinson Hyperlegible's rough average advance at 13px — the size the
+ * labels are actually drawn at since they were raised from 12px for legibility
+ * on a dense board. The reserve is the left inset (14) plus the units figure
+ * right-aligned at bodyWidth-18, plus a gap wide enough that a long name and a
+ * two-digit number do not read as one word — "Legacy gateway decommiss10" is
+ * what a too-small reserve looks like, and it reads as a rendering fault rather
+ * than as truncation. The reserve grew with the type: the units are mono, so a
+ * two-digit figure gained about 2px of its own.
  */
 function labelBudget(bodyWidth: number): number {
-  return Math.max(8, Math.floor((bodyWidth - 62) / 5.8));
+  return Math.max(8, Math.floor((bodyWidth - 66) / 6.3));
 }
 
 function truncate(value: string, max: number): string {

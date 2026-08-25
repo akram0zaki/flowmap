@@ -31,6 +31,10 @@ export const color = {
   graphite3: 'var(--graphite-3)',
   graphite4: 'var(--graphite-4)',
 
+  cyan1: 'var(--cyan-1)',
+  cyan2: 'var(--cyan-2)',
+  cyan3: 'var(--cyan-3)',
+
   accent: 'var(--accent)',
   accentHover: 'var(--accent-hover)',
   accentActive: 'var(--accent-active)',

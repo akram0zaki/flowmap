@@ -36,6 +36,25 @@
   --graphite-3: #b9b4a9;
   --graphite-4: #8c877d;
 
+  /* ── Cyan — the block ramp ────────────────────────────────────────────
+     Blocks are the one thing on the board a reader counts rather than reads,
+     and in graphite they sat in the same tonal family as the rules, the ticks
+     and the plinth hatching, so the countable parts had to be picked out of
+     the drawing they stand in.
+
+     Three values, because a block has exactly three: the tint it is filled
+     with, the line that bounds it, and one step deeper for mandatory work,
+     which fills with the line colour and bounds itself with the last. The fill
+     is pale on purpose — a cell holds eight or nine of these, and at any real
+     weight the stack reads as a slab rather than as parts.
+
+     These match the accent triple by value. That is a collision worth knowing
+     about rather than a saving: --accent still means selection, and selection
+     is currently separated from an ordinary block by stroke width alone. */
+  --cyan-1: #e8eef8; /* block fill, standard */
+  --cyan-2: #24457c; /* block border, standard — and the mandatory fill */
+  --cyan-3: #152a4d; /* block border, mandatory — and the mandatory label halo */
+
   /* ── Accent — drafting ink ─────────────────────────────────────────── */
   --accent: #24457c; /* 8.9:1 on surface */
   --accent-hover: #1c3765;
@@ -203,6 +222,10 @@
   --graphite-3: #434a55;
   --graphite-4: #5e6774;
 
+  --cyan-1: #1b2739;
+  --cyan-2: #8fb0e8;
+  --cyan-3: #bed3f3;
+
   --accent: #8fb0e8;
   --accent-hover: #a7c1ee;
   --accent-active: #bed3f3;
@@ -257,6 +280,10 @@
     --graphite-2: #2e333b;
     --graphite-3: #434a55;
     --graphite-4: #5e6774;
+
+    --cyan-1: #1b2739;
+    --cyan-2: #8fb0e8;
+    --cyan-3: #bed3f3;
 
     --accent: #8fb0e8;
     --accent-hover: #a7c1ee;

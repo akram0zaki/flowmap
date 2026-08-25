@@ -1427,10 +1427,18 @@ label {
   background: var(--accent-surface);
 }
 
+/* Bottom-justified, because a vessel is a container standing on a floor. Cells
+   in a row are stretched to the tallest one, and with the default top alignment
+   a half-full quarter hung from the top of its cell while a full one filled it —
+   so the baselines every block height is measured from sat at a different place
+   in every column, and the row could not be read across. Anchoring the content
+   to the bottom puts every floor on the same line. */
 .fm-grid__cell {
   scroll-snap-align: start;
   display: flex;
+  flex-direction: column;
   align-items: stretch;
+  justify-content: flex-end;
   /* Scales with zoom, so zooming in buys the labels room as well as the
      blocks. At 100% six quarters fit a laptop; past that the board scrolls,
      which is what the steppers and the scrollbar are for. */
@@ -1480,8 +1488,12 @@ label {
   color: var(--ink-subtle);
 }
 
+/* The cell bottom-justifies now, so `align-self: end` here stopped meaning "at
+   the floor" and started meaning "at the right wall" — the dash drifted across
+   the column. Vertical placement is the cell's job; this only keeps the marker
+   off the caption line below it. */
 .fm-grid__empty {
-  align-self: end;
+  align-self: start;
   padding-bottom: var(--space-6);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -1490,10 +1502,15 @@ label {
 
 /* ── The capacity vessel ───────────────────────────────────────────────── */
 
+/* Fills its cell and bottom-justifies its own content, so the anchoring holds
+   one level down as well: the caption is the last thing in the flow, and the
+   drawing sits directly above it whatever the stack is worth. */
 .fm-vessel {
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   width: 100%;
+  height: 100%;
   margin: 0;
 }
 
@@ -1546,11 +1563,17 @@ label {
   cursor: pointer;
 }
 
-/* One step up from graphite-1, which sat so close to the ground that a block
-   read as a floating label rather than a measured quantity. */
+/* Cyan, not graphite. In graphite a block sat in the same tonal family as the
+   rules, the ticks and the plinth hatching, so the one thing on the board a
+   reader counts had to be picked out of the drawing it was standing in.
+
+   The ramp matches the accent triple by value, which means `[data-selected]`
+   below is currently separated from an ordinary block by stroke width alone.
+   Deliberate, and recorded here so the next person to touch selection knows the
+   colour is no longer carrying it. */
 .fm-block__fill {
-  fill: var(--graphite-2);
-  stroke: var(--graphite-3);
+  fill: var(--cyan-1);
+  stroke: var(--cyan-2);
   stroke-width: 1;
 }
 
@@ -1561,10 +1584,14 @@ label {
   stroke-width: 1.5;
 }
 
-/* Mandatory work is heavier — it is the work that cannot move. */
+/* Mandatory work is heavier — it is the work that cannot move. It fills with the
+   tone that bounds an ordinary block and bounds itself with the step below, so
+   the two read as one ramp rather than two colours. Dark enough that the label
+   has to invert; see `.fm-block[data-mandatory] .fm-block__label` below, and
+   the pair is held by contrast.test. */
 .fm-block[data-mandatory] .fm-block__fill {
-  fill: var(--graphite-3);
-  stroke: var(--graphite-4);
+  fill: var(--cyan-2);
+  stroke: var(--cyan-3);
 }
 
 /* Present but not consuming: outlined rather than filled. */
@@ -1590,6 +1617,14 @@ label {
   stroke-width: 1;
 }
 
+/* The cross-hatch says "carried", and that is all it has to say — at full
+   strength it competed with the name printed over it, which on a dense stack is
+   the thing a reader is actually there for. The caption still names the carried
+   units in full, so nothing depends on reading the texture. */
+.fm-block__carryover {
+  opacity: 0.45;
+}
+
 .fm-block[data-selected] .fm-block__fill {
   stroke: var(--accent);
   stroke-width: 2;
@@ -1613,7 +1648,7 @@ label {
    type arriving at 7px, and no amount of zooming fixed it. */
 .fm-block__label {
   fill: var(--ink);
-  font-size: 12px;
+  font-size: 13px;
   paint-order: stroke fill;
   stroke: var(--surface);
   stroke-width: 3px;
@@ -1622,6 +1657,25 @@ label {
 
 .fm-block__label[data-over] {
   font-weight: var(--weight-medium);
+}
+
+/* A mandatory block is dark enough that --ink on it is unreadable, and the
+   surface-coloured halo that keeps a label crisp elsewhere becomes a white
+   outline around white-ish text. Both flip together: inverse ink, and a halo
+   one step further down the same cyan ramp the block is filled from, so the
+   stroke reads as the block rather than as a second colour. Held at 4.5:1 by
+   the --ink-inverse / --cyan-2 pair in contrast.test. */
+.fm-block[data-mandatory] .fm-block__label,
+.fm-block[data-mandatory] .fm-block__units {
+  fill: var(--ink-inverse);
+  stroke: var(--cyan-3);
+}
+
+/* Except where the block is past the rule: there the label sits on the critical
+   tint, not on the fill, and that pair is checked against --ink. */
+.fm-block[data-mandatory] .fm-block__label[data-over] {
+  fill: var(--ink);
+  stroke: var(--critical-surface);
 }
 
 .fm-block__scenario-badge {
@@ -1668,7 +1722,7 @@ label {
 .fm-block__units {
   fill: var(--ink);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   paint-order: stroke fill;
   stroke: var(--surface);
   stroke-width: 3px;
@@ -1689,14 +1743,24 @@ label {
   padding-top: var(--space-4);
 }
 
+/* Two columns, not three items on one line. As a flex row the figure, the
+   delta and the denominator shared a 176px column three ways, so each got about
+   60px and every one of them wrapped mid-phrase — "35 units / headroom" beside
+   "of 60 / deliverable", four ragged fragments where there are two facts. The
+   number takes the width it needs and spans both rows; the two lines beside it
+   each get the rest of the column, which is enough to stay whole. */
 .fm-vessel__figure {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: baseline;
-  gap: var(--space-2);
+  column-gap: var(--space-2);
+  row-gap: var(--space-1);
 }
 
-/* The headline: large, mono, quiet. The number is the point of the cell. */
+/* The headline: large, mono, quiet. The number is the point of the cell, and it
+   stands beside both lines rather than above one of them. */
 .fm-vessel__percent {
+  grid-row: 1 / span 2;
   font-family: var(--font-mono);
   font-size: var(--figure-md);
   font-weight: var(--weight-regular);
@@ -1716,10 +1780,9 @@ label {
   color: var(--ink-subtle);
 }
 
-/* Quieter than the headroom beside it: the denominator is what the figure is
+/* Quieter than the headroom above it: the denominator is what the figure is
    measured against, not a second measurement. */
 .fm-vessel__of {
-  display: block;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   color: var(--ink-subtle);
@@ -2010,7 +2073,7 @@ label {
 /* Units on a thin block sit alone, so they carry a little more weight. */
 /* A thin block shows only the number, so the number cannot also fade. */
 .fm-block__units[data-thin] {
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .fm-ideas__ready {
@@ -3198,20 +3261,23 @@ label {
   color: var(--warning-fg);
 }
 
-/* On a block: a hairline down the leading edge, so an at-risk block reads at a
-   glance without competing with the units figure that measures it. */
-.fm-block[data-health='AT_RISK'] .fm-block__fill,
-.fm-block[data-health='WATCH'] .fm-block__fill {
-  stroke-width: 2px;
-  stroke-dasharray: 3 2;
+/* On a block: a bar down the leading edge, so an at-risk block reads at a glance
+   without competing with the units figure that measures it.
+
+   This was a dashed border around the whole block. On a stack of six that redrew
+   every outline in a signal colour and left the cell reading as hazard tape —
+   the one block actually at risk was harder to find, not easier. It also spent
+   the block's own edge, which selection, hover and not-counted all need. */
+.fm-block__health-edge {
+  fill: var(--ink-muted);
 }
 
-.fm-block[data-health='AT_RISK'] .fm-block__fill {
-  stroke: var(--critical-fg);
+.fm-block[data-health='AT_RISK'] .fm-block__health-edge {
+  fill: var(--critical-fg);
 }
 
-.fm-block[data-health='WATCH'] .fm-block__fill {
-  stroke: var(--warning-fg);
+.fm-block[data-health='WATCH'] .fm-block__health-edge {
+  fill: var(--warning-fg);
 }
 
 /* ── M5 lenses ─────────────────────────────────────────────────────────── */

@@ -111,6 +111,13 @@ const TEXT_PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   // and those blocks carry the numbers that matter most.
   ['--ink', '--graphite-2', 4.5],
   ['--ink', '--graphite-3', 4.5],
+  // The blocks moved onto the cyan ramp, so the same check follows them there.
+  // Mandatory blocks fill with the border tone and are dark enough that the
+  // label inverts, which is a second pair to hold rather than a way out of
+  // holding the first.
+  ['--ink', '--cyan-1', 4.5],
+  ['--ink-inverse', '--cyan-2', 4.5],
+  ['--ink-inverse', '--cyan-3', 4.5],
   // The over-capacity portion of a block is a tint the block's own name is
   // printed on, so it is a text background like any other.
   ['--ink', '--critical-surface', 4.5],
@@ -125,6 +132,8 @@ const GRAPHICAL_PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ['--positive-line', '--surface', 3],
   ['--info-line', '--surface', 3],
   ['--graphite-4', '--surface', 3],
+  ['--cyan-2', '--surface', 3],
+  ['--cyan-3', '--surface', 3],
 ];
 
 describe.each([
