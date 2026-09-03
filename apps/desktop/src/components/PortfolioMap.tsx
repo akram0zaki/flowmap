@@ -514,7 +514,7 @@ export function PortfolioMap({
                     {t('action.archive')}
                   </button>
                 )}
-                <span className="fm-grid__team-meta" data-figure="">
+                <span className="fm-grid__team-meta">
                   {row.capacity === 0
                     ? '—'
                     : t('map.rowUtilisation', {

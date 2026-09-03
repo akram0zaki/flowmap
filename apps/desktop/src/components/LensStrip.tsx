@@ -11,9 +11,26 @@ import { filterChips, isFilterActive } from '@flowmap/visual-model';
 
 import { t } from '../i18n/t.js';
 
+/**
+ * A chip carries the filter's raw value — a team id, a lifecycle enum — because
+ * `filterChips` is pure and has no catalogue to read from. Naming it is the
+ * render layer's job: a ULID on screen is not a filter anyone can read.
+ */
+function chipDisplay(
+  chip: { readonly key: string; readonly value: string },
+  teamNames: ReadonlyMap<string, string>,
+): string {
+  const [kind] = chip.key.split(':');
+  if (kind === 'team') return teamNames.get(chip.value) ?? chip.value;
+  if (kind === 'lifecycle') return t(`lifecycle.${chip.value}`);
+  if (kind === 'class') return t(`class.${chip.value}`);
+  return chip.value;
+}
+
 export type LensStripProps = {
   readonly filter: FilterState;
   readonly focusedName: string | null;
+  readonly teamNames: ReadonlyMap<string, string>;
   readonly onRemoveChip: (key: string) => void;
   readonly onClearFilters: () => void;
   readonly onToggleHide: () => void;
@@ -23,6 +40,7 @@ export type LensStripProps = {
 export function LensStrip({
   filter,
   focusedName,
+  teamNames,
   onRemoveChip,
   onClearFilters,
   onToggleHide,
@@ -42,7 +60,7 @@ export function LensStrip({
               aria-pressed
               onClick={() => onRemoveChip(chip.key)}
             >
-              {t(chip.labelKey)}: {chip.value} ✕
+              {t(chip.labelKey)}: {chipDisplay(chip, teamNames)} ✕
             </button>
           ))}
           <button type="button" className="fm-chip fm-chip--plain" onClick={onClearFilters}>

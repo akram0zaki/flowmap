@@ -465,7 +465,7 @@ body {
 .fm-scenarios__eyebrow,
 .fm-scenarios__meta {
   color: var(--ink-subtle);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
 }
 
 .fm-scenarios__status {
@@ -522,7 +522,7 @@ body {
 }
 .fm-scenarios__diff dt {
   color: var(--ink-subtle);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
 }
 .fm-scenarios__diff dd {
   margin: 0;
@@ -726,12 +726,11 @@ body {
 
 .fm-qbr-cell__meta,
 .fm-qbr-cell em {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   font-style: normal;
 }
 
 .fm-qbr-cell em {
-  font-family: var(--font-mono);
   color: var(--critical-fg);
 }
 
@@ -783,8 +782,7 @@ body {
 
 .fm-attention__item em,
 .fm-attention__item i {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   font-style: normal;
   color: var(--ink-subtle);
 }
@@ -1102,7 +1100,7 @@ label {
 
 .fm-ideas h2 {
   margin: 0;
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-weight: var(--weight-medium);
   color: var(--ink-subtle);
   text-transform: uppercase;
@@ -1180,8 +1178,7 @@ label {
 .fm-idea__meta {
   display: block;
   margin-top: var(--space-1);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -1294,7 +1291,7 @@ label {
   left: 0;
   z-index: calc(var(--z-sticky) + 1);
   align-self: end;
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   color: var(--ink-subtle);
   text-transform: uppercase;
   letter-spacing: var(--tracking-caps);
@@ -1335,13 +1332,12 @@ label {
 }
 
 .fm-grid__team-meta {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
 .fm-grid__team-over {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   font-weight: var(--weight-bold);
   color: var(--critical-fg);
 }
@@ -1366,7 +1362,6 @@ label {
 .fm-grid__reorder button {
   min-width: var(--hit-target-min);
   min-height: var(--hit-target-min);
-  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-muted);
   border: 1px solid var(--border);
@@ -1388,7 +1383,7 @@ label {
   align-self: start;
   min-width: var(--hit-target-min);
   min-height: var(--hit-target-min);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
 }
 
 .fm-grid__archive:disabled {
@@ -1495,8 +1490,7 @@ label {
 .fm-grid__empty {
   align-self: start;
   padding-bottom: var(--space-6);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -1556,7 +1550,7 @@ label {
 .fm-tick__label {
   fill: var(--ink-subtle);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-2xs);
 }
 
 .fm-block {
@@ -1630,8 +1624,22 @@ label {
   stroke-width: 2;
 }
 
-.fm-block[data-dimmed] {
+/* The same correction the grid cell got, applied one level down: fading the
+   whole <g> took the label to roughly 1.6:1, which is the mistake the cell rule
+   above already names. The drawing fades; the words step back to a
+   contrast-checked ink and keep their halo. A dimmed block also drops its
+   mandatory ink flip — the fill it was inverse against is no longer there. */
+.fm-block[data-dimmed] .fm-block__fill,
+.fm-block[data-dimmed] .fm-milestone {
   opacity: 0.25;
+}
+
+.fm-block[data-dimmed] .fm-block__label,
+.fm-block[data-dimmed] .fm-block__units,
+.fm-block[data-mandatory][data-dimmed] .fm-block__label,
+.fm-block[data-mandatory][data-dimmed] .fm-block__units {
+  fill: var(--ink-subtle);
+  stroke: var(--surface);
 }
 
 .fm-block:focus-visible {
@@ -1776,7 +1784,7 @@ label {
 
 .fm-vessel__delta {
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -1784,7 +1792,7 @@ label {
    measured against, not a second measurement. */
 .fm-vessel__of {
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -1794,7 +1802,7 @@ label {
 }
 
 .fm-vessel__reason {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   line-height: var(--leading-2xs);
   color: var(--warning-fg);
   overflow-wrap: anywhere;
@@ -1805,8 +1813,7 @@ label {
   flex-direction: column;
   gap: 2px;
   overflow-wrap: anywhere;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -1917,8 +1924,10 @@ label {
   gap: var(--space-2);
   min-height: 26px;
   padding: var(--space-1) var(--space-4);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  /* Names, not ids: a chip carries a team's name or a translated lifecycle now
+     that `chipDisplay` resolves them, so it sets in the UI face like any other
+     label. Quarter ids inside it still align well enough at this length. */
+  font-size: var(--text-xs);
   color: var(--accent);
   background: var(--accent-surface);
   border: 1px solid transparent;
@@ -1939,7 +1948,7 @@ label {
 
 .fm-lens__none,
 .fm-lens__hint {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -1958,7 +1967,7 @@ label {
 
 .fm-list caption {
   padding: var(--space-5) 0 var(--space-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
   text-align: left;
 }
@@ -1971,7 +1980,7 @@ label {
 }
 
 .fm-list thead th {
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-weight: var(--weight-medium);
   color: var(--ink-subtle);
   text-transform: uppercase;
@@ -2066,19 +2075,19 @@ label {
 .fm-overflow__label {
   fill: var(--critical-fg);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   font-weight: var(--weight-bold);
 }
 
 /* Units on a thin block sit alone, so they carry a little more weight. */
 /* A thin block shows only the number, so the number cannot also fade. */
 .fm-block__units[data-thin] {
-  font-size: 10px;
+  font-size: var(--text-2xs);
 }
 
 .fm-ideas__ready {
   margin: 0 0 var(--space-2);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--positive-fg);
 }
 
@@ -2166,7 +2175,7 @@ label {
   z-index: 1;
   margin: var(--space-2);
   padding: var(--space-1) var(--space-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--critical-fg);
   background: var(--critical-surface);
   border-radius: var(--radius-sm);
@@ -2187,7 +2196,7 @@ label {
 .fm-incoming__label {
   fill: var(--accent);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   font-weight: var(--weight-medium);
 }
 
@@ -2206,7 +2215,7 @@ label {
 
 .fm-ideas__hint {
   margin: 0 0 var(--space-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   line-height: var(--leading-2xs);
   color: var(--ink-subtle);
 }
@@ -2217,7 +2226,7 @@ label {
   z-index: 1;
   margin: var(--space-2);
   padding: var(--space-1) var(--space-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--accent);
   background: var(--accent-surface);
   border-radius: var(--radius-sm);
@@ -2238,7 +2247,7 @@ label {
 .fm-ideas__drop {
   margin: 0 0 var(--space-3);
   padding: var(--space-2) var(--space-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   line-height: var(--leading-2xs);
   color: var(--ink);
   background: var(--accent-surface);
@@ -2304,8 +2313,7 @@ label {
 
 .fm-panel__lifecycle {
   margin: var(--space-1) 0 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -2326,7 +2334,7 @@ label {
   align-items: baseline;
   gap: var(--space-3);
   margin: 0 0 var(--space-4);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-weight: var(--weight-medium);
   color: var(--ink-subtle);
   text-transform: uppercase;
@@ -2357,7 +2365,7 @@ label {
 
 .fm-panel__hint {
   display: block;
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -2385,7 +2393,7 @@ label {
 }
 
 .fm-panel__tag {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -2403,7 +2411,7 @@ label {
 }
 
 .fm-field__label {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -2414,8 +2422,7 @@ label {
   width: 16px;
   height: 16px;
   padding: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   line-height: 1;
   color: var(--ink-subtle);
   border: 1px solid var(--border);
@@ -2431,7 +2438,7 @@ label {
 .fm-field__tip {
   margin-bottom: var(--space-3);
   padding: var(--space-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   line-height: var(--leading-2xs);
   color: var(--ink);
   background: var(--surface);
@@ -2476,7 +2483,7 @@ label {
 }
 
 .fm-choice button {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   border: 1px solid var(--border);
   background: var(--surface);
 }
@@ -2509,7 +2516,7 @@ label {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-muted);
 }
 
@@ -2530,7 +2537,7 @@ label {
 
 .fm-idea__actions button {
   min-height: var(--hit-target-min);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
 }
 
 .fm-idea__refine {
@@ -2543,7 +2550,7 @@ label {
 
 .fm-idea__refine select {
   max-width: 100%;
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
   border: 1px dashed var(--border);
   background: transparent;
@@ -2552,8 +2559,7 @@ label {
 /* A link carries no units, so it is drawn as a note rather than as a figure —
    nothing here should read like an allocation. */
 .fm-idea__refinetag {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-muted);
   padding: 0 var(--space-1);
   border: 1px dashed var(--border);
@@ -2580,7 +2586,7 @@ label {
   min-height: var(--hit-target-min);
   padding: var(--space-2) var(--space-1);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   border-radius: 0;
   background: transparent;
 }
@@ -2608,7 +2614,7 @@ label {
 
 .fm-strip__now {
   display: block;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   color: var(--accent);
 }
 
@@ -2619,7 +2625,7 @@ label {
 .fm-panel__remove {
   min-height: 0;
   padding: 0 var(--space-2);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
   margin-left: auto;
 }
@@ -2648,7 +2654,7 @@ label {
 .fm-panel__error {
   flex-basis: 100%;
   margin: 0;
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--critical-fg);
 }
 
@@ -2702,8 +2708,7 @@ label {
 }
 
 .fm-deps text {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   fill: var(--ink-muted);
   paint-order: stroke fill;
   stroke: var(--ground);
@@ -2723,7 +2728,7 @@ label {
 
 .fm-gate h3 {
   margin: 0 0 var(--space-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-weight: var(--weight-medium);
   color: var(--ink-subtle);
   text-transform: uppercase;
@@ -2745,7 +2750,7 @@ label {
 .fm-gate__advisories {
   margin: 0 0 var(--space-3);
   padding-left: var(--space-5);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   line-height: var(--leading-2xs);
 }
 
@@ -2762,14 +2767,14 @@ label {
 
 .fm-gate__advisoryHead {
   margin: 0 0 var(--space-2);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
 .fm-gate__overflow {
   margin: 0 0 var(--space-3);
   padding: var(--space-2) var(--space-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   line-height: var(--leading-2xs);
   color: var(--warning-fg);
   background: var(--warning-surface);
@@ -2781,7 +2786,7 @@ label {
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink);
 }
 
@@ -2803,7 +2808,6 @@ label {
 .fm-zoom button {
   min-height: 26px;
   padding: var(--space-1) var(--space-4);
-  font-family: var(--font-mono);
   border: none;
   border-radius: 0;
 }
@@ -2852,7 +2856,6 @@ label {
   min-height: var(--hit-target-min);
   min-inline-size: var(--hit-target-min);
   padding: var(--space-1) var(--space-4);
-  font-family: var(--font-mono);
   border: none;
   border-radius: 0;
 }
@@ -2883,13 +2886,12 @@ label {
 .fm-ideas__toggle {
   min-height: 0;
   padding: 0 var(--space-2);
-  font-family: var(--font-mono);
   color: var(--ink-subtle);
 }
 
 /* The mandatory lock at Level 2, where the name is not drawn. */
 .fm-block__lock {
-  font-size: 11px;
+  font-size: var(--text-2xs);
 }
 
 /* ── Radar ─────────────────────────────────────────────────────────────────
@@ -2944,7 +2946,7 @@ label {
 .fm-radar__hidden,
 .fm-radar__order,
 .fm-radar__empty {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -3024,13 +3026,13 @@ label {
 }
 
 .fm-signal__message {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-muted);
 }
 
 .fm-signal__due {
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -3051,7 +3053,7 @@ label {
 .fm-signal__explanation,
 .fm-signal__why,
 .fm-signal__disposed {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-muted);
 }
 
@@ -3066,8 +3068,7 @@ label {
 /* Evidence, not decoration: a lead who disagrees can see what the rule read. */
 .fm-signal__facts {
   width: 100%;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   border-collapse: collapse;
 }
 
@@ -3099,7 +3100,7 @@ label {
 .fm-signal__snooze button {
   min-height: var(--hit-target-min);
   padding: var(--space-1) var(--space-2);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   border: 1px solid var(--border);
   background: var(--surface);
 }
@@ -3149,7 +3150,7 @@ label {
 }
 
 .fm-rulesettings__note {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -3195,7 +3196,7 @@ label {
 
 .fm-rulesettings__why {
   margin: var(--space-2) 0;
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-muted);
 }
 
@@ -3212,7 +3213,7 @@ label {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-muted);
 }
 
@@ -3233,7 +3234,7 @@ label {
 }
 
 .fm-rulesettings__locked {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -3248,8 +3249,7 @@ label {
   align-items: baseline;
   gap: var(--space-2);
   margin-top: var(--space-1);
-  font-size: var(--text-2xs);
-  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   color: var(--ink-muted);
 }
 
@@ -3407,12 +3407,11 @@ label {
 
 .fm-timeline__fragment em,
 .fm-product em {
-  font-family: var(--font-mono);
   font-style: normal;
 }
 
 .fm-timeline__fragment i {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   font-style: normal;
 }
 
@@ -3582,7 +3581,7 @@ label {
 }
 
 .fm-teams__team span {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--critical-fg);
 }
 
@@ -3650,7 +3649,6 @@ label {
 .fm-teams__figure strong,
 .fm-teams__total strong,
 .fm-teams__pressure strong {
-  font-family: var(--font-mono);
   font-size: var(--figure-md);
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -3664,7 +3662,7 @@ label {
 
 .fm-teams__figure em {
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   font-style: normal;
   font-weight: var(--weight-medium);
   color: var(--critical-fg);
@@ -3708,7 +3706,7 @@ label {
 .fm-teams__meta,
 .fm-teams__total span,
 .fm-teams__pressure span {
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -3729,8 +3727,7 @@ label {
   width: var(--hit-target-min);
   height: var(--hit-target-min);
   padding: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   line-height: 1;
   color: var(--ink-subtle);
   background: var(--surface);
@@ -3820,7 +3817,6 @@ label {
 
 .fm-quarter-review dd {
   margin: 0;
-  font-family: var(--font-mono);
 }
 
 .fm-quarter-review__proposal {
@@ -4004,7 +4000,7 @@ label {
 
 .fm-capacity__group legend {
   padding: 0 var(--space-2);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-weight: var(--weight-medium);
   color: var(--ink-subtle);
   text-transform: uppercase;
@@ -4013,7 +4009,7 @@ label {
 
 .fm-capacity__note {
   margin: 0 0 var(--space-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--ink-subtle);
 }
 
@@ -4136,6 +4132,6 @@ label {
 .fm-portability__errors {
   margin: var(--space-2) 0;
   padding-left: var(--space-5);
-  font-size: var(--text-2xs);
+  font-size: var(--text-sm);
   color: var(--critical-fg);
 }
