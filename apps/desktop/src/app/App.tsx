@@ -1720,6 +1720,7 @@ export function App() {
         <LensStrip
           filter={filter}
           focusedName={focusedName}
+          teamNames={new Map([...state.teams.values()].map((tm) => [tm.id, tm.name]))}
           onRemoveChip={(key) => setFilter((f) => removeChip(f, key))}
           onClearFilters={() => setFilter(NO_FILTER)}
           onToggleHide={() => setFilter((f) => ({ ...f, hideFiltered: !f.hideFiltered }))}
