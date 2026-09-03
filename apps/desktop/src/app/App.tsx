@@ -69,6 +69,7 @@ import { useResize, type ResizeState } from '../state/use-resize.js';
 import { useSpan, type SpanState } from '../state/use-span.js';
 import type { Milestone, QuarterId } from '@flowmap/domain';
 import { PortfolioMap } from '../components/PortfolioMap.jsx';
+import { ClassKey } from '../components/ClassKey.jsx';
 import { LensStrip } from '../components/LensStrip.jsx';
 import { ZoomDock } from '../components/ZoomDock.jsx';
 import { IdeasLane } from '../components/IdeasLane.jsx';
@@ -1727,6 +1728,11 @@ export function App() {
           onClearFocus={() => setFocusedCommitmentId(null)}
         />
       </div>
+
+      <ClassKey
+        filter={filter}
+        onToggleClass={(value) => setFilter((f) => toggleFilterValue(f, 'classes', value))}
+      />
 
       <ScenarioDock
         scenarios={scenarios}

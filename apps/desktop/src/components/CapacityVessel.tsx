@@ -20,7 +20,6 @@
 import {
   useCallback,
   useEffect,
-  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -34,14 +33,7 @@ import type {
   TeamQuarter,
 } from '@flowmap/domain';
 import { utilisationPercent } from '@flowmap/domain';
-import {
-  PATTERNS,
-  UNIT_PX,
-  UNIT_TICK_MAJOR,
-  UNIT_TICK_MINOR,
-  patternGeometry,
-  patternPitch,
-} from '@flowmap/ui';
+import { PATTERNS, UNIT_PX, UNIT_TICK_MAJOR, UNIT_TICK_MINOR } from '@flowmap/ui';
 
 import { observeResize } from '../state/observe-resize.js';
 import { t } from '../i18n/t.js';
@@ -182,7 +174,6 @@ export function CapacityVessel({
   ideaNames,
   focusedMilestoneIds,
 }: CapacityVesselProps) {
-  const patternPrefix = useId().replace(/:/g, '');
   const unitPx = UNIT_PX * zoom;
   // The axis is the first thing to go when space is tight; the vessel shape and
   // the caption still carry the meaning.
@@ -316,34 +307,9 @@ export function CapacityVessel({
         viewBox={`0 0 ${measuredWidth} ${height}`}
         preserveAspectRatio="xMidYMax meet"
       >
-        <defs>
-          {Object.values(PATTERNS)
-            .filter((spec) => !spec.outlineOnly)
-            .map((spec) => {
-              const pitch = patternPitch(spec, zoom);
-              return (
-                <pattern
-                  key={spec.id}
-                  id={`${patternPrefix}-${spec.id}`}
-                  width={pitch}
-                  height={pitch}
-                  patternUnits="userSpaceOnUse"
-                >
-                  {patternGeometry(spec.id, pitch).map((d, i) => (
-                    <path
-                      key={i}
-                      d={d}
-                      stroke={spec.colorVar}
-                      strokeWidth={spec.strokeVar}
-                      strokeLinecap={spec.id === 'hold' ? 'round' : 'butt'}
-                      {...(spec.dashArray ? { strokeDasharray: spec.dashArray } : {})}
-                      fill="none"
-                    />
-                  ))}
-                </pattern>
-              );
-            })}
-        </defs>
+        {/* No <defs> here any more. Every capacity state that used to be hatched
+            is a flat wash now, so the pattern sheet had no referents left — see
+            the state tokens in tokens.css for why the stripes went. */}
 
         {/* Unit scale — drawn so block heights are measurable, not impressionistic. */}
         <g className="fm-vessel__axis" aria-hidden="true" data-hidden={compact || undefined}>
@@ -398,8 +364,8 @@ export function CapacityVessel({
                   y={y(top)}
                   width={BODY_WIDTH}
                   height={Math.max(1, (top - bottom) * unitPx)}
-                  fill={`url(#${patternPrefix}-${spec.id})`}
                   className="fm-vessel__reserve"
+                  data-kind={spec.id}
                 />
                 <title>
                   {t(`reserve.${reserve.type}`)} — {reserve.label},{' '}
@@ -471,6 +437,7 @@ export function CapacityVessel({
                   aria-selected={selected}
                   className="fm-block"
                   data-commitment={block.commitment.id}
+                  data-class={block.commitment.class}
                   data-mandatory={block.commitment.class === 'MANDATORY' || undefined}
                   data-health={health}
                   data-selected={selected || undefined}
@@ -576,7 +543,6 @@ export function CapacityVessel({
                       height={Math.max(2, underUnits * unitPx)}
                       rx={2}
                       className="fm-block__carryover"
-                      fill={`url(#${patternPrefix}-carryover)`}
                     />
                   )}
                   {/* Colour, not texture. "Never colour alone" asks for a second

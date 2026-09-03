@@ -121,6 +121,21 @@ const TEXT_PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   // The over-capacity portion of a block is a tint the block's own name is
   // printed on, so it is a text background like any other.
   ['--ink', '--critical-surface', 4.5],
+
+  // Every class fill is a surface a block's own name is printed on. Mandatory
+  // fills with its hue and inverts; the other three stay pale and keep --ink.
+  ['--ink-inverse', '--class-mandatory-fill', 4.5],
+  ['--ink', '--class-mandatory-tint', 4.5],
+  ['--ink', '--class-strategic-fill', 4.5],
+  ['--ink', '--class-operational-fill', 4.5],
+  ['--ink', '--class-discretionary-fill', 4.5],
+
+  // The capacity washes replaced hatching, which means they are now solid
+  // backgrounds for the reserve label rather than texture behind it.
+  ['--ink', '--state-reserve', 4.5],
+  ['--ink', '--state-refinement', 4.5],
+  ['--ink', '--state-hold', 4.5],
+  ['--ink', '--state-carryover', 4.5],
 ];
 
 /** Graphical objects and interactive boundaries need 3:1, not 4.5:1. */
@@ -134,6 +149,13 @@ const GRAPHICAL_PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ['--graphite-4', '--surface', 3],
   ['--cyan-2', '--surface', 3],
   ['--cyan-3', '--surface', 3],
+
+  // A class line is the whole encoding when the fill is pale, so it is a
+  // graphical object that has to hold up on its own.
+  ['--class-mandatory-line', '--surface', 3],
+  ['--class-strategic-line', '--surface', 3],
+  ['--class-operational-line', '--surface', 3],
+  ['--class-discretionary-line', '--surface', 3],
 ];
 
 describe.each([
