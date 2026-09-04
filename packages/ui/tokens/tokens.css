@@ -55,6 +55,41 @@
   --cyan-2: #24457c; /* block border, standard — and the mandatory fill */
   --cyan-3: #152a4d; /* block border, mandatory — and the mandatory label halo */
 
+  /* ── Class — the hue axis ─────────────────────────────────────────────
+     Colour answers "why does this work exist", because that is the axis a
+     portfolio conversation actually argues along. Four classes, four hues,
+     held to one value band so no class shouts louder than another by accident.
+
+     Plum, indigo, teal, stone: none of them is the alert red or the warning
+     amber. That is deliberate — a signal colour has to keep meaning "something
+     is wrong", and it cannot if a whole class of work is painted in it.
+
+     The fill stays pale and the line carries the hue, for the reason the cyan
+     ramp gave: a cell holds eight or nine blocks, and at any real weight the
+     stack reads as a slab rather than as parts. Mandatory is the exception it
+     already was — it fills with its own line colour and inverts its label. */
+  --class-mandatory-fill: #6a2c5a;
+  --class-mandatory-line: #4a1e3f;
+  --class-mandatory-tint: #f3e7f0;
+
+  --class-strategic-fill: #d9e5f5;
+  --class-strategic-line: #1f4e79;
+
+  --class-operational-fill: #d2e9e5;
+  --class-operational-line: #1a635b;
+
+  --class-discretionary-fill: #e9e3d6;
+  --class-discretionary-line: #6f6757;
+
+  /* ── Capacity states — washes, not stripes ───────────────────────────
+     Reserve, refinement, hold and carry-over used to be hatched. Stripes now
+     mean exactly one thing on the board — over capacity — so these are flat
+     tints and the hatch is spent on the single state worth interrupting for. */
+  --state-reserve: #eae7e0;
+  --state-refinement: #e6ebf2;
+  --state-hold: #f4ecdc;
+  --state-carryover: #f7ecd9;
+
   /* ── Accent — drafting ink ─────────────────────────────────────────── */
   --accent: #24457c; /* 8.9:1 on surface */
   --accent-hover: #1c3765;
@@ -226,6 +261,24 @@
   --cyan-2: #8fb0e8;
   --cyan-3: #bed3f3;
 
+  --class-mandatory-fill: #c69ab2;
+  --class-mandatory-line: #e0bfd2;
+  --class-mandatory-tint: #3a2336;
+
+  --class-strategic-fill: #1b2739;
+  --class-strategic-line: #8fb0e8;
+
+  --class-operational-fill: #142b28;
+  --class-operational-line: #74c5b9;
+
+  --class-discretionary-fill: #2a2823;
+  --class-discretionary-line: #bfb5a2;
+
+  --state-reserve: #24262a;
+  --state-refinement: #1d2530;
+  --state-hold: #2e2718;
+  --state-carryover: #322817;
+
   --accent: #8fb0e8;
   --accent-hover: #a7c1ee;
   --accent-active: #bed3f3;
@@ -284,6 +337,24 @@
     --cyan-1: #1b2739;
     --cyan-2: #8fb0e8;
     --cyan-3: #bed3f3;
+
+    --class-mandatory-fill: #c69ab2;
+    --class-mandatory-line: #e0bfd2;
+    --class-mandatory-tint: #3a2336;
+
+    --class-strategic-fill: #1b2739;
+    --class-strategic-line: #8fb0e8;
+
+    --class-operational-fill: #142b28;
+    --class-operational-line: #74c5b9;
+
+    --class-discretionary-fill: #2a2823;
+    --class-discretionary-line: #bfb5a2;
+
+    --state-reserve: #24262a;
+    --state-refinement: #1d2530;
+    --state-hold: #2e2718;
+    --state-carryover: #322817;
 
     --accent: #8fb0e8;
     --accent-hover: #a7c1ee;

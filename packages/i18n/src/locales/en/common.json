@@ -436,6 +436,7 @@
   "map.cellClosed": "Quarter closed",
   "map.cellEmpty": "{team}, {quarter}. No capacity planned.",
   "map.cellIdle": "nothing planned",
+  "map.classKey": "Class",
   "map.clearFocus": "Clear focus",
   "map.focused": "Focused: {name}. {footprints} footprints across {teams} teams and {quarters} quarters.",
   "map.ideasCollapse": "Collapse the demand lane",

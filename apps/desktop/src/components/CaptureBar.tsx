@@ -7,7 +7,7 @@
  * See docs/spec/06-views-interaction.md §9.
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { useWorkspace } from '../state/workspace-store.js';
 import { t } from '../i18n/t.js';
@@ -28,6 +28,9 @@ export type CaptureBarProps = {
   readonly showRules: boolean;
   readonly onToggleRules: () => void;
   /** Reset only exists on the sample workspace — it is not a load-over-current. */
+  /** Rendered beside the step buttons. A slot, so the control bar does not
+      have to know what a class legend is or hold filter state to draw one. */
+  readonly legend?: ReactNode;
   readonly showResetSample?: boolean;
 };
 
@@ -45,6 +48,7 @@ export function CaptureBar({
   onToggleRadar,
   showRules,
   onToggleRules,
+  legend,
   showResetSample = false,
 }: CaptureBarProps) {
   const { captureIdea, addTeam, placeFootprint, loadSample, captureUnplanned } =
@@ -79,6 +83,7 @@ export function CaptureBar({
         <button type="button" onClick={onToggleList} aria-pressed={showList}>
           {t('nav.listCompanion')}
         </button>
+        {legend}
         <span className="fm-controlbar__spacer" />
         {showResetSample && (
           <button type="button" className="fm-quiet" onClick={() => void loadSample()}>
