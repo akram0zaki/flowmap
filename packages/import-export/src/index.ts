@@ -12,6 +12,8 @@ import ExcelJS from 'exceljs';
 import type { DomainEvent, WorkspaceState } from '@flowmap/domain';
 
 import { paintGraphicalSheets } from './graphical-sheets.js';
+export * from './roadmap.js';
+export * from './pptx.js';
 
 export {
   PORTFOLIO_WALL_SHEET,
@@ -516,6 +518,11 @@ export async function toWorkbook(
         value: 'Graphical team × quarter view of placed work.',
       },
       {
+        field: 'Roadmap',
+        value:
+          'Deliverables by theme across the horizon, teams set aside, with a dotted line at the export date. Not a Gantt: no percent complete, no critical path.',
+      },
+      {
         field: 'Timeline',
         value:
           'Graphical footprint view across the horizon. Not a Gantt: no percent complete, no critical path.',
@@ -523,7 +530,9 @@ export async function toWorkbook(
     );
   }
   appendRows(book.addWorksheet('_README'), readmeRows);
-  if (options?.state) paintGraphicalSheets(book, options.state);
+  // The export's own timestamp is what "today" means for the roadmap's line:
+  // one workspace exported twice on the same day draws the same picture.
+  if (options?.state) paintGraphicalSheets(book, options.state, readme.exportedAt.slice(0, 10));
   for (const sheet of sheets) {
     appendRows(book.addWorksheet(sheet.name.slice(0, 31) || 'Flowmap'), sheet.rows);
   }

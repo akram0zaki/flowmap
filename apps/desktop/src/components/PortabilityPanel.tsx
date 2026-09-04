@@ -19,6 +19,8 @@ import {
   previewImport,
   suggestMappings,
   toCsv,
+  roadmapModel,
+  roadmapPptx,
   toWorkbook,
   toXlsx,
   workspaceDataJson,
@@ -288,6 +290,17 @@ export function PortabilityPanel({
                       },
                       { state },
                     ),
+                  ),
+              },
+              {
+                name: t('portability.exportRoadmapPptx'),
+                format: t('portability.format.pptx'),
+                onClick: () =>
+                  void download(
+                    `${safeName(state.workspace.name)}-roadmap.pptx`,
+                    // The export's own timestamp is the today line, so the
+                    // deck and the Roadmap sheet beside it agree.
+                    roadmapPptx(roadmapModel(state, now().slice(0, 10))),
                   ),
               },
               {
