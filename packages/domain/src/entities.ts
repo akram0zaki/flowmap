@@ -5,6 +5,7 @@
  * here cites a rule, the spec is the source of truth and this file follows it.
  */
 
+import type { ClassSwatch } from './class-colours.js';
 import type {
   ActorId,
   CapacityUnits,
@@ -100,6 +101,8 @@ export type WorkspaceSettings = {
   readonly notifications?: NotificationSettings;
   /** Stable external keys by importable entity type; keys never replace entity IDs. */
   readonly externalKeys?: Readonly<Record<string, Readonly<Record<string, EntityId>>>>;
+  /** Which palette swatch each commitment class is drawn in. Absent = defaults. */
+  readonly classColours?: Readonly<Record<CommitmentClass, ClassSwatch>>;
 };
 
 export type SavedView = {

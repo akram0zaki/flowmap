@@ -55,6 +55,38 @@
   --cyan-2: #24457c; /* block border, standard — and the mandatory fill */
   --cyan-3: #152a4d; /* block border, mandatory — and the mandatory label halo */
 
+  /* ── The class palette ───────────────────────────────────────────────
+     Which hue means which class is a house convention, not a fact, so a
+     workspace picks. These are the eight it picks from.
+
+     A fixed palette rather than a picker: every pair here is asserted in
+     contrast.test, so any assignment a workspace can make is legible by
+     construction. A picker would let someone choose a fill their own block
+     labels cannot be read on, and they would find out in a meeting.
+
+     Every line is dark enough to carry white text, because Mandatory fills
+     solid with its line colour and inverts its label — so whichever swatch is
+     assigned to it has to hold that pair too.
+
+     No red and no amber. A signal colour has to keep meaning "something is
+     wrong", and it cannot if a whole class of work is painted in it. */
+  --swatch-plum-fill: #f0e4ed;
+  --swatch-plum-line: #6a2c5a;
+  --swatch-indigo-fill: #d9e5f5;
+  --swatch-indigo-line: #1f4e79;
+  --swatch-teal-fill: #d2e9e5;
+  --swatch-teal-line: #175c55;
+  --swatch-slate-fill: #dfe4e9;
+  --swatch-slate-line: #3d4a57;
+  --swatch-violet-fill: #e4e0f2;
+  --swatch-violet-line: #4b3c86;
+  --swatch-moss-fill: #e2ebd6;
+  --swatch-moss-line: #445c26;
+  --swatch-clay-fill: #f4e3d9;
+  --swatch-clay-line: #7d4022;
+  --swatch-stone-fill: #e9e3d6;
+  --swatch-stone-line: #6f6757;
+
   /* ── Class — the hue axis ─────────────────────────────────────────────
      Colour answers "why does this work exist", because that is the axis a
      portfolio conversation actually argues along. Four classes, four hues,
@@ -261,6 +293,23 @@
   --cyan-2: #8fb0e8;
   --cyan-3: #bed3f3;
 
+  --swatch-plum-fill: #3a2336;
+  --swatch-plum-line: #e0bfd2;
+  --swatch-indigo-fill: #1b2739;
+  --swatch-indigo-line: #8fb0e8;
+  --swatch-teal-fill: #142b28;
+  --swatch-teal-line: #74c5b9;
+  --swatch-slate-fill: #1e242b;
+  --swatch-slate-line: #a9b6c4;
+  --swatch-violet-fill: #241f3a;
+  --swatch-violet-line: #b0a4e4;
+  --swatch-moss-fill: #202a17;
+  --swatch-moss-line: #a9c882;
+  --swatch-clay-fill: #33211a;
+  --swatch-clay-line: #dda684;
+  --swatch-stone-fill: #2a2823;
+  --swatch-stone-line: #bfb5a2;
+
   --class-mandatory-fill: #c69ab2;
   --class-mandatory-line: #e0bfd2;
   --class-mandatory-tint: #3a2336;
@@ -337,6 +386,23 @@
     --cyan-1: #1b2739;
     --cyan-2: #8fb0e8;
     --cyan-3: #bed3f3;
+
+    --swatch-plum-fill: #3a2336;
+    --swatch-plum-line: #e0bfd2;
+    --swatch-indigo-fill: #1b2739;
+    --swatch-indigo-line: #8fb0e8;
+    --swatch-teal-fill: #142b28;
+    --swatch-teal-line: #74c5b9;
+    --swatch-slate-fill: #1e242b;
+    --swatch-slate-line: #a9b6c4;
+    --swatch-violet-fill: #241f3a;
+    --swatch-violet-line: #b0a4e4;
+    --swatch-moss-fill: #202a17;
+    --swatch-moss-line: #a9c882;
+    --swatch-clay-fill: #33211a;
+    --swatch-clay-line: #dda684;
+    --swatch-stone-fill: #2a2823;
+    --swatch-stone-line: #bfb5a2;
 
     --class-mandatory-fill: #c69ab2;
     --class-mandatory-line: #e0bfd2;

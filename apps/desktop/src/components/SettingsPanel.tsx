@@ -7,17 +7,25 @@
  * you cannot correct.
  */
 
-import type { ReserveInput, EntityId, WorkspaceState } from '@flowmap/domain';
+import {
+  classColoursOf,
+  type ClassColours,
+  type ReserveInput,
+  type EntityId,
+  type WorkspaceState,
+} from '@flowmap/domain';
 
 import type { Runtime } from '../state/workspace-store.js';
 import { t } from '../i18n/t.js';
 import { CapacitySettings } from './CapacitySettings.jsx';
+import { ClassColourSettings } from './ClassColourSettings.jsx';
 import { Field } from './Field.jsx';
 
 export type SettingsPanelProps = {
   readonly runtime: Runtime;
   readonly shared?: boolean;
   readonly onClearLocalData: () => void;
+  readonly onSaveClassColours?: (colours: ClassColours) => void;
   readonly onClose: () => void;
   /** Absent before a workspace has loaded; the capacity section waits for it. */
   readonly state?: WorkspaceState;
@@ -41,6 +49,7 @@ export function SettingsPanel({
   runtime,
   shared = false,
   onClearLocalData,
+  onSaveClassColours,
   onClose,
   state,
   onSaveCapacityDefaults,
@@ -116,6 +125,10 @@ export function SettingsPanel({
             onSaveTeam={onSaveTeamCapacity}
             onSaveQuarter={onSaveQuarterReserves}
           />
+        )}
+
+        {state && onSaveClassColours && (
+          <ClassColourSettings colours={classColoursOf(state)} onSave={onSaveClassColours} />
         )}
 
         <h3>{t('settings.rolesTitle')}</h3>

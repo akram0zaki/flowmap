@@ -15,6 +15,7 @@
   "IMPORT_MISSING_EXTERNAL_KEY": "Row {row} has no external key, so it will create a new record rather than update an existing one.",
   "IMPORT_UNRESOLVED_REFERENCE": "Row {row} refers to {reference}, which is not in this file or this workspace.",
   "INSECURE_URL": "Links must start with https://.",
+  "INVALID_VALUE": "That is not one of the available options.",
   "MANDATORY_TARGET_DATE_REQUIRED": "Mandatory work needs a target date before it can be committed.",
   "MIGRATION_CHECKSUM_MISMATCH": "Migration {version} has changed since it was applied. This build cannot safely open the workspace.",
   "MULTIPLE_PRIMARY_IMPACTS": "A commitment can have only one primary product or service. {existing} is already primary.",

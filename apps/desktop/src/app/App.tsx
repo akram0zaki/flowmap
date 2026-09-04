@@ -8,6 +8,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  type ClassColours,
+  classColoursOf,
   addDependency,
   addExternalLink,
   addMilestone,
@@ -69,6 +71,7 @@ import { useResize, type ResizeState } from '../state/use-resize.js';
 import { useSpan, type SpanState } from '../state/use-span.js';
 import type { Milestone, QuarterId } from '@flowmap/domain';
 import { PortfolioMap } from '../components/PortfolioMap.jsx';
+import type { CSSProperties } from 'react';
 import { ClassKey } from '../components/ClassKey.jsx';
 import { LensStrip } from '../components/LensStrip.jsx';
 import { ZoomDock } from '../components/ZoomDock.jsx';
@@ -112,6 +115,29 @@ import { t } from '../i18n/t.js';
 
 type ActiveLens = (typeof LENSES)[number] | 'HISTORY';
 
+/**
+ * Turns the workspace's swatch choice into the `--class-*` variables the board
+ * already reads, so nothing downstream learns that colour became configurable.
+ *
+ * Mandatory is the one class drawn solid, so its "fill" takes the swatch's line
+ * colour and its label inverts. contrast.test asserts --ink-inverse against
+ * every line in the palette, which is what makes any assignment safe.
+ */
+function paletteVariables(colours: ClassColours): CSSProperties {
+  const swatch = (name: string, part: 'fill' | 'line') =>
+    `var(--swatch-${name.toLowerCase()}-${part})`;
+  return {
+    '--class-mandatory-fill': swatch(colours.MANDATORY, 'line'),
+    '--class-mandatory-line': swatch(colours.MANDATORY, 'line'),
+    '--class-strategic-fill': swatch(colours.STRATEGIC, 'fill'),
+    '--class-strategic-line': swatch(colours.STRATEGIC, 'line'),
+    '--class-operational-fill': swatch(colours.OPERATIONAL, 'fill'),
+    '--class-operational-line': swatch(colours.OPERATIONAL, 'line'),
+    '--class-discretionary-fill': swatch(colours.DISCRETIONARY, 'fill'),
+    '--class-discretionary-line': swatch(colours.DISCRETIONARY, 'line'),
+  } as CSSProperties;
+}
+
 export function App() {
   const state = useWorkspace((s) => s.state);
   const status = useWorkspace((s) => s.status);
@@ -151,6 +177,7 @@ export function App() {
     moveFootprint,
     placeFootprint,
     setCapacityDefaults,
+    setClassColours,
     setTeamDefaults,
     setTeamQuarterReserves,
     stretchFootprint,
@@ -1578,6 +1605,7 @@ export function App() {
       className="fm-shell"
       data-lens={activeLens}
       data-presentation={presentationMode || undefined}
+      style={paletteVariables(classColoursOf(state))}
     >
       <header className="fm-header">
         <h1 className="fm-header__brand">
@@ -2187,6 +2215,7 @@ export function App() {
         <SettingsPanel
           runtime={runtime}
           shared={syncStatus?.providerId === 'FILE'}
+          onSaveClassColours={(colours) => void setClassColours(colours)}
           onClearLocalData={() => {
             setShowSettings(false);
             setConfirmClear(true);
