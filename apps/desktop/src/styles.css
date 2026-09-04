@@ -4343,3 +4343,69 @@ label {
   gap: var(--space-4);
   margin-top: var(--space-5);
 }
+
+/* ── One floor per team row ────────────────────────────────────────────────
+   A cell is two things stacked: the drawing, and the caption under it. Both
+   were in one bottom-justified flex column, so the caption's height decided
+   where the drawing ended — and captions are not the same height. A quarter
+   carrying a reason line, a carry-over line or a held reserve pushed its own
+   chart upward, and the zero lines across a row stopped agreeing.
+
+   Which is the bug the earlier fix aimed at and only half solved: it made the
+   cell and the vessel bottom-justify, which lines up the *bottom of the
+   caption*. The floor a reader compares is the bottom of the drawing.
+
+   So the two parts get a track each, handed down from the board grid, and
+   every cell in a team row is measured against the same pair. The caption can
+   then be any height it likes without moving the line above it. */
+@supports (grid-template-rows: subgrid) {
+  /* The board's rows are `display: contents` wrappers, so the grid items are
+     these four, not the row elements. Targeting `.fm-grid > *` reaches the
+     wrappers and silently does nothing — the tracks stay one-per-row and the
+     captions land in the row above, printed over the drawing.
+
+     Splitting the row in two is only meaningful with subgrid to hand the pair
+     down, so it lives in here too: an engine without subgrid keeps exactly the
+     layout it has today rather than a half-applied version of this one. */
+  .fm-grid__corner,
+  .fm-grid__quarter,
+  .fm-grid__team,
+  .fm-grid__cell {
+    grid-row: span 2;
+  }
+
+  .fm-grid__cell {
+    display: grid;
+    grid-template-rows: subgrid;
+  }
+
+  /* The figure sits between the cell and its two parts, so it passes the
+     tracks through rather than consuming them. */
+  .fm-vessel {
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: span 2;
+    height: auto;
+  }
+
+  /* The drawing stands on the floor of its track; the caption starts at the
+     top of the next one — the same line in every cell of the row. */
+  .fm-vessel > svg {
+    align-self: end;
+    min-height: 0;
+  }
+
+  .fm-vessel__caption {
+    align-self: start;
+  }
+
+  /* Everything else a cell can hold is one thing rather than two, so it takes
+     both tracks and keeps the bottom alignment it already had. */
+  .fm-grid__cell > .fm-aggregate,
+  .fm-grid__cell > .fm-grid__empty,
+  .fm-grid__cell > .fm-drop__note,
+  .fm-grid__cell > .fm-drop__refusal {
+    grid-row: 1 / -1;
+    align-self: end;
+  }
+}
