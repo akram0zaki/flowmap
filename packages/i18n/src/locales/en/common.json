@@ -21,6 +21,8 @@
   "app.name": "Flowmap",
   "app.tagline": "Visual portfolio control",
   "header.tools": "Workspace tools",
+  "portability.exportRoadmapPptx": "Roadmap deck",
+  "portability.format.pptx": "PPTX",
   "settings.classColours": "Block colours",
   "settings.classColoursHint": "Colour on the board says why work exists. Pick the swatch each class is drawn in — every one is checked so block names stay readable.",
   "settings.classColoursSave": "Save colours",

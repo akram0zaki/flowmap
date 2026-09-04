@@ -10,6 +10,8 @@
  */
 
 import type ExcelJS from 'exceljs';
+
+import { roadmapModel, ROADMAP_SHEET, type RoadmapModel } from './roadmap.js';
 import {
   horizonWindow,
   isActive,
@@ -19,6 +21,7 @@ import {
   type CapacityFootprint,
   type Commitment,
   type QuarterId,
+  type IsoDate,
   type Team,
   type WorkspaceState,
 } from '@flowmap/domain';
@@ -164,9 +167,152 @@ export function timelineExportModel(state: WorkspaceState): TimelineExportModel 
   };
 }
 
-export function paintGraphicalSheets(book: ExcelJS.Workbook, state: WorkspaceState): void {
+export function paintGraphicalSheets(
+  book: ExcelJS.Workbook,
+  state: WorkspaceState,
+  /** Date the export was taken. Drives the today line; injected, never read. */
+  today: IsoDate,
+): void {
   paintPortfolioWall(book, portfolioWallModel(state));
   paintTimeline(book, timelineExportModel(state));
+  paintRoadmap(book, roadmapModel(state, today));
+}
+
+/**
+ * Theme fills, by band order.
+ *
+ * Excel has no CSS, so these mirror the swatch palette by value. Bands take
+ * them in order rather than by theme name, so the same workspace exports the
+ * same colours twice and two themes never collide on one sheet.
+ */
+const BAND_FILLS = [
+  'FF1F4E79',
+  'FF6A2C5A',
+  'FF175C55',
+  'FF7D4022',
+  'FF4B3C86',
+  'FF445C26',
+  'FF3D4A57',
+  'FF6F6757',
+] as const;
+
+const TODAY_LINE = 'FFD11A2A';
+
+function paintRoadmap(book: ExcelJS.Workbook, model: RoadmapModel): void {
+  const FIRST_MONTH_COL = 3;
+  const lastCol = FIRST_MONTH_COL + model.months.length - 1;
+  const QUARTER_ROW = 3;
+  const MONTH_ROW = 4;
+  const START = 5;
+
+  const sheet = book.addWorksheet(ROADMAP_SHEET);
+  sheet.properties.tabColor = { argb: ACCENT };
+
+  const rowCount = model.bands.reduce((total, band) => total + band.rows.length, 0);
+  const lastRow = Math.max(MONTH_ROW, START + rowCount - 1);
+  sheet.views = [
+    {
+      state: 'frozen',
+      xSplit: 2,
+      ySplit: MONTH_ROW,
+      topLeftCell: 'C5',
+      showGridLines: false,
+      zoomScale: 100,
+    },
+  ];
+  chromePage(sheet, lastCol, lastRow);
+  paintBanner(sheet, 1, lastCol, `${model.title}  ·  ${model.workspace}`);
+  sheet.getCell(2, 1).value = model.caption;
+
+  // Quarter band above the months, one merged cell per three columns.
+  const quarterRow = sheet.getRow(QUARTER_ROW);
+  const monthRow = sheet.getRow(MONTH_ROW);
+  quarterRow.height = 18;
+  monthRow.height = 18;
+  quarterRow.getCell(1).value = 'Theme';
+  quarterRow.getCell(2).value = 'Deliverable';
+  styleHeader(quarterRow.getCell(1), false);
+  styleHeader(quarterRow.getCell(2), false);
+  monthRow.getCell(1).value = '';
+  monthRow.getCell(2).value = 'Teams';
+  styleHeader(monthRow.getCell(1), false);
+  styleHeader(monthRow.getCell(2), false);
+
+  model.months.forEach((month, index) => {
+    const col = FIRST_MONTH_COL + index;
+    if (month.firstOfQuarter) {
+      sheet.mergeCells(QUARTER_ROW, col, QUARTER_ROW, Math.min(col + 2, lastCol));
+      quarterRow.getCell(col).value = month.quarterId;
+    }
+    styleHeader(quarterRow.getCell(col), false);
+    monthRow.getCell(col).value = month.label;
+    styleHeader(monthRow.getCell(col), false);
+    sheet.getColumn(col).width = 5;
+  });
+
+  let cursor = START;
+  model.bands.forEach((band, bandIndex) => {
+    const fill = BAND_FILLS[bandIndex % BAND_FILLS.length]!;
+    band.rows.forEach((bar, rowIndex) => {
+      const row = sheet.getRow(cursor);
+      // The theme is named once per band, not repeated down every row: it is a
+      // heading that happens to live in a column.
+      const themeCell = row.getCell(1);
+      themeCell.value = rowIndex === 0 ? band.theme : '';
+      themeCell.font = { bold: rowIndex === 0, size: 11, color: { argb: INK } };
+      themeCell.alignment = { vertical: 'middle', wrapText: true, indent: 1 };
+      themeCell.fill = solid(GRAPHITE_1);
+      paintFrame(themeCell);
+
+      const nameCell = row.getCell(2);
+      nameCell.value = bar.teams.length > 0 ? `${bar.name}\n${bar.teams.join(', ')}` : bar.name;
+      nameCell.font = { size: 11, color: { argb: INK } };
+      nameCell.alignment = { vertical: 'middle', wrapText: true, indent: 1 };
+      paintFrame(nameCell);
+
+      model.months.forEach((_month, index) => {
+        const cell = row.getCell(FIRST_MONTH_COL + index);
+        const inBar = index >= bar.startIndex && index <= bar.endIndex;
+        if (inBar) {
+          cell.fill = solid(fill);
+          // Colour is never the only channel: the first cell of a bar carries
+          // an arrow, and a target-date end carries a caret, so the shape of
+          // the row survives a monochrome print.
+          if (index === bar.startIndex) {
+            cell.value = '▶';
+            cell.font = { size: 9, color: { argb: INK_ON_DARK } };
+          } else if (index === bar.endIndex && bar.exact) {
+            cell.value = '◆';
+            cell.font = { size: 9, color: { argb: INK_ON_DARK } };
+          }
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        }
+        paintTodayEdge(cell, model, index);
+      });
+      row.height = 26;
+      cursor += 1;
+    });
+  });
+
+  // The today line also crosses the two header rows, or it would start below
+  // the axis it is meant to be read against.
+  model.months.forEach((_month, index) => {
+    paintTodayEdge(quarterRow.getCell(FIRST_MONTH_COL + index), model, index);
+    paintTodayEdge(monthRow.getCell(FIRST_MONTH_COL + index), model, index);
+  });
+
+  sheet.getColumn(1).width = 22;
+  sheet.getColumn(2).width = 46;
+  enableFilter(sheet, 2, lastRow);
+}
+
+/** A dotted red left edge on the column today falls in. */
+function paintTodayEdge(cell: ExcelJS.Cell, model: RoadmapModel, index: number): void {
+  if (model.today === null || model.today.index !== index) return;
+  cell.border = {
+    ...(cell.border ?? {}),
+    left: { style: 'mediumDashed', color: { argb: TODAY_LINE } },
+  };
 }
 
 const HEADER_ROW = 3;
