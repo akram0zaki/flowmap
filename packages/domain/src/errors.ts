@@ -45,6 +45,7 @@ export const DOMAIN_ERROR_CODES = [
   'NAME_TOO_LONG',
   'INSECURE_URL',
   'DUPLICATE_NAME',
+  'INVALID_VALUE',
 
   // quarter close
   'QUARTER_CLOSED',

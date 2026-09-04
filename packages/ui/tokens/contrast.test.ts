@@ -136,6 +136,29 @@ const TEXT_PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ['--ink', '--state-refinement', 4.5],
   ['--ink', '--state-hold', 4.5],
   ['--ink', '--state-carryover', 4.5],
+
+  // Every swatch a workspace can assign to a class. A block label is printed on
+  // the fill, so each fill is a text background.
+  ['--ink', '--swatch-plum-fill', 4.5],
+  ['--ink', '--swatch-indigo-fill', 4.5],
+  ['--ink', '--swatch-teal-fill', 4.5],
+  ['--ink', '--swatch-slate-fill', 4.5],
+  ['--ink', '--swatch-violet-fill', 4.5],
+  ['--ink', '--swatch-moss-fill', 4.5],
+  ['--ink', '--swatch-clay-fill', 4.5],
+  ['--ink', '--swatch-stone-fill', 4.5],
+
+  // ...and Mandatory fills solid with its line colour and inverts its label, so
+  // whichever swatch lands there has to carry white text too. Asserting it for
+  // all eight is what lets the setting be a free choice rather than a trap.
+  ['--ink-inverse', '--swatch-plum-line', 4.5],
+  ['--ink-inverse', '--swatch-indigo-line', 4.5],
+  ['--ink-inverse', '--swatch-teal-line', 4.5],
+  ['--ink-inverse', '--swatch-slate-line', 4.5],
+  ['--ink-inverse', '--swatch-violet-line', 4.5],
+  ['--ink-inverse', '--swatch-moss-line', 4.5],
+  ['--ink-inverse', '--swatch-clay-line', 4.5],
+  ['--ink-inverse', '--swatch-stone-line', 4.5],
 ];
 
 /** Graphical objects and interactive boundaries need 3:1, not 4.5:1. */
@@ -156,6 +179,15 @@ const GRAPHICAL_PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ['--class-strategic-line', '--surface', 3],
   ['--class-operational-line', '--surface', 3],
   ['--class-discretionary-line', '--surface', 3],
+
+  ['--swatch-plum-line', '--surface', 3],
+  ['--swatch-indigo-line', '--surface', 3],
+  ['--swatch-teal-line', '--surface', 3],
+  ['--swatch-slate-line', '--surface', 3],
+  ['--swatch-violet-line', '--surface', 3],
+  ['--swatch-moss-line', '--surface', 3],
+  ['--swatch-clay-line', '--surface', 3],
+  ['--swatch-stone-line', '--surface', 3],
 ];
 
 describe.each([

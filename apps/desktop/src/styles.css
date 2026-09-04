@@ -4251,3 +4251,95 @@ label {
   background: var(--class-discretionary-fill);
   border-color: var(--class-discretionary-line);
 }
+
+/* ── Block colours ─────────────────────────────────────────────────────────
+   A grid of the thing itself, not a list of colour names. "Plum" is a word a
+   reader would have to turn back into a picture before they could use it. */
+.fm-swatches__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.fm-swatches__class {
+  min-width: 8rem;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.fm-swatches__set {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* The chip is drawn the way the block will be: pale with a coloured edge, or
+   solid for Mandatory, which is the one class the board fills in. Choosing a
+   colour should not require imagining what it will look like. */
+.fm-swatches__chip {
+  width: var(--hit-target-min);
+  height: var(--hit-target-min);
+  padding: 0;
+  background: var(--chip-fill);
+  border: var(--vessel-rule-width) solid var(--chip-line);
+  border-radius: var(--radius-sm);
+}
+
+.fm-swatches__chip[data-solid] {
+  background: var(--chip-line);
+}
+
+/* Checked is a ring outside the chip, never a mark inside it: a tick drawn on
+   the swatch would sit on the one colour the reader is trying to judge. */
+.fm-swatches__chip[aria-checked='true'] {
+  box-shadow:
+    0 0 0 var(--focus-width) var(--surface),
+    0 0 0 calc(var(--focus-width) * 2) var(--ink);
+}
+
+.fm-swatches__chip[data-swatch='PLUM'] {
+  --chip-fill: var(--swatch-plum-fill);
+  --chip-line: var(--swatch-plum-line);
+}
+
+.fm-swatches__chip[data-swatch='INDIGO'] {
+  --chip-fill: var(--swatch-indigo-fill);
+  --chip-line: var(--swatch-indigo-line);
+}
+
+.fm-swatches__chip[data-swatch='TEAL'] {
+  --chip-fill: var(--swatch-teal-fill);
+  --chip-line: var(--swatch-teal-line);
+}
+
+.fm-swatches__chip[data-swatch='SLATE'] {
+  --chip-fill: var(--swatch-slate-fill);
+  --chip-line: var(--swatch-slate-line);
+}
+
+.fm-swatches__chip[data-swatch='VIOLET'] {
+  --chip-fill: var(--swatch-violet-fill);
+  --chip-line: var(--swatch-violet-line);
+}
+
+.fm-swatches__chip[data-swatch='MOSS'] {
+  --chip-fill: var(--swatch-moss-fill);
+  --chip-line: var(--swatch-moss-line);
+}
+
+.fm-swatches__chip[data-swatch='CLAY'] {
+  --chip-fill: var(--swatch-clay-fill);
+  --chip-line: var(--swatch-clay-line);
+}
+
+.fm-swatches__chip[data-swatch='STONE'] {
+  --chip-fill: var(--swatch-stone-fill);
+  --chip-line: var(--swatch-stone-line);
+}
+
+.fm-swatches__actions {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}

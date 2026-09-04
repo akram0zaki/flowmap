@@ -37,6 +37,7 @@ import {
   reopenQuarter,
   renewCommitment,
   setRecurrence,
+  setClassColours,
   setNotificationSettings,
   setDefaultReserves,
   setTeamDefaults,
@@ -71,6 +72,7 @@ import {
   type CarryOverDecision,
   type QuarterOutcome,
   type Recurrence,
+  type ClassColours,
   type NotificationSettings,
   type SavedImportMapping,
   domainError,
@@ -245,6 +247,7 @@ type StoreState = {
   }): Promise<boolean>;
   removeSavedView(viewId: string): Promise<boolean>;
   saveImportMapping(mapping: Omit<SavedImportMapping, 'id'>): Promise<boolean>;
+  setClassColours(colours: ClassColours): Promise<boolean>;
   setNotificationSettings(settings: NotificationSettings): Promise<boolean>;
   /** Workspace defaults: what a team-quarter starts from when nothing overrides it. */
   setCapacityDefaults(input: {
@@ -963,6 +966,13 @@ export const useWorkspace = create<StoreState>((set, get) => ({
   async saveImportMapping(mapping) {
     const result = await get().dispatch('SaveImportMapping', (state, cmd, ctx) =>
       saveImportMapping(state, mapping, cmd, ctx),
+    );
+    return Boolean(result);
+  },
+
+  async setClassColours(colours) {
+    const result = await get().dispatch('SetClassColours', (state, cmd, ctx) =>
+      setClassColours(state, { colours }, cmd, ctx),
     );
     return Boolean(result);
   },
@@ -2101,6 +2111,8 @@ function runNamed(
       return createTeam(state, payload as never, cmd, ctx);
     case 'EnsureTeamQuarter':
       return ensureTeamQuarter(state, payload as never, cmd, ctx);
+    case 'SetClassColours':
+      return setClassColours(state, payload as never, cmd, ctx);
     case 'SetDefaultReserves':
       return setDefaultReserves(state, payload as never, cmd, ctx);
     case 'SetTeamDefaults':
