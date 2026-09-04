@@ -4176,15 +4176,20 @@ label {
 }
 
 /* ── The class key ─────────────────────────────────────────────────────────
-   Named hues, and a filter. Sits above the board rather than beside a cell,
-   because it explains the whole drawing rather than any one part of it. */
+   Named hues, and a filter. It rides in the control bar beside Undo/Redo/List
+   rather than taking a band of its own: it is a reference you glance back at
+   mid-sentence, and a row you have to look *up* to is a row you stop using.
+
+   A rule separates it from the step buttons, because pressing one of these
+   changes what the board shows and pressing those changes what it contains. */
 .fm-classkey {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-6);
-  border-bottom: 1px solid var(--rule);
+  gap: var(--space-3);
+  padding-left: var(--space-5);
+  margin-left: var(--space-3);
+  border-left: 1px solid var(--rule);
 }
 
 .fm-classkey__title {
@@ -4197,10 +4202,10 @@ label {
 
 .fm-classkey__item {
   display: inline-flex;
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-items: center;
   min-height: var(--hit-target-min);
-  padding: var(--space-1) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   font-size: var(--text-sm);
   color: var(--ink-muted);
   background: transparent;
@@ -4221,8 +4226,8 @@ label {
 }
 
 .fm-classkey__swatch {
-  width: var(--space-5);
-  height: var(--space-5);
+  width: var(--space-4);
+  height: var(--space-4);
   border: var(--vessel-rule-width) solid;
   border-radius: var(--radius-sm);
 }

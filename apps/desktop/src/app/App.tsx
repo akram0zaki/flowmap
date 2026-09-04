@@ -1729,11 +1729,6 @@ export function App() {
         />
       </div>
 
-      <ClassKey
-        filter={filter}
-        onToggleClass={(value) => setFilter((f) => toggleFilterValue(f, 'classes', value))}
-      />
-
       <ScenarioDock
         scenarios={scenarios}
         selectedId={selectedScenarioId}
@@ -1782,6 +1777,12 @@ export function App() {
           onToggleList={() => setShowList((v) => !v)}
           onUndo={() => void undo()}
           onRedo={() => void redo()}
+          legend={
+            <ClassKey
+              filter={filter}
+              onToggleClass={(value) => setFilter((f) => toggleFilterValue(f, 'classes', value))}
+            />
+          }
           radarCount={signals.visible.length}
           highCount={signals.visible.filter((signal) => signal.severity === 'HIGH').length}
           showRadar={showRadar}
